@@ -1,10 +1,21 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, AuthContextType, UserRole } from './types';
-import apiClient from './api-client';
+import { AuthContextType, AuthResponse, User } from './types';
+import { authApi } from './api';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+/** Maps the backend's flat AuthResponse into the normalised User we keep client-side. */
+function toUser(res: AuthResponse): User {
+  return {
+    id: res.userId,
+    email: res.email,
+    fullName: res.fullName,
+    role: res.role === 'MANAGER' ? 'manager' : 'handler',
+    farmId: res.farmId,
+  };
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -15,7 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
     const token = localStorage.getItem('auth_token');
-    
+
     if (storedUser && token) {
       try {
         setUser(JSON.parse(storedUser));
@@ -31,12 +42,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      // Call login endpoint
-      const response = await apiClient.post('/auth/login', { email, password });
-      const { user: userData, token } = response.data;
-      
-      // Store token and user
-      localStorage.setItem('auth_token', token);
+      const res = await authApi.login(email, password);
+      const userData = toUser(res);
+
+      localStorage.setItem('auth_token', res.token);
       localStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
     } catch (err) {
@@ -48,19 +57,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // The backend is stateless (JWT); logout is purely client-side token disposal.
   const logout = async () => {
-    setLoading(true);
-    try {
-      // Call logout endpoint if needed
-      await apiClient.post('/auth/logout');
-    } catch {
-      // Ignore logout errors
-    } finally {
-      localStorage.removeItem('auth_token');
-      localStorage.removeItem('user');
-      setUser(null);
-      setLoading(false);
-    }
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user');
+    setUser(null);
   };
 
   return (

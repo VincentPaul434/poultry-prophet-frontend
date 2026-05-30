@@ -166,11 +166,11 @@ export default function LoginPage() {
                 </label>
 
                 <a
-                  href="#"
+                  href="/create-account"
                   className="text-sm font-medium hover:underline"
                   style={{ color: 'var(--color-forest)' }}
                 >
-                  Forgot password?
+                  Create account
                 </a>
               </div>
 

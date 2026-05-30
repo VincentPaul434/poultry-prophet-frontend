@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -8,23 +8,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import apiClient from '@/lib/api-client';
-import { AlertCircle, Loader2 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { birdApi, rangingApi } from '@/lib/api';
+import { Bird, HealthEventSeverity, QualityRating } from '@/lib/types';
+import { AlertCircle, Loader2, Plus } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
+// Mirrors backend CreateRangingRecordRequest (per-bird ranging milestone).
 const rangingSchema = z.object({
-  outdoorTemp: z.coerce.number(),
-  precipitation: z.boolean().default(false),
-  predatorsObserved: z.array(z.string()).default([]),
-  forageConsumption: z.coerce.number().min(0),
-  waterIntake: z.coerce.number().min(0),
-  healthIssues: z.array(z.string()).default([]),
-  predatorLosses: z.array(z.object({
-    species: z.string(),
-    count: z.coerce.number().min(0),
-    notes: z.string().optional(),
-  })).default([]),
+  recordDate: z.string().optional(),
+  weightG: z.coerce.number().min(0),
+  healthEvent: z
+    .enum(['NONE', 'ROUTINE', 'MINOR', 'MODERATE', 'MAJOR'])
+    .optional(),
+  temperamentNotes: z.string().optional(),
+  qualityRating: z.enum(['C', 'B', 'B_PLUS', 'A', 'A_PLUS', 'A_PLUS_PLUS']),
 });
 
 type RangingFormData = z.infer<typeof rangingSchema>;
@@ -34,54 +32,98 @@ interface RangingFormProps {
   onSuccess?: () => void;
 }
 
-const PREDATOR_OPTIONS = ['Hawk', 'Fox', 'Raccoon', 'Snake', 'Dog', 'Other'];
-const HEALTH_ISSUES = ['Injuries', 'Behavioral Issues', 'Parasites', 'Respiratory', 'None'];
+const QUALITY_OPTIONS: { value: QualityRating; label: string }[] = [
+  { value: 'C', label: 'C' },
+  { value: 'B', label: 'B' },
+  { value: 'B_PLUS', label: 'B+' },
+  { value: 'A', label: 'A' },
+  { value: 'A_PLUS', label: 'A+' },
+  { value: 'A_PLUS_PLUS', label: 'A++' },
+];
+
+const HEALTH_OPTIONS: { value: HealthEventSeverity; label: string }[] = [
+  { value: 'NONE', label: 'None' },
+  { value: 'ROUTINE', label: 'Routine' },
+  { value: 'MINOR', label: 'Minor' },
+  { value: 'MODERATE', label: 'Moderate' },
+  { value: 'MAJOR', label: 'Major' },
+];
+
+const selectClass =
+  'flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-base placeholder:text-slate-500 disabled:cursor-not-allowed disabled:opacity-50';
 
 export function RangingForm({ batchId, onSuccess }: RangingFormProps) {
-  const [step, setStep] = useState(1);
+  const [birds, setBirds] = useState<Bird[]>([]);
+  const [selectedBirdId, setSelectedBirdId] = useState<string>('');
+  const [newBandNumber, setNewBandNumber] = useState('');
+  const [banding, setBanding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
   const {
     register,
     handleSubmit,
-    watch,
+    reset,
     formState: { errors },
-    setValue,
   } = useForm<RangingFormData>({
     resolver: zodResolver(rangingSchema),
+    defaultValues: {
+      recordDate: new Date().toISOString().slice(0, 10),
+      qualityRating: 'B',
+      healthEvent: 'NONE',
+    },
   });
 
-  const predatorsObserved = watch('predatorsObserved');
-  const healthIssues = watch('healthIssues');
-  const predatorLosses = watch('predatorLosses');
+  useEffect(() => {
+    birdApi
+      .list(batchId)
+      .then((list) => {
+        setBirds(list);
+        if (list.length > 0) setSelectedBirdId(String(list[0].id));
+      })
+      .catch((err) => console.error('Failed to fetch birds:', err));
+  }, [batchId]);
 
-  const togglePredator = (option: string) => {
-    const current = predatorsObserved || [];
-    const updated = current.includes(option)
-      ? current.filter((o) => o !== option)
-      : [...current, option];
-    setValue('predatorsObserved', updated);
-  };
-
-  const toggleHealthIssue = (option: string) => {
-    const current = healthIssues || [];
-    const updated = current.includes(option)
-      ? current.filter((o) => o !== option)
-      : [...current, option];
-    setValue('healthIssues', updated);
+  const handleBandBird = async () => {
+    if (!newBandNumber.trim()) return;
+    setBanding(true);
+    setError(null);
+    try {
+      const bird = await birdApi.band(batchId, { bandNumber: newBandNumber.trim() });
+      setBirds((prev) => [...prev, bird]);
+      setSelectedBirdId(String(bird.id));
+      setNewBandNumber('');
+    } catch (err) {
+      setError('Failed to band bird');
+      console.error(err);
+    } finally {
+      setBanding(false);
+    }
   };
 
   const onSubmit = async (data: RangingFormData) => {
+    if (!selectedBirdId) {
+      setError('Select or band a bird first');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      await apiClient.post(`/batches/${batchId}/ranging-records`, {
-        ...data,
-        recordDate: new Date().toISOString(),
+      await rangingApi.create(batchId, selectedBirdId, {
+        recordDate: data.recordDate || undefined,
+        weightG: data.weightG,
+        healthEvent: data.healthEvent,
+        temperamentNotes: data.temperamentNotes || undefined,
+        qualityRating: data.qualityRating,
+      });
+      reset({
+        recordDate: new Date().toISOString().slice(0, 10),
+        qualityRating: 'B',
+        healthEvent: 'NONE',
       });
       onSuccess?.();
     } catch (err) {
-      setError('Failed to save ranging data');
+      setError('Failed to save ranging record');
       console.error(err);
     } finally {
       setLoading(false);
@@ -91,8 +133,8 @@ export function RangingForm({ batchId, onSuccess }: RangingFormProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Ranging Data Entry</CardTitle>
-        <CardDescription>Step {step} of 4 - Environmental & Health Conditions</CardDescription>
+        <CardTitle>Ranging Milestone</CardTitle>
+        <CardDescription>Per-bird weight, health and conformation for a ranging milestone</CardDescription>
       </CardHeader>
       <CardContent>
         {error && (
@@ -103,200 +145,90 @@ export function RangingForm({ batchId, onSuccess }: RangingFormProps) {
         )}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          {/* Step 1: Environment */}
-          {step === 1 && (
-            <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="outdoorTemp">Outdoor Temperature (°F)</Label>
-                  <Input
-                    id="outdoorTemp"
-                    type="number"
-                    step="0.1"
-                    placeholder="75"
-                    {...register('outdoorTemp')}
-                  />
-                  {errors.outdoorTemp && (
-                    <p className="text-sm text-red-500">{errors.outdoorTemp.message}</p>
-                  )}
-                </div>
-
-                <div className="flex items-end">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="precipitation"
-                      {...register('precipitation')}
-                    />
-                    <Label htmlFor="precipitation" className="font-normal cursor-pointer">
-                      Precipitation occurred
-                    </Label>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <Label>Predators Observed</Label>
-                <div className="mt-3 space-y-3">
-                  {PREDATOR_OPTIONS.map((option) => (
-                    <div key={option} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`predator-${option}`}
-                        checked={predatorsObserved?.includes(option) || false}
-                        onCheckedChange={() => togglePredator(option)}
-                      />
-                      <Label htmlFor={`predator-${option}`} className="font-normal cursor-pointer">
-                        {option}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 2: Intake */}
-          {step === 2 && (
-            <div className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="forageConsumption">Forage Consumption (lbs/day)</Label>
-                  <Input
-                    id="forageConsumption"
-                    type="number"
-                    step="0.1"
-                    placeholder="0"
-                    {...register('forageConsumption')}
-                  />
-                  {errors.forageConsumption && (
-                    <p className="text-sm text-red-500">{errors.forageConsumption.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="waterIntake">Water Intake (gal/day)</Label>
-                  <Input
-                    id="waterIntake"
-                    type="number"
-                    step="0.1"
-                    placeholder="0"
-                    {...register('waterIntake')}
-                  />
-                  {errors.waterIntake && (
-                    <p className="text-sm text-red-500">{errors.waterIntake.message}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Health Issues */}
-          {step === 3 && (
-            <div className="space-y-6">
-              <div>
-                <Label>Health Issues Observed</Label>
-                <div className="mt-3 space-y-3">
-                  {HEALTH_ISSUES.map((option) => (
-                    <div key={option} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`health-${option}`}
-                        checked={healthIssues?.includes(option) || false}
-                        onCheckedChange={() => toggleHealthIssue(option)}
-                      />
-                      <Label htmlFor={`health-${option}`} className="font-normal cursor-pointer">
-                        {option}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Step 4: Predator Losses */}
-          {step === 4 && (
-            <div className="space-y-6">
-              <div>
-                <Label>Predator Losses Details</Label>
-                <p className="mt-1 text-sm text-slate-600">
-                  Only fill if predators were observed above
-                </p>
-                <div className="mt-4 space-y-4">
-                  {predatorLosses && predatorLosses.length > 0 ? (
-                    predatorLosses.map((loss, idx) => (
-                      <Card key={idx} className="p-4">
-                        <div className="space-y-3">
-                          <div className="grid gap-2 md:grid-cols-2">
-                            <div className="space-y-2">
-                              <Label htmlFor={`species-${idx}`}>Species</Label>
-                              <Input
-                                id={`species-${idx}`}
-                                placeholder="e.g., Hawk"
-                                {...register(`predatorLosses.${idx}.species`)}
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor={`count-${idx}`}>Count</Label>
-                              <Input
-                                id={`count-${idx}`}
-                                type="number"
-                                min="0"
-                                {...register(`predatorLosses.${idx}.count`)}
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor={`notes-${idx}`}>Notes</Label>
-                            <Input
-                              id={`notes-${idx}`}
-                              placeholder="Any details about the incident"
-                              {...register(`predatorLosses.${idx}.notes`)}
-                            />
-                          </div>
-                        </div>
-                      </Card>
-                    ))
-                  ) : (
-                    <p className="text-sm text-slate-500">No predator losses recorded</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Navigation */}
-          <div className="flex justify-between gap-3 pt-6">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setStep(Math.max(1, step - 1))}
-              disabled={step === 1 || loading}
+          {/* Bird selection */}
+          <div className="space-y-2">
+            <Label htmlFor="bird">Bird</Label>
+            <select
+              id="bird"
+              value={selectedBirdId}
+              onChange={(e) => setSelectedBirdId(e.target.value)}
+              className={selectClass}
             >
-              Previous
-            </Button>
+              {birds.length === 0 && <option value="">No birds banded yet</option>}
+              {birds.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.bandNumber}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-2 pt-1">
+              <Input
+                placeholder="New band number"
+                value={newBandNumber}
+                onChange={(e) => setNewBandNumber(e.target.value)}
+              />
+              <Button type="button" variant="outline" onClick={handleBandBird} disabled={banding}>
+                {banding ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Band
+              </Button>
+            </div>
+          </div>
 
-            {step < 4 ? (
-              <Button
-                type="button"
-                onClick={() => setStep(step + 1)}
-                disabled={loading}
-              >
-                Next
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  'Save Entry'
-                )}
-              </Button>
-            )}
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="recordDate">Record Date</Label>
+              <Input id="recordDate" type="date" {...register('recordDate')} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="weightG">Weight (g)</Label>
+              <Input id="weightG" type="number" step="1" min="0" placeholder="700" {...register('weightG')} />
+              {errors.weightG && <p className="text-sm text-red-500">{errors.weightG.message}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="qualityRating">Conformation Grade</Label>
+              <select id="qualityRating" {...register('qualityRating')} className={selectClass}>
+                {QUALITY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="healthEvent">Health Event</Label>
+              <select id="healthEvent" {...register('healthEvent')} className={selectClass}>
+                {HEALTH_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="temperamentNotes">Temperament Notes</Label>
+            <Textarea
+              id="temperamentNotes"
+              placeholder="Behavioural / temperament observations"
+              {...register('temperamentNotes')}
+            />
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <Button type="submit" disabled={loading || !selectedBirdId}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Milestone'
+              )}
+            </Button>
           </div>
         </form>
       </CardContent>

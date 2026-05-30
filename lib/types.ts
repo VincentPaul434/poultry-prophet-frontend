@@ -1,139 +1,245 @@
-// Type definitions for API responses and app state
+// Type definitions mirroring the Poultry Prophet Spring Boot backend DTOs.
+// Keep these in sync with com.poultryprophet.*.dto.* on the backend.
 
-export type UserRole = 'handler' | 'manager' | 'admin';
+// ---- Enums (match backend enum constants exactly) ----
 
-export interface User {
-  id: string;
+/** Backend com.poultryprophet.user.Role */
+export type Role = 'MANAGER' | 'HANDLER';
+
+/** Lowercase role used throughout the UI / route guards. */
+export type UserRole = 'manager' | 'handler';
+
+/** Backend com.poultryprophet.batch.BatchStatus */
+export type BatchStatus = 'ACTIVE' | 'CLOSED';
+
+/** Backend com.poultryprophet.alert.Severity */
+export type Severity = 'INFO' | 'WARNING' | 'CRITICAL';
+
+/** Backend com.poultryprophet.ranging.QualityRating */
+export type QualityRating = 'C' | 'B' | 'B_PLUS' | 'A' | 'A_PLUS' | 'A_PLUS_PLUS';
+
+/** Backend com.poultryprophet.ranging.HealthEventSeverity */
+export type HealthEventSeverity = 'NONE' | 'ROUTINE' | 'MINOR' | 'MODERATE' | 'MAJOR';
+
+/** Backend com.poultryprophet.record.SyncStatus */
+export type SyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
+
+// ---- Auth (AuthController / AuthResponse) ----
+
+/** Flat shape returned by POST /api/auth/{login,register}. */
+export interface AuthResponse {
+  token: string;
+  userId: number;
   email: string;
-  role: UserRole;
-  name?: string;
-  createdAt: string;
+  fullName: string;
+  role: Role;
+  farmId: number;
 }
+
+/** Normalised user kept in the auth context / localStorage. */
+export interface User {
+  id: number;
+  email: string;
+  fullName: string;
+  role: UserRole;
+  farmId: number;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  fullName: string;
+  role: Role;
+}
+
+// ---- Batches (BatchController / BatchResponse) ----
 
 export interface Batch {
-  id: string;
+  id: number;
+  farmId: number;
   name: string;
-  strain: string;
-  hatchDate: string;
-  handlerIds: string[];
-  managerId: string;
-  status: 'brooding' | 'ranging' | 'selection' | 'complete';
-  totalBirds: number;
+  initialPopulation: number;
+  currentPopulation: number;
+  startDate: string; // ISO date
+  bloodline: string | null;
+  source: string | null;
+  stageId: number;
+  stageName: string;
+  status: BatchStatus;
+  handlerUserIds: number[];
+  createdAt: string; // ISO instant
+}
+
+export interface CreateBatchRequest {
+  name: string;
+  initialPopulation: number;
+  startDate: string;
+  stageId: number;
+  bloodline?: string;
+  source?: string;
+  handlerUserIds?: number[];
+}
+
+export interface LifecycleStage {
+  id: number;
+  name: string;
+  orderIndex: number;
+}
+
+// ---- Birds (BirdController / BirdResponse) ----
+
+export interface Bird {
+  id: number;
+  batchId: number;
+  bandNumber: string;
+  notes: string | null;
   createdAt: string;
 }
 
-export interface BroodingRecord {
-  id: string;
-  batchId: string;
-  recordDate: string;
-  temperature: number;
-  humidity: number;
-  ventilation: string;
-  mortalityCount: number;
-  mortalityCause: string;
-  feedIntake: number;
-  waterIntake: number;
-  healthObservations: string[];
-  createdAt: string;
-  createdBy: string;
-}
-
-export interface RangingRecord {
-  id: string;
-  batchId: string;
-  recordDate: string;
-  outdoorTemp: number;
-  precipitation: boolean;
-  predatorsObserved: string[];
-  forageConsumption: number;
-  waterIntake: number;
-  healthIssues: string[];
-  predatorLosses: PredatorLoss[];
-  createdAt: string;
-  createdBy: string;
-}
-
-export interface PredatorLoss {
-  species: string;
-  count: number;
+export interface CreateBirdRequest {
+  bandNumber: string;
   notes?: string;
 }
 
-export interface WeightRecord {
-  id: string;
-  birdId: string;
+// ---- Daily records (DailyRecordController / DailyRecordResponse) ----
+
+export interface DailyRecord {
+  id: number;
+  batchId: number;
+  handlerId: number;
   recordDate: string;
-  weight: number;
-  bandId?: string;
+  temperatureC: number;
+  mortalityCount: number;
+  feedIntakeG: number;
+  waterIntakeMl: number;
+  behaviorNotes: string | null;
+  syncStatus: SyncStatus;
   createdAt: string;
 }
 
-export interface Bird {
-  id: string;
-  batchId: string;
-  bandId: string;
-  strain: string;
-  hatchDate: string;
-  weights: WeightRecord[];
-  crs?: number;
-  decision?: 'advance' | 'hold' | 'reject' | null;
-  createdAt: string;
+export interface CreateRecordRequest {
+  recordDate?: string;
+  temperatureC: number;
+  mortalityCount: number;
+  feedIntakeG: number;
+  waterIntakeMl: number;
+  behaviorNotes?: string;
 }
 
-export interface BatchIndicator {
-  id: string;
-  batchId: string;
+// ---- Ranging records (RangingRecordController / RangingRecordResponse) ----
+
+export interface RangingRecord {
+  id: number;
+  birdId: number;
+  recordDate: string;
+  weightG: number;
+  healthEvent: HealthEventSeverity | null;
+  temperamentNotes: string | null;
+  qualityRating: QualityRating;
+}
+
+export interface CreateRangingRecordRequest {
+  recordDate?: string;
+  weightG: number;
+  healthEvent?: HealthEventSeverity;
+  temperamentNotes?: string;
+  qualityRating: QualityRating;
+}
+
+// ---- Analytics indicators (IndicatorController / IndicatorResponse) ----
+
+export interface Indicator {
+  id: number;
+  batchId: number;
+  recordId: number;
+  recordDate: string;
   bhi: number;
-  mortalityRate: number;
-  avgTemp: number;
-  avgHumidity: number;
-  avgFeedIntake: number;
-  avgWaterIntake: number;
+  bsi: number | null;
+  wfr: number | null;
+  readinessScore: number;
   computedAt: string;
 }
 
-export interface BirdIndicator {
-  id: string;
-  birdId: string;
-  growthScore: number;
-  healthScore: number;
-  behavioralScore: number;
-  weightTrend: number;
-  computedAt: string;
+export interface Threshold {
+  id: number;
+  farmId: number | null;
+  indicator: string;
+  minValue: number;
+  maxValue: number;
 }
 
-export interface RankingData {
-  batchId: string;
-  totalBirds: number;
-  birds: {
-    id: string;
-    bandId: string;
-    crs: number;
-    growthScore: number;
-    healthScore: number;
-    behavioralScore: number;
-    weightTrend: number;
-    decision: 'advance' | 'hold' | 'reject' | null;
-    overrideReason?: string;
-  }[];
+export interface UpdateThresholdRequest {
+  minValue: number;
+  maxValue: number;
 }
 
-export interface ScoringWeights {
-  bhiWeight: number;
-  growthWeight: number;
-  healthWeight: number;
-  behavioralWeight: number;
+// ---- Alerts (AlertController / AlertResponse) ----
+
+export interface Alert {
+  id: number;
+  batchId: number;
+  indicatorId: number | null;
+  indicatorType: string;
+  severity: Severity;
+  message: string;
+  acknowledged: boolean;
+  acknowledgedByUserId: number | null;
+  acknowledgedAt: string | null;
+  acknowledgmentNote: string | null;
+  createdAt: string;
 }
+
+// ---- Dashboard overview (OverviewController / BatchOverviewResponse) ----
+
+export interface BatchOverview {
+  batch: Batch;
+  latestIndicator: Indicator | null;
+  recentRecords: DailyRecord[];
+  activeAlerts: Alert[];
+}
+
+// ---- Selection (SelectionController / SelectionViewResponse) ----
 
 export interface SelectionDecision {
-  id: string;
-  batchId: string;
-  birdId: string;
-  decision: 'advance' | 'hold' | 'reject';
-  overrideReason?: string;
-  createdBy: string;
-  createdAt: string;
+  outcome: string;
+  overridden: boolean;
+  reason: string | null;
+  decidedAt: string;
 }
+
+export interface SelectionRow {
+  rank: number;
+  birdId: number;
+  bandNumber: string;
+  broodingHealthIndex: number;
+  growthScore: number;
+  healthHistoryScore: number;
+  behaviouralScore: number;
+  crs: number;
+  recommendedAdvance: boolean;
+  decision: SelectionDecision | null;
+}
+
+export interface SelectionView {
+  batchId: number;
+  cutLineCrs: number;
+  rows: SelectionRow[];
+}
+
+export interface SelectionDecisionRequest {
+  advance: boolean;
+  reason?: string;
+}
+
+// ---- Handlers (UserController / HandlerResponse) ----
+
+export interface Handler {
+  id: number;
+  email: string;
+  fullName: string;
+}
+
+// ---- Auth context ----
 
 export interface AuthContextType {
   user: User | null;

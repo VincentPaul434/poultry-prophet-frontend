@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { use, useState, useEffect } from 'react';
 import { DashboardLayout } from '@/app/dashboard-layout';
 import { BatchOverview } from '@/components/dashboard/batch-overview';
 import { Card, CardContent } from '@/components/ui/card';
-import { Batch, BatchIndicator } from '@/lib/types';
-import apiClient from '@/lib/api-client';
+import { BatchOverview as BatchOverviewData } from '@/lib/types';
+import { batchApi } from '@/lib/api';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -14,36 +14,18 @@ interface BatchDetailPageProps {
   params: Promise<{ batchId: string }>;
 }
 
-export default function BatchDetailPage({ params: paramsPromise }: BatchDetailPageProps) {
-  const [params, setParams] = useState<{ batchId: string } | null>(null);
-  const [batch, setBatch] = useState<Batch | null>(null);
-  const [indicator, setIndicator] = useState<BatchIndicator | null>(null);
+export default function BatchDetailPage({ params }: BatchDetailPageProps) {
+  const { batchId } = use(params);
+  const [data, setData] = useState<BatchOverviewData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    paramsPromise.then(setParams);
-  }, [paramsPromise]);
-
-  useEffect(() => {
-    if (!params) return;
-
-    const fetchData = async () => {
-      try {
-        const [batchRes, indicatorRes] = await Promise.all([
-          apiClient.get(`/batches/${params.batchId}`),
-          apiClient.get(`/batches/${params.batchId}/indicators`),
-        ]);
-        setBatch(batchRes.data);
-        setIndicator(indicatorRes.data);
-      } catch (error) {
-        console.error('Failed to fetch batch data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [params]);
+    batchApi
+      .overview(batchId)
+      .then(setData)
+      .catch((error) => console.error('Failed to fetch batch overview:', error))
+      .finally(() => setLoading(false));
+  }, [batchId]);
 
   if (loading) {
     return (
@@ -55,7 +37,7 @@ export default function BatchDetailPage({ params: paramsPromise }: BatchDetailPa
     );
   }
 
-  if (!batch || !params) {
+  if (!data) {
     return (
       <DashboardLayout allowedRoles={['manager', 'admin']}>
         <Card>
@@ -67,7 +49,10 @@ export default function BatchDetailPage({ params: paramsPromise }: BatchDetailPa
     );
   }
 
-  const daysOld = Math.floor((Date.now() - new Date(batch.hatchDate).getTime()) / (1000 * 60 * 60 * 24));
+  const { batch } = data;
+  const daysOld = Math.floor(
+    (Date.now() - new Date(batch.startDate).getTime()) / (1000 * 60 * 60 * 24)
+  );
 
   return (
     <DashboardLayout allowedRoles={['manager', 'admin']}>
@@ -81,11 +66,13 @@ export default function BatchDetailPage({ params: paramsPromise }: BatchDetailPa
           </Link>
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900">{batch.name}</h1>
-            <p className="mt-1 text-slate-600">{batch.strain} · {daysOld} days old · Status: {batch.status}</p>
+            <p className="mt-1 text-slate-600 capitalize">
+              {batch.bloodline || 'Unspecified'} · {daysOld} days old · Stage: {batch.stageName}
+            </p>
           </div>
         </div>
 
-        <BatchOverview batch={batch} indicator={indicator || undefined} />
+        <BatchOverview overview={data} />
       </div>
     </DashboardLayout>
   );

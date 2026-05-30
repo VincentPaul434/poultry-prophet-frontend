@@ -4,28 +4,25 @@ import { useState, useEffect } from 'react';
 import { DashboardLayout } from '@/app/dashboard-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Batch } from '@/lib/types';
-import apiClient from '@/lib/api-client';
+import { batchApi } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+
+function daysSince(date: string) {
+  return Math.floor((Date.now() - new Date(date).getTime()) / (1000 * 60 * 60 * 24));
+}
 
 export default function DashboardPage() {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchBatches = async () => {
-      try {
-        const response = await apiClient.get('/batches');
-        setBatches(response.data);
-      } catch (error) {
-        console.error('Failed to fetch batches:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchBatches();
+    batchApi
+      .list()
+      .then(setBatches)
+      .catch((error) => console.error('Failed to fetch batches:', error))
+      .finally(() => setLoading(false));
   }, []);
 
   return (
@@ -45,9 +42,7 @@ export default function DashboardPage() {
         ) : batches.length === 0 ? (
           <Card>
             <CardContent className="pt-6">
-              <p className="text-center text-slate-600">
-                No batches to display
-              </p>
+              <p className="text-center text-slate-600">No batches to display</p>
             </CardContent>
           </Card>
         ) : (
@@ -56,23 +51,25 @@ export default function DashboardPage() {
               <Card key={batch.id}>
                 <CardHeader>
                   <CardTitle>{batch.name}</CardTitle>
-                  <CardDescription>{batch.strain}</CardDescription>
+                  <CardDescription>{batch.bloodline || 'Unspecified bloodline'}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
-                      <span className="text-slate-600">Total Birds:</span>
-                      <p className="font-semibold">{batch.totalBirds}</p>
+                      <span className="text-slate-600">Population:</span>
+                      <p className="font-semibold">{batch.currentPopulation}</p>
                     </div>
                     <div>
-                      <span className="text-slate-600">Status:</span>
-                      <p className="font-semibold capitalize">{batch.status}</p>
+                      <span className="text-slate-600">Stage:</span>
+                      <p className="font-semibold capitalize">{batch.stageName}</p>
                     </div>
                     <div>
                       <span className="text-slate-600">Age:</span>
-                      <p className="font-semibold">
-                        {Math.floor((Date.now() - new Date(batch.hatchDate).getTime()) / (1000 * 60 * 60 * 24))} days
-                      </p>
+                      <p className="font-semibold">{daysSince(batch.startDate)} days</p>
+                    </div>
+                    <div>
+                      <span className="text-slate-600">Status:</span>
+                      <p className="font-semibold capitalize">{batch.status.toLowerCase()}</p>
                     </div>
                   </div>
 

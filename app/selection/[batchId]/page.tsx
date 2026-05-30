@@ -1,14 +1,23 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { use, useState, useEffect } from 'react';
 import { DashboardLayout } from '@/app/dashboard-layout';
-import { RankingTable, BirdRanking } from '@/components/selection/ranking-table';
-import { WeightsAdjuster } from '@/components/selection/weights-adjuster';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { RankingTable } from '@/components/selection/ranking-table';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Batch, ScoringWeights, RankingData } from '@/lib/types';
-import apiClient from '@/lib/api-client';
-import { Loader2, ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { SelectionRow, SelectionView } from '@/lib/types';
+import { selectionApi } from '@/lib/api';
+import { Loader2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 
@@ -16,113 +25,69 @@ interface SelectionDetailPageProps {
   params: Promise<{ batchId: string }>;
 }
 
-// Mock default weights
-const DEFAULT_WEIGHTS: ScoringWeights = {
-  bhiWeight: 25,
-  growthWeight: 30,
-  healthWeight: 25,
-  behavioralWeight: 20,
-};
+interface OverrideState {
+  row: SelectionRow;
+  advance: boolean;
+  reason: string;
+}
 
-export default function SelectionDetailPage({ params: paramsPromise }: SelectionDetailPageProps) {
+function isAdvanced(row: SelectionRow) {
+  return row.decision?.outcome === 'ADVANCE' || row.decision?.outcome === 'ADVANCED';
+}
+
+export default function SelectionDetailPage({ params }: SelectionDetailPageProps) {
+  const { batchId } = use(params);
   const { toast } = useToast();
-  const [params, setParams] = useState<{ batchId: string } | null>(null);
-  const [batch, setBatch] = useState<Batch | null>(null);
-  const [birds, setBirds] = useState<BirdRanking[]>([]);
-  const [weights, setWeights] = useState<ScoringWeights>(DEFAULT_WEIGHTS);
+  const [view, setView] = useState<SelectionView | null>(null);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [pendingBirdId, setPendingBirdId] = useState<number | null>(null);
+  const [override, setOverride] = useState<OverrideState | null>(null);
 
   useEffect(() => {
-    paramsPromise.then(setParams);
-  }, [paramsPromise]);
+    selectionApi
+      .view(batchId)
+      .then(setView)
+      .catch((error) => {
+        console.error('Failed to fetch selection view:', error);
+        toast({ title: 'Error', description: 'Failed to load ranking data', variant: 'destructive' });
+      })
+      .finally(() => setLoading(false));
+  }, [batchId, toast]);
 
-  useEffect(() => {
-    if (!params) return;
-
-    const fetchData = async () => {
-      try {
-        const [batchRes, rankingRes, weightsRes] = await Promise.all([
-          apiClient.get(`/batches/${params.batchId}`),
-          apiClient.get(`/batches/${params.batchId}/ranking`),
-          apiClient.get(`/batches/${params.batchId}/scoring-weights`).catch(() => ({ data: DEFAULT_WEIGHTS })),
-        ]);
-        setBatch(batchRes.data);
-        setBirds(rankingRes.data.birds || []);
-        setWeights(weightsRes.data);
-      } catch (error) {
-        console.error('Failed to fetch selection data:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to load ranking data',
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [params, toast]);
-
-  const handleDecisionChange = async (birdId: string, decision: 'advance' | 'hold' | 'reject') => {
-    if (!params) return;
-
-    setBirds(prev =>
-      prev.map(b =>
-        b.id === birdId ? { ...b, decision } : b
-      )
+  const applyUpdatedRow = (updated: SelectionRow) => {
+    setView((prev) =>
+      prev ? { ...prev, rows: prev.rows.map((r) => (r.birdId === updated.birdId ? updated : r)) } : prev
     );
+  };
 
+  const saveDecision = async (birdId: number, advance: boolean, reason?: string) => {
+    setPendingBirdId(birdId);
     try {
-      await apiClient.post(`/batches/${params.batchId}/selection-decisions`, {
-        birdId,
-        decision,
-      });
+      const updated = await selectionApi.decide(batchId, birdId, { advance, reason });
+      applyUpdatedRow(updated);
+      toast({ title: 'Decision saved', description: `Bird ${updated.bandNumber} recorded.` });
     } catch (error) {
       console.error('Failed to save decision:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to save decision',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const handleWeightsChanged = (newWeights: ScoringWeights) => {
-    setWeights(newWeights);
-    toast({
-      title: 'Weights Updated',
-      description: 'Rankings will be recomputed with new weights',
-    });
-  };
-
-  const handleFinalize = async () => {
-    if (!params) return;
-
-    setSubmitting(true);
-    try {
-      await apiClient.post(`/batches/${params.batchId}/selection/finalize`, {
-        decisions: birds.map(b => ({
-          birdId: b.id,
-          decision: b.decision,
-          overrideReason: b.overrideReason,
-        })),
-      });
-      toast({
-        title: 'Selection Finalized',
-        description: 'Breeding decisions have been saved',
-      });
-    } catch (error) {
-      console.error('Failed to finalize selection:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to finalize selection',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: 'Failed to save decision', variant: 'destructive' });
     } finally {
-      setSubmitting(false);
+      setPendingBirdId(null);
     }
+  };
+
+  const handleDecide = (row: SelectionRow, advance: boolean) => {
+    // The backend requires a reason whenever the manager overrides the recommendation.
+    if (advance !== row.recommendedAdvance) {
+      setOverride({ row, advance, reason: '' });
+      return;
+    }
+    saveDecision(row.birdId, advance);
+  };
+
+  const confirmOverride = async () => {
+    if (!override) return;
+    if (!override.reason.trim()) return;
+    await saveDecision(override.row.birdId, override.advance, override.reason.trim());
+    setOverride(null);
   };
 
   if (loading) {
@@ -135,106 +100,115 @@ export default function SelectionDetailPage({ params: paramsPromise }: Selection
     );
   }
 
-  if (!batch || !params) {
+  if (!view) {
     return (
       <DashboardLayout allowedRoles={['manager', 'admin']}>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-center text-slate-600">Batch not found</p>
+            <p className="text-center text-slate-600">Selection data not available</p>
           </CardContent>
         </Card>
       </DashboardLayout>
     );
   }
 
-  const advanceCount = birds.filter(b => b.decision === 'advance').length;
-  const holdCount = birds.filter(b => b.decision === 'hold').length;
-  const rejectCount = birds.filter(b => b.decision === 'reject').length;
-  const pendingCount = birds.filter(b => !b.decision).length;
+  const advanceCount = view.rows.filter(isAdvanced).length;
+  const decidedCount = view.rows.filter((r) => r.decision != null).length;
+  const pendingCount = view.rows.length - decidedCount;
 
   return (
     <DashboardLayout allowedRoles={['manager', 'admin']}>
       <div className="space-y-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/selection">
-              <Button variant="outline" size="sm" className="gap-2">
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
-            </Link>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight text-slate-900">Month-5 Selection</h1>
-              <p className="mt-1 text-slate-600">{batch.name} · {birds.length} birds to evaluate</p>
-            </div>
+        <div className="flex items-center gap-3">
+          <Link href="/selection">
+            <Button variant="outline" size="sm" className="gap-2">
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-900">Month-5 Selection</h1>
+            <p className="mt-1 text-slate-600">{view.rows.length} birds ranked by readiness</p>
           </div>
-          <WeightsAdjuster batchId={batch.id} currentWeights={weights} onWeightsChanged={handleWeightsChanged} />
         </div>
 
-        {/* Decision Summary */}
-        <div className="grid gap-4 md:grid-cols-4">
+        {/* Summary */}
+        <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Advance</CardTitle>
+              <CardTitle className="text-sm font-medium">Advancing</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-green-600">{advanceCount}</div>
-              <p className="mt-1 text-xs text-slate-600">For breeding</p>
+              <p className="mt-1 text-xs text-slate-600">Confirmed for breeding</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Hold</CardTitle>
+              <CardTitle className="text-sm font-medium">Decided</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-amber-600">{holdCount}</div>
-              <p className="mt-1 text-xs text-slate-600">For evaluation</p>
+              <div className="text-3xl font-bold text-slate-900">{decidedCount}</div>
+              <p className="mt-1 text-xs text-slate-600">of {view.rows.length} birds</p>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Reject</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold text-red-600">{rejectCount}</div>
-              <p className="mt-1 text-xs text-slate-600">Culled</p>
-            </CardContent>
-          </Card>
-
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-medium">Pending</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-slate-600">{pendingCount}</div>
-              <p className="mt-1 text-xs text-slate-600">No decision</p>
+              <div className="text-3xl font-bold text-amber-600">{pendingCount}</div>
+              <p className="mt-1 text-xs text-slate-600">Awaiting decision</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Ranking Table */}
         <RankingTable
-          batchId={batch.id}
-          birds={birds}
-          onDecisionChange={handleDecisionChange}
-          cutLinePosition={Math.floor(advanceCount + holdCount / 2)}
+          rows={view.rows}
+          cutLineCrs={view.cutLineCrs}
+          onDecide={handleDecide}
+          pendingBirdId={pendingBirdId}
         />
-
-        {/* Finalize Button */}
-        <div className="flex justify-end">
-          <Button
-            size="lg"
-            onClick={handleFinalize}
-            disabled={submitting || pendingCount > 0}
-            className="gap-2"
-          >
-            <CheckCircle2 className="h-5 w-5" />
-            {submitting ? 'Finalizing...' : `Finalize Selection (${pendingCount} pending)`}
-          </Button>
-        </div>
       </div>
+
+      {/* Override reason dialog */}
+      <Dialog open={override != null} onOpenChange={(open) => !open && setOverride(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Override recommendation</DialogTitle>
+            <DialogDescription>
+              {override && (
+                <>
+                  Bird {override.row.bandNumber} is recommended to{' '}
+                  <strong>{override.row.recommendedAdvance ? 'advance' : 'reject'}</strong>. You are choosing
+                  to <strong>{override.advance ? 'advance' : 'reject'}</strong> it. A reason is required.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="override-reason">Reason</Label>
+            <Textarea
+              id="override-reason"
+              value={override?.reason ?? ''}
+              onChange={(e) => setOverride((prev) => (prev ? { ...prev, reason: e.target.value } : prev))}
+              placeholder="Explain why you are overriding the system recommendation"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOverride(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmOverride}
+              disabled={!override?.reason.trim() || pendingBirdId != null}
+            >
+              {pendingBirdId != null ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Confirm Override
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }
