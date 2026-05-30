@@ -1,89 +1,93 @@
-'use client';
+"use client";
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { AuthContextType, AuthResponse, User } from './types';
-import { authApi } from './api';
+// Client-side auth state. Holds the decoded profile from the JWT login response
+// in React state (hydrated from localStorage on mount) and exposes login /
+// register / logout. On logout we also clear the React Query cache so a new user
+// never sees the previous user's cached data.
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { authApi } from "./api";
+import {
+  clearSession,
+  getStoredUser,
+  saveSession,
+  type StoredUser,
+} from "./auth-storage";
+import type { LoginRequest, RegisterRequest } from "./types";
 
-/** Maps the backend's flat AuthResponse into the normalised User we keep client-side. */
-function toUser(res: AuthResponse): User {
-  return {
-    id: res.userId,
-    email: res.email,
-    fullName: res.fullName,
-    role: res.role === 'MANAGER' ? 'manager' : 'handler',
-    farmId: res.farmId,
-  };
+interface AuthContextValue {
+  user: StoredUser | null;
+  isAuthenticated: boolean;
+  isManager: boolean;
+  isLoading: boolean;
+  login: (body: LoginRequest) => Promise<StoredUser>;
+  register: (body: RegisterRequest) => Promise<StoredUser>;
+  logout: () => void;
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-  // Initialize auth state from localStorage
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<StoredUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const router = useRouter();
+
+  // Hydrate from localStorage once on mount (avoids SSR/client mismatch).
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('auth_token');
-
-    if (storedUser && token) {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        localStorage.removeItem('user');
-        localStorage.removeItem('auth_token');
-      }
-    }
-    setLoading(false);
+    setUser(getStoredUser());
+    setIsLoading(false);
   }, []);
 
-  const login = async (email: string, password: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await authApi.login(email, password);
-      const userData = toUser(res);
+  const login = useCallback(async (body: LoginRequest) => {
+    const auth = await authApi.login(body);
+    const stored = saveSession(auth);
+    setUser(stored);
+    return stored;
+  }, []);
 
-      localStorage.setItem('auth_token', res.token);
-      localStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Login failed';
-      setError(message);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  };
+  const register = useCallback(async (body: RegisterRequest) => {
+    const auth = await authApi.register(body);
+    const stored = saveSession(auth);
+    setUser(stored);
+    return stored;
+  }, []);
 
-  // The backend is stateless (JWT); logout is purely client-side token disposal.
-  const logout = async () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user');
+  const logout = useCallback(() => {
+    clearSession();
     setUser(null);
-  };
+    queryClient.clear();
+    router.push("/login");
+  }, [queryClient, router]);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        error,
-        login,
-        logout,
-        isAuthenticated: !!user,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      isAuthenticated: !!user,
+      isManager: user?.role === "MANAGER",
+      isLoading,
+      login,
+      register,
+      logout,
+    }),
+    [user, isLoading, login, register, logout]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
+  return ctx;
 }

@@ -1,48 +1,28 @@
-// Type definitions mirroring the Poultry Prophet Spring Boot backend DTOs.
-// Keep these in sync with com.poultryprophet.*.dto.* on the backend.
+// TypeScript mirror of the Poultry Prophet backend DTOs (com.poultryprophet.*).
+// Keep these in sync with the Spring Boot records they correspond to.
 
-// ---- Enums (match backend enum constants exactly) ----
+// ---- Enums ----
+export type Role = "MANAGER" | "HANDLER";
+export type BatchStatus = "ACTIVE" | "CLOSED";
+export type Severity = "INFO" | "WARNING" | "CRITICAL";
+export type SyncStatus = "PENDING" | "SYNCED" | "FAILED";
+export type QualityRating = "C" | "B" | "B_PLUS" | "A" | "A_PLUS" | "A_PLUS_PLUS";
+export type HealthEventSeverity = "NONE" | "ROUTINE" | "MINOR" | "MODERATE" | "MAJOR";
+export type SelectionOutcome = "ADVANCE" | "REJECT";
 
-/** Backend com.poultryprophet.user.Role */
-export type Role = 'MANAGER' | 'HANDLER';
-
-/** Lowercase role used throughout the UI / route guards. */
-export type UserRole = 'manager' | 'handler';
-
-/** Backend com.poultryprophet.batch.BatchStatus */
-export type BatchStatus = 'ACTIVE' | 'CLOSED';
-
-/** Backend com.poultryprophet.alert.Severity */
-export type Severity = 'INFO' | 'WARNING' | 'CRITICAL';
-
-/** Backend com.poultryprophet.ranging.QualityRating */
-export type QualityRating = 'C' | 'B' | 'B_PLUS' | 'A' | 'A_PLUS' | 'A_PLUS_PLUS';
-
-/** Backend com.poultryprophet.ranging.HealthEventSeverity */
-export type HealthEventSeverity = 'NONE' | 'ROUTINE' | 'MINOR' | 'MODERATE' | 'MAJOR';
-
-/** Backend com.poultryprophet.record.SyncStatus */
-export type SyncStatus = 'PENDING' | 'SYNCED' | 'FAILED';
-
-// ---- Auth (AuthController / AuthResponse) ----
-
-/** Flat shape returned by POST /api/auth/{login,register}. */
+// ---- Auth ----
 export interface AuthResponse {
   token: string;
   userId: number;
   email: string;
   fullName: string;
   role: Role;
-  farmId: number;
+  farmId: number | null;
 }
 
-/** Normalised user kept in the auth context / localStorage. */
-export interface User {
-  id: number;
+export interface LoginRequest {
   email: string;
-  fullName: string;
-  role: UserRole;
-  farmId: number;
+  password: string;
 }
 
 export interface RegisterRequest {
@@ -52,8 +32,7 @@ export interface RegisterRequest {
   role: Role;
 }
 
-// ---- Batches (BatchController / BatchResponse) ----
-
+// ---- Batches & lifecycle ----
 export interface Batch {
   id: number;
   farmId: number;
@@ -73,10 +52,10 @@ export interface Batch {
 export interface CreateBatchRequest {
   name: string;
   initialPopulation: number;
-  startDate: string;
+  startDate: string; // ISO date
   stageId: number;
-  bloodline?: string;
-  source?: string;
+  bloodline?: string | null;
+  source?: string | null;
   handlerUserIds?: number[];
 }
 
@@ -86,8 +65,7 @@ export interface LifecycleStage {
   orderIndex: number;
 }
 
-// ---- Birds (BirdController / BirdResponse) ----
-
+// ---- Birds ----
 export interface Bird {
   id: number;
   batchId: number;
@@ -98,16 +76,15 @@ export interface Bird {
 
 export interface CreateBirdRequest {
   bandNumber: string;
-  notes?: string;
+  notes?: string | null;
 }
 
-// ---- Daily records (DailyRecordController / DailyRecordResponse) ----
-
+// ---- Daily records ----
 export interface DailyRecord {
   id: number;
   batchId: number;
   handlerId: number;
-  recordDate: string;
+  recordDate: string; // ISO date
   temperatureC: number;
   mortalityCount: number;
   feedIntakeG: number;
@@ -118,16 +95,15 @@ export interface DailyRecord {
 }
 
 export interface CreateRecordRequest {
-  recordDate?: string;
+  recordDate?: string | null;
   temperatureC: number;
   mortalityCount: number;
   feedIntakeG: number;
   waterIntakeMl: number;
-  behaviorNotes?: string;
+  behaviorNotes?: string | null;
 }
 
-// ---- Ranging records (RangingRecordController / RangingRecordResponse) ----
-
+// ---- Per-bird ranging records ----
 export interface RangingRecord {
   id: number;
   birdId: number;
@@ -139,15 +115,14 @@ export interface RangingRecord {
 }
 
 export interface CreateRangingRecordRequest {
-  recordDate?: string;
+  recordDate?: string | null;
   weightG: number;
-  healthEvent?: HealthEventSeverity;
-  temperamentNotes?: string;
+  healthEvent?: HealthEventSeverity | null;
+  temperamentNotes?: string | null;
   qualityRating: QualityRating;
 }
 
-// ---- Analytics indicators (IndicatorController / IndicatorResponse) ----
-
+// ---- Analytics: indicators & thresholds ----
 export interface Indicator {
   id: number;
   batchId: number;
@@ -173,8 +148,7 @@ export interface UpdateThresholdRequest {
   maxValue: number;
 }
 
-// ---- Alerts (AlertController / AlertResponse) ----
-
+// ---- Alerts ----
 export interface Alert {
   id: number;
   batchId: number;
@@ -189,19 +163,19 @@ export interface Alert {
   createdAt: string;
 }
 
-// ---- Dashboard overview (OverviewController / BatchOverviewResponse) ----
-
-export interface BatchOverview {
-  batch: Batch;
-  latestIndicator: Indicator | null;
-  recentRecords: DailyRecord[];
-  activeAlerts: Alert[];
+// Pushed over STOMP /topic/farms/{farmId}/alerts
+export interface AlertEvent {
+  alertId: number;
+  batchId: number;
+  severity: Severity;
+  indicatorType: string;
+  summary: string;
+  occurredAt: string;
 }
 
-// ---- Selection (SelectionController / SelectionViewResponse) ----
-
+// ---- Selection (month-5 ranked view + decisions) ----
 export interface SelectionDecision {
-  outcome: string;
+  outcome: SelectionOutcome;
   overridden: boolean;
   reason: string | null;
   decidedAt: string;
@@ -228,24 +202,51 @@ export interface SelectionView {
 
 export interface SelectionDecisionRequest {
   advance: boolean;
-  reason?: string;
+  reason?: string | null;
 }
 
-// ---- Handlers (UserController / HandlerResponse) ----
+// ---- Dashboard overview ----
+export interface BatchOverview {
+  batch: Batch;
+  latestIndicator: Indicator | null;
+  recentRecords: DailyRecord[];
+  activeAlerts: Alert[];
+}
 
+// ---- Reports ----
+export interface ReportPayload {
+  batchId: number;
+  batchName: string;
+  periodStart: string;
+  periodEnd: string;
+  avgBhi: number | null;
+  avgWfr: number | null;
+  totalMortality: number;
+  readinessScore: number | null;
+  trend: Indicator[];
+  significantAlerts: Alert[];
+}
+
+export interface ReportResponse {
+  reportId: number;
+  payload: ReportPayload;
+}
+
+// ---- Handlers & invites ----
 export interface Handler {
   id: number;
   email: string;
   fullName: string;
 }
 
-// ---- Auth context ----
+export interface CreateInviteRequest {
+  email: string;
+  expiresInDays: number;
+}
 
-export interface AuthContextType {
-  user: User | null;
-  loading: boolean;
-  error: string | null;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
-  isAuthenticated: boolean;
+export interface InviteResponse {
+  token: string;
+  email: string;
+  farmId: number;
+  expiresAt: string;
 }
