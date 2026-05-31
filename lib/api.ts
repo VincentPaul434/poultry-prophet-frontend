@@ -150,6 +150,11 @@ export const handlerApi = {
 export const inviteApi = {
   create: (body: CreateInviteRequest) =>
     apiClient.post<InviteResponse>("/invites", body).then((r) => r.data),
+  // Invites awaiting acceptance for the logged-in handler (HANDLER role only).
+  pending: () =>
+    apiClient.get<InviteResponse[]>("/invites/pending").then((r) => r.data),
   accept: (token: string) =>
     apiClient.post<AuthResponse>(`/invites/${token}/accept`).then((r) => r.data),
+  decline: (token: string) =>
+    apiClient.post<void>(`/invites/${token}/decline`).then((r) => r.data),
 };

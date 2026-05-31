@@ -4,9 +4,9 @@
 // These change rarely, so they get long staleTimes.
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { handlerApi, lifecycleApi, thresholdApi } from "@/lib/api";
+import { handlerApi, inviteApi, lifecycleApi, thresholdApi } from "@/lib/api";
 import { qk } from "@/lib/query-keys";
-import type { Threshold, UpdateThresholdRequest } from "@/lib/types";
+import type { CreateInviteRequest, Threshold, UpdateThresholdRequest } from "@/lib/types";
 
 export function useLifecycleStages() {
   return useQuery({
@@ -31,6 +31,38 @@ export function useThresholds() {
     queryKey: qk.thresholds,
     queryFn: thresholdApi.list,
     staleTime: 5 * 60_000,
+  });
+}
+
+export function usePendingInvites(enabled = true) {
+  return useQuery({
+    queryKey: qk.invitesPending,
+    queryFn: inviteApi.pending,
+    // Short staleTime: a handler may be invited mid-session, so check fairly often.
+    staleTime: 60_000,
+    enabled,
+  });
+}
+
+export function useDeclineInvite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (token: string) => inviteApi.decline(token),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.invitesPending });
+    },
+  });
+}
+
+export function useCreateInvite() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateInviteRequest) => inviteApi.create(body),
+    onSuccess: () => {
+      // The invitee isn't a handler until they accept, but refresh so the
+      // list reflects any server-side changes once it does.
+      queryClient.invalidateQueries({ queryKey: qk.handlers });
+    },
   });
 }
 

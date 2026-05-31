@@ -11,6 +11,7 @@ export const qk = {
   lifecycleStages: ["lifecycle-stages"] as const,
   handlers: ["handlers"] as const,
   thresholds: ["thresholds"] as const,
+  invitesPending: ["invites", "pending"] as const,
 
   batches: {
     all: ["batches"] as const,

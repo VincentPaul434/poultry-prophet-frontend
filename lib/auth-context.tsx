@@ -16,7 +16,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { authApi } from "./api";
+import { authApi, inviteApi } from "./api";
 import {
   clearSession,
   getStoredUser,
@@ -32,6 +32,7 @@ interface AuthContextValue {
   isLoading: boolean;
   login: (body: LoginRequest) => Promise<StoredUser>;
   register: (body: RegisterRequest) => Promise<StoredUser>;
+  acceptInvite: (token: string) => Promise<StoredUser>;
   logout: () => void;
 }
 
@@ -63,6 +64,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return stored;
   }, []);
 
+  const acceptInvite = useCallback(
+    async (token: string) => {
+      // Accepting assigns the handler to the farm and returns a fresh token
+      // reflecting the new farmId, so we re-save the session like a re-login.
+      const auth = await inviteApi.accept(token);
+      const stored = saveSession(auth);
+      setUser(stored);
+      // The user now belongs to a farm; drop any cached (empty) farm data so
+      // every query refetches against the new scope.
+      queryClient.clear();
+      return stored;
+    },
+    [queryClient]
+  );
+
   const logout = useCallback(() => {
     clearSession();
     setUser(null);
@@ -78,9 +94,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading,
       login,
       register,
+      acceptInvite,
       logout,
     }),
-    [user, isLoading, login, register, logout]
+    [user, isLoading, login, register, acceptInvite, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
