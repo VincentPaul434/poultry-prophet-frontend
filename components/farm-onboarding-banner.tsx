@@ -50,7 +50,7 @@ export function FarmOnboardingBanner() {
               analytics.
             </p>
           </div>
-          <Button render={<Link href="/settings" />}>
+          <Button render={<Link href="/settings/farm" />}>
             Go to Farm Settings
             <ArrowRight className="size-4" />
           </Button>
