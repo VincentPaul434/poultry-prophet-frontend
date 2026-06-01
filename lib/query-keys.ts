@@ -8,6 +8,7 @@
 // they changed.
 
 export const qk = {
+  farm: ["farm"] as const,
   lifecycleStages: ["lifecycle-stages"] as const,
   handlers: ["handlers"] as const,
   thresholds: ["thresholds"] as const,

@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PendingInvitesBanner } from "@/components/pending-invites-banner";
+import { FarmOnboardingBanner } from "@/components/farm-onboarding-banner";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +68,7 @@ export default function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
+      <FarmOnboardingBanner />
       <PendingInvitesBanner />
 
       {/* Header */}
