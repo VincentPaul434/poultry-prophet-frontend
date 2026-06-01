@@ -2,33 +2,25 @@
 
 import { use } from "react";
 import Link from "next/link";
-import { AlertTriangle, ClipboardList, ListChecks, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  ClipboardList,
+  ListChecks,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useBatchOverview, useChangeStage } from "@/hooks/use-batches";
 import { useAcknowledgeAlert } from "@/hooks/use-analytics";
 import { useLifecycleStages } from "@/hooks/use-reference";
+import { useBatchEvents } from "@/hooks/use-events";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
-import { formatDate, formatDateTime, formatScore, scoreColor } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import type { Alert, Severity } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -36,258 +28,287 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { BatchLogSection, EVENT_EMOJI } from "@/components/batch-log-section";
 
-const severityVariant: Record<Severity, "default" | "secondary" | "destructive"> = {
-  INFO: "secondary",
-  WARNING: "default",
-  CRITICAL: "destructive",
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function daysElapsed(startDate: string) {
+  return Math.max(1, Math.round((Date.now() - new Date(startDate).getTime()) / 86_400_000));
+}
+
+function stageStep(days: number) {
+  if (days <= 30) return 1;
+  if (days <= 120) return 2;
+  return 3;
+}
+
+function scoreToStatus(score: number | null | undefined) {
+  if (score == null) return { label: "Not yet scored", color: "text-muted-foreground", dot: "bg-muted-foreground" };
+  if (score >= 70) return { label: "Good", color: "text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500" };
+  if (score >= 50) return { label: "Watch", color: "text-amber-600 dark:text-amber-400", dot: "bg-amber-500" };
+  return { label: "Alert", color: "text-red-600 dark:text-red-400", dot: "bg-red-500" };
+}
+
+const severityConfig: Record<Severity, { label: string; cls: string; icon: string }> = {
+  INFO: { label: "Info", cls: "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/40", icon: "ℹ️" },
+  WARNING: { label: "Warning", cls: "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40", icon: "⚠️" },
+  CRITICAL: { label: "Critical", cls: "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40", icon: "🚨" },
 };
 
-export default function BatchDetailPage({
-  params,
-}: {
-  params: Promise<{ batchId: string }>;
-}) {
+// ─── Stage progress strip ─────────────────────────────────────────────────────
+
+function StageProgress({ days }: { days: number }) {
+  const step = stageStep(days);
+  const steps = [
+    { n: 1, label: "Brooding", range: "Day 1–30" },
+    { n: 2, label: "Ranging", range: "Day 31–120" },
+    { n: 3, label: "Selection", range: "Day 121–150" },
+  ];
+  return (
+    <div className="rounded-2xl border bg-card p-4">
+      <div className="flex items-center gap-2">
+        {steps.map((s, i) => (
+          <div key={s.n} className="flex items-center gap-2 flex-1">
+            <div className="flex flex-col items-center gap-1 flex-1">
+              <div className={cn("flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-bold",
+                s.n < step ? "bg-primary text-primary-foreground" : s.n === step ? "bg-primary text-primary-foreground ring-4 ring-primary/20" : "bg-muted text-muted-foreground")}>
+                {s.n < step ? "✓" : s.n}
+              </div>
+              <p className={cn("text-[10px] font-semibold text-center leading-tight", s.n === step ? "text-primary" : "text-muted-foreground")}>{s.label}</p>
+              <p className="text-[9px] text-muted-foreground text-center">{s.range}</p>
+            </div>
+            {i < steps.length - 1 && <div className={cn("h-0.5 w-6 shrink-0 rounded-full", s.n < step ? "bg-primary" : "bg-muted")} />}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Health card ──────────────────────────────────────────────────────────────
+
+function HealthCard({ label, technicalLabel, score, icon }: { label: string; technicalLabel: string; score: number | null | undefined; icon: string }) {
+  const status = scoreToStatus(score);
+  return (
+    <div className="rounded-2xl border bg-card p-4 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xl">{icon}</span>
+        <div className={cn("flex items-center gap-1.5", status.color)}>
+          <div className={cn("size-2 rounded-full", status.dot)} />
+          <span className="text-xs font-bold">{status.label}</span>
+        </div>
+      </div>
+      <div>
+        <p className="text-sm font-bold leading-tight">{label}</p>
+        <p className="text-[10px] text-muted-foreground">{technicalLabel}</p>
+      </div>
+      <p className={cn("text-2xl font-bold", status.color)}>{score != null ? score.toFixed(1) : "—"}</p>
+    </div>
+  );
+}
+
+// ─── Alert item ───────────────────────────────────────────────────────────────
+
+function AlertItem({ batchId, alert, canAck }: { batchId: number; alert: Alert; canAck: boolean }) {
+  const acknowledge = useAcknowledgeAlert(batchId);
+  const cfg = severityConfig[alert.severity];
+  return (
+    <div className={cn("rounded-xl border p-3.5", cfg.cls)}>
+      <div className="flex items-start gap-2.5">
+        <span className="text-xl shrink-0 mt-0.5">{cfg.icon}</span>
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wide">{cfg.label}</span>
+            <span className="text-[10px] text-muted-foreground">{formatDateTime(alert.createdAt)}</span>
+          </div>
+          <p className="text-sm leading-snug">{alert.message}</p>
+          {canAck && (
+            <Button size="sm" variant="outline" className="mt-1 h-8 w-full rounded-lg text-xs font-semibold" disabled={acknowledge.isPending}
+              onClick={() => acknowledge.mutateAsync({ id: alert.id }).then(() => toast.success("Alert acknowledged")).catch((err) => toast.error(err instanceof ApiError ? err.message : "Failed"))}>
+              {acknowledge.isPending && <Loader2 className="size-3 animate-spin" />}
+              Mark as seen
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Stage selector (manager-only) ───────────────────────────────────────────
+
+function StageSelect({ batchId, currentStageId }: { batchId: number; currentStageId: number }) {
+  const { data: stages } = useLifecycleStages();
+  const changeStage = useChangeStage(batchId);
+  return (
+    <Select value={String(currentStageId)} onValueChange={(v) => {
+      if (!v) return;
+      changeStage.mutateAsync(Number(v)).then(() => toast.success("Stage updated")).catch((err) => toast.error(err instanceof ApiError ? err.message : "Failed to change stage"));
+    }}>
+      <SelectTrigger className="h-10 w-44 rounded-xl capitalize text-sm"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {stages?.map((s) => <SelectItem key={s.id} value={String(s.id)} className="capitalize">{s.name}</SelectItem>)}
+      </SelectContent>
+    </Select>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function BatchDetailPage({ params }: { params: Promise<{ batchId: string }> }) {
   const { batchId } = use(params);
   const { isManager } = useAuth();
   const { data, isLoading, isError, error } = useBatchOverview(batchId);
+  const { data: recentEvents } = useBatchEvents(batchId, 5);
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-5xl space-y-6">
-        <Skeleton className="h-10 w-64" />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-24 rounded-xl" />
-          ))}
+      <div className="mx-auto max-w-2xl space-y-4">
+        <Skeleton className="h-20 w-full rounded-2xl" />
+        <Skeleton className="h-36 w-full rounded-2xl" />
+        <div className="grid grid-cols-2 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-28 rounded-2xl" />)}
         </div>
-        <Skeleton className="h-64 rounded-xl" />
       </div>
     );
   }
 
   if (isError || !data) {
     return (
-      <div className="mx-auto max-w-5xl">
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-destructive">
+      <div className="mx-auto max-w-2xl">
+        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-8 text-center">
+          <p className="text-sm font-medium text-destructive">
             {error instanceof ApiError ? error.message : "Failed to load batch."}
-          </CardContent>
-        </Card>
+          </p>
+        </div>
       </div>
     );
   }
 
-  const { batch, latestIndicator, recentRecords, activeAlerts } = data;
+  const { batch, latestIndicator, activeAlerts } = data;
+  const days = daysElapsed(batch.startDate);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">{batch.name}</h1>
-            <Badge variant={batch.status === "ACTIVE" ? "default" : "secondary"}>
-              {batch.status}
-            </Badge>
+    <div className="mx-auto max-w-2xl space-y-4">
+
+      {/* ── 1. Compact header ──────────────────────────────────────────── */}
+      <div className="space-y-1.5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold tracking-tight truncate">{batch.name}</h1>
+              <Badge variant={batch.status === "ACTIVE" ? "default" : "secondary"}>{batch.status}</Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {batch.currentPopulation} of {batch.initialPopulation} birds ·{" "}
+              <span className="font-medium">{days} days old</span>
+              {batch.bloodline ? ` · ${batch.bloodline}` : ""}
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground">
-            {batch.currentPopulation}/{batch.initialPopulation} birds · started{" "}
-            {formatDate(batch.startDate)}
-            {batch.bloodline ? ` · ${batch.bloodline}` : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" render={<Link href={`/batches/${batch.id}/data-entry`} />}>
-            <ClipboardList className="size-4" /> Log record
-          </Button>
           {isManager && (
-            <Button variant="outline" render={<Link href={`/batches/${batch.id}/selection`} />}>
-              <ListChecks className="size-4" /> Selection
-            </Button>
+            <div className="shrink-0 flex flex-col items-end gap-1.5">
+              <StageSelect batchId={batch.id} currentStageId={batch.stageId} />
+              <Link href={`/batches/${batch.id}/selection`}
+                className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors">
+                <ListChecks className="size-3.5" /> Selection
+              </Link>
+            </div>
           )}
-          {isManager && <StageSelect batchId={batch.id} currentStageId={batch.stageId} />}
         </div>
       </div>
 
-      {/* KPI grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi
-          label="Readiness (CRS)"
-          value={formatScore(latestIndicator?.readinessScore)}
-          valueClass={scoreColor(latestIndicator?.readinessScore)}
-        />
-        <Kpi
-          label="Brooding Health (BHI)"
-          value={formatScore(latestIndicator?.bhi)}
-          valueClass={scoreColor(latestIndicator?.bhi)}
-        />
-        <Kpi label="Behaviour Stress (BSI)" value={formatScore(latestIndicator?.bsi)} />
-        <Kpi label="Water:Feed Ratio (WFR)" value={formatScore(latestIndicator?.wfr, 2)} />
-      </div>
-      {latestIndicator && (
-        <p className="-mt-2 text-xs text-muted-foreground">
-          Latest indicator from {formatDate(latestIndicator.recordDate)}.
-        </p>
-      )}
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">Recent daily records</CardTitle>
-            <CardDescription>Last {recentRecords.length} entries</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {recentRecords.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                No records yet.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Temp °C</TableHead>
-                    <TableHead className="text-right">Mortality</TableHead>
-                    <TableHead className="text-right">Feed g</TableHead>
-                    <TableHead className="text-right">Water ml</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentRecords.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell>{formatDate(r.recordDate)}</TableCell>
-                      <TableCell className="text-right">{r.temperatureC}</TableCell>
-                      <TableCell className="text-right">{r.mortalityCount}</TableCell>
-                      <TableCell className="text-right">{r.feedIntakeG}</TableCell>
-                      <TableCell className="text-right">{r.waterIntakeMl}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <AlertTriangle className="size-4 text-amber-500" /> Active alerts
-            </CardTitle>
-            <CardDescription>{activeAlerts.length} open</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {activeAlerts.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                No active alerts.
-              </p>
-            ) : (
-              activeAlerts.map((a) => (
-                <AlertItem key={a.id} batchId={batch.id} alert={a} canAck={isManager} />
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-function Kpi({
-  label,
-  value,
-  valueClass,
-}: {
-  label: string;
-  value: string;
-  valueClass?: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="pt-6">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {label}
-        </p>
-        <p className={`mt-1 text-2xl font-semibold ${valueClass ?? ""}`}>{value}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AlertItem({
-  batchId,
-  alert,
-  canAck,
-}: {
-  batchId: number;
-  alert: Alert;
-  canAck: boolean;
-}) {
-  const acknowledge = useAcknowledgeAlert(batchId);
-  return (
-    <div className="rounded-lg border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <Badge variant={severityVariant[alert.severity]}>{alert.severity}</Badge>
-        <span className="text-xs text-muted-foreground">
-          {formatDateTime(alert.createdAt)}
-        </span>
-      </div>
-      <p className="mt-2 text-sm">{alert.message}</p>
-      {canAck && (
-        <Button
-          size="sm"
-          variant="outline"
-          className="mt-2 w-full"
-          disabled={acknowledge.isPending}
-          onClick={() =>
-            acknowledge
-              .mutateAsync({ id: alert.id })
-              .then(() => toast.success("Alert acknowledged"))
-              .catch((err) =>
-                toast.error(err instanceof ApiError ? err.message : "Failed")
-              )
-          }
+      {/* ── 2. Quick Log (handlers) / Event log link (managers) ───────── */}
+      {!isManager ? (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+              Quick Log
+            </h2>
+            <Link
+              href={`/batches/${batch.id}/data-entry`}
+              className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline underline-offset-4"
+            >
+              <ClipboardList className="size-3.5" />
+              View all events
+            </Link>
+          </div>
+          <BatchLogSection batchId={String(batch.id)} population={batch.currentPopulation} />
+        </section>
+      ) : (
+        <Link
+          href={`/batches/${batch.id}/data-entry`}
+          className="flex items-center justify-between rounded-2xl border bg-card px-4 py-3.5 text-sm font-semibold hover:bg-muted transition-colors"
         >
-          {acknowledge.isPending && <Loader2 className="size-4 animate-spin" />}
-          Acknowledge
-        </Button>
+          <div className="flex items-center gap-2.5">
+            <ClipboardList className="size-4 text-muted-foreground" />
+            <span>Event Log</span>
+          </div>
+          <span className="text-xs text-muted-foreground">View handler field logs →</span>
+        </Link>
       )}
+
+      {/* ── 3. Stage progress ──────────────────────────────────────────── */}
+      <StageProgress days={days} />
+
+      {/* ── 4. Health KPIs ─────────────────────────────────────────────── */}
+      <section className="space-y-2">
+        <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider px-0.5">Health indicators</h2>
+        <div className="grid grid-cols-2 gap-3">
+          <HealthCard label="Overall Readiness" technicalLabel="CRS score" score={latestIndicator?.readinessScore} icon="🏆" />
+          <HealthCard label="Brooding Health" technicalLabel="BHI score" score={latestIndicator?.bhi} icon="🌡️" />
+          <HealthCard label="Behavior Stress" technicalLabel="BSI score" score={latestIndicator?.bsi} icon="😤" />
+          <HealthCard label="Feed vs. Water" technicalLabel="WFR ratio" score={latestIndicator?.wfr} icon="💧" />
+        </div>
+        {latestIndicator && (
+          <p className="text-[11px] text-muted-foreground px-0.5">
+            Last computed from records on {formatDate(latestIndicator.recordDate)}.
+          </p>
+        )}
+      </section>
+
+      {/* ── 5. Active alerts ───────────────────────────────────────────── */}
+      {activeAlerts.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase tracking-wider px-0.5">
+            <AlertTriangle className="size-4 text-amber-500" />
+            {activeAlerts.length} Active Alert{activeAlerts.length !== 1 ? "s" : ""}
+          </h2>
+          <div className="space-y-2">
+            {activeAlerts.map((a) => <AlertItem key={a.id} batchId={batch.id} alert={a} canAck={isManager} />)}
+          </div>
+        </section>
+      )}
+
+      {/* ── 6. Recent field events ─────────────────────────────────────── */}
+      {recentEvents && recentEvents.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center justify-between px-0.5">
+            <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Recent events</h2>
+            <Link href={`/batches/${batch.id}/data-entry`} className="text-xs font-semibold text-primary hover:underline underline-offset-4">
+              See all
+            </Link>
+          </div>
+          <div className="rounded-2xl border bg-card overflow-hidden">
+            {recentEvents.slice(0, 5).map((ev, idx) => (
+              <div key={ev.id} className={cn("flex items-start gap-3 px-4 py-3", idx !== 0 && "border-t")}>
+                <span className="text-lg shrink-0 mt-0.5">{EVENT_EMOJI[ev.eventType]}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold truncate">{ev.title}</p>
+                    {ev.affectedCount > 0 && (
+                      <span className="shrink-0 text-xs text-muted-foreground">{ev.affectedCount} bird{ev.affectedCount !== 1 ? "s" : ""}</span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    {ev.handlerName} · {formatDate(ev.eventDate)}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
     </div>
-  );
-}
-
-function StageSelect({
-  batchId,
-  currentStageId,
-}: {
-  batchId: number;
-  currentStageId: number;
-}) {
-  const { data: stages } = useLifecycleStages();
-  const changeStage = useChangeStage(batchId);
-
-  return (
-    <Select
-      value={String(currentStageId)}
-      onValueChange={(v) => {
-        if (!v) return;
-        changeStage
-          .mutateAsync(Number(v))
-          .then(() => toast.success("Stage updated"))
-          .catch((err) =>
-            toast.error(err instanceof ApiError ? err.message : "Failed to change stage")
-          );
-      }}
-    >
-      <SelectTrigger className="w-44 capitalize">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {stages?.map((s) => (
-          <SelectItem key={s.id} value={String(s.id)} className="capitalize">
-            {s.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
   );
 }

@@ -92,6 +92,7 @@ function SelectionView({ batchId }: { batchId: string }) {
           variant="ghost"
           size="sm"
           className="-ml-2 mb-2 text-muted-foreground"
+          nativeButton={false}
           render={<Link href={`/batches/${batchId}`} />}
         >
           <ArrowLeft className="size-4" /> Back to batch

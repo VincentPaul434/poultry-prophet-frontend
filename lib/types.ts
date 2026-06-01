@@ -84,6 +84,7 @@ export interface DailyRecord {
   id: number;
   batchId: number;
   handlerId: number;
+  handlerName: string;
   recordDate: string; // ISO date
   temperatureC: number;
   mortalityCount: number;
@@ -91,7 +92,7 @@ export interface DailyRecord {
   waterIntakeMl: number;
   behaviorNotes: string | null;
   syncStatus: SyncStatus;
-  createdAt: string;
+  createdAt: string; // ISO instant — when first created
 }
 
 export interface CreateRecordRequest {
@@ -230,6 +231,38 @@ export interface ReportPayload {
 export interface ReportResponse {
   reportId: number;
   payload: ReportPayload;
+}
+
+// ---- Batch events (field log) ----
+export type EventType =
+  | "MORTALITY"
+  | "HEALTH_CONCERN"
+  | "VACCINE_MEDICINE"
+  | "BEHAVIOR_OBSERVATION";
+
+export interface BatchEvent {
+  id: number;
+  batchId: number;
+  handlerId: number;
+  handlerName: string;
+  eventDate: string; // ISO date
+  eventType: EventType;
+  severityLabel: string | null;
+  affectedCount: number;
+  title: string;
+  details: string | null;
+  tags: string | null; // comma-separated
+  createdAt: string; // ISO instant — when the log was submitted
+}
+
+export interface CreateBatchEventRequest {
+  eventDate?: string | null;
+  eventType: EventType;
+  title: string;
+  severityLabel?: string | null;
+  affectedCount?: number;
+  details?: string | null;
+  tags?: string | null;
 }
 
 // ---- Handlers & invites ----
