@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Copy, Loader2, Save, UserPlus } from "lucide-react";
+import { Copy, Loader2, Save, UserPlus, Warehouse } from "lucide-react";
 import { toast } from "sonner";
 import {
   useCreateInvite,
@@ -9,13 +9,15 @@ import {
   useThresholds,
   useUpdateThreshold,
 } from "@/hooks/use-reference";
+import { useFarm, useUpdateFarm } from "@/hooks/use-farm";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
-import type { InviteResponse, Threshold } from "@/lib/types";
+import type { Farm, InviteResponse, Threshold } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -54,6 +56,9 @@ export default function SettingsPage() {
           {isManager ? "Manage your farm alerts and handlers." : "View your farm's alert settings."}
         </p>
       </div>
+
+      {/* Farm profile (manager only) */}
+      {isManager && <FarmProfileSection />}
 
       {/* Handlers section (manager only) */}
       {isManager && (
@@ -152,6 +157,120 @@ export default function SettingsPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+// ─── Farm profile setup ──────────────────────────────────────────────────────
+
+function FarmProfileSection() {
+  const farm = useFarm(true);
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center gap-2.5">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Warehouse className="size-5" />
+        </span>
+        <div>
+          <h2 className="text-base font-bold">Farm Profile</h2>
+          <p className="text-xs text-muted-foreground">Your farm&apos;s name and details</p>
+        </div>
+      </div>
+
+      {farm.isLoading ? (
+        <div className="rounded-2xl border bg-card p-4 space-y-3">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-11 rounded-xl" />)}
+        </div>
+      ) : farm.isError ? (
+        <p className="text-sm text-destructive">Failed to load farm profile.</p>
+      ) : (
+        farm.data && (
+          // Keyed on the farm id so the form initialises from the loaded values
+          // without syncing via an effect.
+          <FarmProfileForm key={farm.data.id} farm={farm.data} />
+        )
+      )}
+    </section>
+  );
+}
+
+function FarmProfileForm({ farm }: { farm: Farm }) {
+  const update = useUpdateFarm();
+  const [name, setName] = useState(farm.name ?? "");
+  const [location, setLocation] = useState(farm.location ?? "");
+  const [description, setDescription] = useState(farm.description ?? "");
+
+  const needsSetup = !farm.name?.trim();
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) {
+      toast.error("Farm name is required.");
+      return;
+    }
+    try {
+      await update.mutateAsync({
+        name: name.trim(),
+        location: location.trim() || null,
+        description: description.trim() || null,
+      });
+      toast.success("Farm profile configured successfully.");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to save farm profile");
+    }
+  }
+
+  return (
+    <form onSubmit={save} className="rounded-2xl border bg-card p-4 space-y-4">
+      {needsSetup && (
+        <p className="rounded-xl bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
+          Finish setting up your farm to unlock the full dashboard.
+        </p>
+      )}
+      <div className="space-y-2">
+        <Label htmlFor="farm-name" className="font-semibold">
+          Farm name <span className="text-destructive">*</span>
+        </Label>
+        <Input
+          id="farm-name"
+          required
+          placeholder="e.g. Sunrise Game Fowl Farm"
+          className="h-11 rounded-xl"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="farm-location" className="font-semibold">Location</Label>
+        <Input
+          id="farm-location"
+          placeholder="e.g. Batangas, Philippines"
+          className="h-11 rounded-xl"
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="farm-description" className="font-semibold">Description</Label>
+        <Textarea
+          id="farm-description"
+          placeholder="A short description of your farm (optional)"
+          className="rounded-xl"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+      </div>
+      <div className="flex justify-end">
+        <Button
+          type="submit"
+          className="h-11 rounded-xl px-5 font-semibold"
+          disabled={update.isPending || !name.trim()}
+        >
+          {update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+          Save farm profile
+        </Button>
+      </div>
+    </form>
   );
 }
 

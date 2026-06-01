@@ -32,6 +32,20 @@ export interface RegisterRequest {
   role: Role;
 }
 
+// ---- Farm profile ----
+export interface Farm {
+  id: number;
+  name: string | null;
+  location: string | null;
+  description: string | null;
+}
+
+export interface UpdateFarmRequest {
+  name: string;
+  location?: string | null;
+  description?: string | null;
+}
+
 // ---- Batches & lifecycle ----
 export interface Batch {
   id: number;

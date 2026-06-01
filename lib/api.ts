@@ -18,6 +18,7 @@ import type {
   CreateRangingRecordRequest,
   CreateRecordRequest,
   DailyRecord,
+  Farm,
   Handler,
   Indicator,
   InviteResponse,
@@ -30,6 +31,7 @@ import type {
   SelectionRow,
   SelectionView,
   Threshold,
+  UpdateFarmRequest,
   UpdateThresholdRequest,
 } from "./types";
 
@@ -154,6 +156,13 @@ export const batchEventApi = {
     apiClient
       .post<BatchEvent>(`/batches/${batchId}/events`, body)
       .then((r) => r.data),
+};
+
+// ---- Farm profile ----
+export const farmApi = {
+  current: () => apiClient.get<Farm>("/farm").then((r) => r.data),
+  update: (body: UpdateFarmRequest) =>
+    apiClient.put<Farm>("/farm", body).then((r) => r.data),
 };
 
 // ---- Handlers & invites ----
