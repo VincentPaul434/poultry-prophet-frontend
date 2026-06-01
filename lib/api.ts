@@ -15,6 +15,7 @@ import type {
   CreateBatchRequest,
   CreateBirdRequest,
   CreateInviteRequest,
+  ChangePasswordRequest,
   CreateRangingRecordRequest,
   CreateRecordRequest,
   DailyRecord,
@@ -32,6 +33,7 @@ import type {
   SelectionView,
   Threshold,
   UpdateFarmRequest,
+  UpdateProfileRequest,
   UpdateThresholdRequest,
 } from "./types";
 
@@ -43,6 +45,15 @@ export const authApi = {
     apiClient.post<AuthResponse>("/auth/login", body).then((r) => r.data),
   register: (body: RegisterRequest) =>
     apiClient.post<AuthResponse>("/auth/register", body).then((r) => r.data),
+};
+
+// ---- Account (the caller's own profile/password) ----
+export const accountApi = {
+  // Returns a fresh AuthResponse: email is the JWT subject, so it reissues the token.
+  updateProfile: (body: UpdateProfileRequest) =>
+    apiClient.put<AuthResponse>("/account/profile", body).then((r) => r.data),
+  changePassword: (body: ChangePasswordRequest) =>
+    apiClient.put<void>("/account/password", body).then((r) => r.data),
 };
 
 // ---- Batches & lifecycle ----

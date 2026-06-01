@@ -16,14 +16,14 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { authApi, inviteApi } from "./api";
+import { accountApi, authApi, inviteApi } from "./api";
 import {
   clearSession,
   getStoredUser,
   saveSession,
   type StoredUser,
 } from "./auth-storage";
-import type { LoginRequest, RegisterRequest } from "./types";
+import type { LoginRequest, RegisterRequest, UpdateProfileRequest } from "./types";
 
 interface AuthContextValue {
   user: StoredUser | null;
@@ -33,6 +33,7 @@ interface AuthContextValue {
   login: (body: LoginRequest) => Promise<StoredUser>;
   register: (body: RegisterRequest) => Promise<StoredUser>;
   acceptInvite: (token: string) => Promise<StoredUser>;
+  updateProfile: (body: UpdateProfileRequest) => Promise<StoredUser>;
   logout: () => void;
 }
 
@@ -79,6 +80,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [queryClient]
   );
 
+  const updateProfile = useCallback(async (body: UpdateProfileRequest) => {
+    // Returns a fresh token (email is the JWT subject), so re-save the session.
+    const auth = await accountApi.updateProfile(body);
+    const stored = saveSession(auth);
+    setUser(stored);
+    return stored;
+  }, []);
+
   const logout = useCallback(() => {
     clearSession();
     setUser(null);
@@ -95,9 +104,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       login,
       register,
       acceptInvite,
+      updateProfile,
       logout,
     }),
-    [user, isLoading, login, register, acceptInvite, logout]
+    [user, isLoading, login, register, acceptInvite, updateProfile, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
