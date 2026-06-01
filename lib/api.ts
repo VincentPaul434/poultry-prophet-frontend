@@ -8,8 +8,10 @@ import type {
   Alert,
   AuthResponse,
   Batch,
+  BatchEvent,
   BatchOverview,
   Bird,
+  CreateBatchEventRequest,
   CreateBatchRequest,
   CreateBirdRequest,
   CreateInviteRequest,
@@ -139,6 +141,18 @@ export const reportApi = {
         params: { format },
         responseType: "blob",
       })
+      .then((r) => r.data),
+};
+
+// ---- Batch events (field log) ----
+export const batchEventApi = {
+  recent: (batchId: Id, limit = 30) =>
+    apiClient
+      .get<BatchEvent[]>(`/batches/${batchId}/events`, { params: { limit } })
+      .then((r) => r.data),
+  create: (batchId: Id, body: CreateBatchEventRequest) =>
+    apiClient
+      .post<BatchEvent>(`/batches/${batchId}/events`, body)
       .then((r) => r.data),
 };
 

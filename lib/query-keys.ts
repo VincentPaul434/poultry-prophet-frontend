@@ -34,5 +34,7 @@ export const qk = {
       [...qk.batches.detail(batchId), "selection"] as const,
     ranging: (batchId: number | string, birdId: number | string) =>
       [...qk.batches.detail(batchId), "birds", String(birdId), "ranging"] as const,
+    events: (batchId: number | string, limit?: number) =>
+      [...qk.batches.detail(batchId), "events", { limit }] as const,
   },
 } as const;
