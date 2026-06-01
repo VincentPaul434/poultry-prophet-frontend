@@ -32,6 +32,16 @@ export interface RegisterRequest {
   role: Role;
 }
 
+export interface UpdateProfileRequest {
+  fullName: string;
+  email: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 // ---- Farm profile ----
 export interface Farm {
   id: number;
