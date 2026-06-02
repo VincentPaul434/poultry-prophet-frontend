@@ -13,6 +13,8 @@ export const qk = {
   handlers: ["handlers"] as const,
   thresholds: ["thresholds"] as const,
   invitesPending: ["invites", "pending"] as const,
+  // Farm-wide alert feed (notifications centre), distinct from per-batch alerts.
+  alertsFarm: (activeOnly?: boolean) => ["alerts", "farm", { activeOnly }] as const,
 
   batches: {
     all: ["batches"] as const,

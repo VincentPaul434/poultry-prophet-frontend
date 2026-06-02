@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bird, LayoutDashboard, LogOut, Settings } from "lucide-react";
+import { Bell, Bird, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { useFarmAlerts } from "@/hooks/use-analytics";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const NAV = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard },
+  { href: "/alerts", label: "Alerts", icon: Bell },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -35,6 +37,9 @@ function greeting(name: string | undefined) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  // Unacknowledged alerts across the farm, driving the nav bell badge.
+  const { data: activeAlerts } = useFarmAlerts(true, !!user);
+  const unread = activeAlerts?.length ?? 0;
 
   return (
     <div className="flex min-h-screen">
@@ -66,6 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 space-y-0.5 px-3">
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);
+            const badge = href === "/alerts" ? unread : 0;
             return (
               <Link
                 key={href}
@@ -79,6 +85,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               >
                 <Icon className="size-5" />
                 {label}
+                {badge > 0 && (
+                  <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                    {badge > 99 ? "99+" : badge}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -142,23 +153,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
              style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);
+            const badge = href === "/alerts" ? unread : 0;
             return (
               <Link
                 key={href}
                 href={href}
                 className={cn(
-                  "flex flex-1 flex-col items-center justify-center gap-1 py-3 text-[11px] font-semibold transition-colors",
+                  "relative flex flex-1 flex-col items-center justify-center gap-1 py-3 text-[11px] font-semibold transition-colors",
                   active
                     ? "text-primary"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <Icon
-                  className={cn(
-                    "size-5 transition-transform",
-                    active && "scale-110"
+                <span className="relative">
+                  <Icon
+                    className={cn(
+                      "size-5 transition-transform",
+                      active && "scale-110"
+                    )}
+                  />
+                  {badge > 0 && (
+                    <span className="absolute -top-1.5 -right-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 py-0.5 text-[9px] font-bold leading-none text-white">
+                      {badge > 9 ? "9+" : badge}
+                    </span>
                   )}
-                />
+                </span>
                 {label}
                 {active && (
                   <span className="absolute top-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-primary" />

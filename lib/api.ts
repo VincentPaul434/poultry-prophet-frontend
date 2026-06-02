@@ -127,6 +127,11 @@ export const alertApi = {
     apiClient
       .get<Alert[]>(`/batches/${batchId}/alerts`, { params: { activeOnly, limit } })
       .then((r) => r.data),
+  // Farm-wide feed across all batches for the notifications centre.
+  listFarm: (activeOnly = true, limit = 100) =>
+    apiClient
+      .get<Alert[]>(`/alerts`, { params: { activeOnly, limit } })
+      .then((r) => r.data),
   acknowledge: (id: number, note?: string) =>
     apiClient.post<Alert>(`/alerts/${id}/acknowledge`, { note }).then((r) => r.data),
 };
