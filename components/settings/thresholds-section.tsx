@@ -41,6 +41,17 @@ export function ThresholdsSection() {
       {thresholds.isError && (
         <p className="text-sm text-destructive">Failed to load thresholds.</p>
       )}
+      {thresholds.data && thresholds.data.length === 0 && (
+        <div className="rounded-2xl border border-dashed bg-card py-10 text-center space-y-2">
+          <p className="text-3xl">🔔</p>
+          <p className="text-sm font-semibold">No alert thresholds yet</p>
+          <p className="text-xs text-muted-foreground">
+            {isManager
+              ? "Default thresholds aren't configured. Contact support if this persists."
+              : "Your manager hasn't configured alert ranges yet."}
+          </p>
+        </div>
+      )}
       {thresholds.data?.map((t) => (
         // Keyed on the saved values so a server update re-initialises the inputs
         // without syncing via an effect.

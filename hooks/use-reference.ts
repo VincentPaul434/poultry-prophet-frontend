@@ -6,7 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { handlerApi, inviteApi, lifecycleApi, thresholdApi } from "@/lib/api";
 import { qk } from "@/lib/query-keys";
-import type { CreateInviteRequest, Threshold, UpdateThresholdRequest } from "@/lib/types";
+import type { CreateInviteRequest, UpdateThresholdRequest } from "@/lib/types";
 
 export function useLifecycleStages() {
   return useQuery({
@@ -71,10 +71,10 @@ export function useUpdateThreshold() {
   return useMutation({
     mutationFn: ({ id, body }: { id: number; body: UpdateThresholdRequest }) =>
       thresholdApi.update(id, body),
-    onSuccess: (updated: Threshold) => {
-      queryClient.setQueryData<Threshold[]>(qk.thresholds, (prev) =>
-        prev?.map((t) => (t.id === updated.id ? updated : t))
-      );
+    // Editing a global default creates a new farm-specific row (copy-on-write)
+    // with a different id, so refetch the effective list rather than swapping by id.
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.thresholds });
     },
   });
 }
