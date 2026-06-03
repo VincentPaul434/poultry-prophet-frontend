@@ -9,6 +9,7 @@ import {
   CalendarDays,
   ChevronDown,
   ClipboardList,
+  Home,
   Layers,
   Loader2,
   Plus,
@@ -27,7 +28,6 @@ import {
   ArchiveBatchButton,
   RestoreBatchButton,
 } from "@/components/archive-batch-controls";
-import { useLifecycleStages } from "@/hooks/use-reference";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { formatDate, todayIso } from "@/lib/format";
@@ -41,6 +41,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PendingInvitesBanner } from "@/components/pending-invites-banner";
 import { FarmOnboardingBanner } from "@/components/farm-onboarding-banner";
+import { useFarm } from "@/hooks/use-farm";
 import {
   Dialog,
   DialogContent,
@@ -50,13 +51,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 function daysElapsed(startDate: string) {
   return Math.max(
@@ -83,6 +77,8 @@ export default function DashboardPage() {
   const { isManager, user } = useAuth();
   const queryClient = useQueryClient();
   const { data: batches, isLoading, isFetching, isError, error } = useBatches();
+  const { data: farm } = useFarm();
+  const farmName = farm?.name?.trim();
 
   function refreshAll() {
     queryClient.invalidateQueries({ queryKey: qk.batches.lists() });
@@ -182,14 +178,15 @@ export default function DashboardPage() {
           <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-3">
               <div className="inline-flex items-center gap-2 rounded-full border bg-background/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-muted-foreground">
-                <span className="size-1.5 rounded-full bg-primary" />
-                Dashboard {todayLabel}
+                <Home className="size-3 text-primary" />
+                {isManager ? "Farm Manager" : "Handler"} · {todayLabel}
               </div>
               <div className="space-y-2">
                 <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-                  {greeting}{firstName ? `, ${firstName}` : ""}!
+                  {farmName ?? `${greeting}${firstName ? `, ${firstName}` : ""}!`}
                 </h1>
                 <p className="max-w-2xl text-sm text-muted-foreground">
+                  {farmName ? `${greeting}${firstName ? `, ${firstName}` : ""} — ` : ""}
                   {batches
                     ? `${numberFormatter.format(activeCount)} active batch${activeCount === 1 ? "" : "es"} tracking ${numberFormatter.format(totalBirds)} birds in motion.`
                     : "Loading your batches..."}
@@ -373,8 +370,14 @@ function BatchCard({
               <Badge
                 variant="outline"
                 className="rounded-full px-2 text-[10px] capitalize"
+                title={batch.stageAuto ? "Stage set automatically from age" : "Stage manually set"}
               >
                 {batch.stageName}
+                {batch.stageAuto && (
+                  <span className="ml-1 text-[8px] font-bold uppercase tracking-wide text-muted-foreground">
+                    auto
+                  </span>
+                )}
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -443,24 +446,14 @@ function BatchCard({
               <ArchiveBatchButton batch={batch} />
             </>
           ) : (
-            <>
-              <Button
-                nativeButton={false}
-                render={<Link href={`/batches/${batch.id}`} />}
-                variant="outline"
-                className="h-11 flex-1 rounded-xl px-4 text-sm font-semibold"
-              >
-                View details
-              </Button>
-              <Button
-                nativeButton={false}
-                render={<Link href={`/batches/${batch.id}`} />}
-                className="h-11 flex-1 rounded-xl px-4 text-sm font-semibold"
-              >
-                <ClipboardList className="size-4" />
-                Log now
-              </Button>
-            </>
+            <Button
+              nativeButton={false}
+              render={<Link href={`/batches/${batch.id}`} />}
+              className="h-11 flex-1 rounded-xl px-4 text-sm font-semibold"
+            >
+              <ClipboardList className="size-4" />
+              View batch
+            </Button>
           )}
         </div>
       </div>
@@ -570,24 +563,22 @@ function ArchivedBatchesSection() {
 
 function CreateBatchDialog({ variant }: { variant?: "inline" }) {
   const [open, setOpen] = useState(false);
-  const { data: stages } = useLifecycleStages();
   const createBatch = useCreateBatch();
 
   const [name, setName] = useState("");
   const [initialPopulation, setInitialPopulation] = useState("");
   const [startDate, setStartDate] = useState(todayIso());
-  const [stageId, setStageId] = useState<string>("");
   const [bloodline, setBloodline] = useState("");
   const [source, setSource] = useState("");
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
+      // Stage is auto-derived from the start/hatch date on the backend.
       await createBatch.mutateAsync({
         name,
         initialPopulation: Number(initialPopulation),
         startDate,
-        stageId: Number(stageId),
         bloodline: bloodline || null,
         source: source || null,
       });
@@ -597,7 +588,6 @@ function CreateBatchDialog({ variant }: { variant?: "inline" }) {
       setInitialPopulation("");
       setBloodline("");
       setSource("");
-      setStageId("");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Failed to create batch");
     }
@@ -664,21 +654,10 @@ function CreateBatchDialog({ variant }: { variant?: "inline" }) {
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="stage" className="font-semibold">Starting stage</Label>
-              <Select value={stageId} onValueChange={(v) => setStageId(v ?? "")}>
-                <SelectTrigger id="stage" className="h-11 w-full rounded-xl">
-                  <SelectValue placeholder="Choose stage…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stages?.map((s) => (
-                    <SelectItem key={s.id} value={String(s.id)} className="capitalize">
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <p className="rounded-xl bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+              The lifecycle stage is set automatically from the start/hatch date and advances as
+              the birds age. You can override it later from the batch page.
+            </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="bloodline" className="font-semibold">
@@ -710,7 +689,7 @@ function CreateBatchDialog({ variant }: { variant?: "inline" }) {
             <Button
               type="submit"
               className="h-11 rounded-xl px-6 font-semibold"
-              disabled={createBatch.isPending || !stageId}
+              disabled={createBatch.isPending || !name.trim() || !initialPopulation || !startDate}
             >
               {createBatch.isPending && <Loader2 className="size-4 animate-spin" />}
               Create batch

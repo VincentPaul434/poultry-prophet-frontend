@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   Archive,
+  ArrowLeft,
   ClipboardList,
   ListChecks,
   Loader2,
@@ -12,7 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
-import { useBatchOverview, useChangeStage } from "@/hooks/use-batches";
+import { useBatchOverview, useChangeStage, useAutoStage } from "@/hooks/use-batches";
 import { useAcknowledgeAlert } from "@/hooks/use-analytics";
 import { useLifecycleStages } from "@/hooks/use-reference";
 import { useBatchEvents } from "@/hooks/use-events";
@@ -145,16 +146,22 @@ function AlertItem({ batchId, alert, canAck }: { batchId: number; alert: Alert; 
 
 // ─── Stage selector (manager-only) ───────────────────────────────────────────
 
-function StageSelect({ batchId, currentStageId }: { batchId: number; currentStageId: number }) {
+function StageSelect({ batchId, currentStageId, auto, stageName }: { batchId: number; currentStageId: number; auto: boolean; stageName: string }) {
   const { data: stages } = useLifecycleStages();
   const changeStage = useChangeStage(batchId);
+  const autoStage = useAutoStage(batchId);
   return (
-    <Select value={String(currentStageId)} onValueChange={(v) => {
+    <Select value={auto ? "auto" : String(currentStageId)} onValueChange={(v) => {
       if (!v) return;
+      if (v === "auto") {
+        autoStage.mutateAsync().then(() => toast.success("Stage now follows age")).catch((err) => toast.error(err instanceof ApiError ? err.message : "Failed to change stage"));
+        return;
+      }
       changeStage.mutateAsync(Number(v)).then(() => toast.success("Stage updated")).catch((err) => toast.error(err instanceof ApiError ? err.message : "Failed to change stage"));
     }}>
       <SelectTrigger className="h-10 w-44 rounded-xl capitalize text-sm"><SelectValue /></SelectTrigger>
       <SelectContent>
+        <SelectItem value="auto" className="capitalize">Auto · {stageName}</SelectItem>
         {stages?.map((s) => <SelectItem key={s.id} value={String(s.id)} className="capitalize">{s.name}</SelectItem>)}
       </SelectContent>
     </Select>
@@ -189,7 +196,16 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
 
   if (isError || !data) {
     return (
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-2xl space-y-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 gap-1.5 text-muted-foreground rounded-xl"
+          nativeButton={false}
+          render={<Link href="/dashboard" />}
+        >
+          <ArrowLeft className="size-4" /> Back to dashboard
+        </Button>
         <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-8 text-center">
           <p className="text-sm font-medium text-destructive">
             {error instanceof ApiError ? error.message : "Failed to load batch."}
@@ -204,6 +220,17 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
+
+      {/* Back to dashboard */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-ml-2 gap-1.5 text-muted-foreground rounded-xl"
+        nativeButton={false}
+        render={<Link href="/dashboard" />}
+      >
+        <ArrowLeft className="size-4" /> Back to dashboard
+      </Button>
 
       {/* ── 1. Compact header ──────────────────────────────────────────── */}
       <div className="space-y-1.5">
@@ -231,7 +258,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
           </div>
           {isManager && (
             <div className="shrink-0 flex flex-col items-end gap-1.5">
-              <StageSelect batchId={batch.id} currentStageId={batch.stageId} />
+              <StageSelect batchId={batch.id} currentStageId={batch.stageId} auto={batch.stageAuto} stageName={batch.stageName} />
               <div className="flex items-center gap-1.5">
                 <Link href={`/batches/${batch.id}/selection`}
                   className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors">

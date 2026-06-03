@@ -7,11 +7,10 @@ import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { useBatch } from "@/hooks/use-batches";
 import { useBatchEvents } from "@/hooks/use-events";
 import { qk } from "@/lib/query-keys";
-import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { BatchLogSection, EventTimeline, VitalsStatus } from "@/components/batch-log-section";
+import { EventTimeline } from "@/components/batch-log-section";
 
 export default function EventHistoryPage({
   params,
@@ -19,7 +18,6 @@ export default function EventHistoryPage({
   params: Promise<{ batchId: string }>;
 }) {
   const { batchId } = use(params);
-  const { isManager } = useAuth();
   const queryClient = useQueryClient();
   const isFetching = useIsFetching({ queryKey: qk.batches.detail(batchId) }) > 0;
   const { data: batch } = useBatch(batchId);
@@ -28,8 +26,6 @@ export default function EventHistoryPage({
   function refreshAll() {
     queryClient.invalidateQueries({ queryKey: qk.batches.detail(batchId) });
   }
-
-  const population = batch?.currentPopulation ?? 0;
 
   return (
     <div className="mx-auto max-w-xl space-y-6">
@@ -47,7 +43,7 @@ export default function EventHistoryPage({
         </Button>
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Event Log</h1>
+            <h1 className="text-2xl font-bold">All Events</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {batch?.name ?? "Batch"} — full history of logged events
             </p>
@@ -65,41 +61,8 @@ export default function EventHistoryPage({
         </div>
       </div>
 
-      {/* Log section — handlers only */}
-      {!isManager && (
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Log an event</h2>
-            <VitalsStatus batchId={batchId} />
-          </div>
-          <BatchLogSection batchId={batchId} population={population} />
-        </section>
-      )}
-
-      {/* How logs affect scores — handler context panel */}
-      {!isManager && (
-        <div className="rounded-2xl bg-muted/50 p-4 space-y-3">
-          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">How your logs affect health scores</p>
-          <div className="space-y-2 text-xs text-muted-foreground">
-            {[
-              { icon: "💀", text: "Deaths → Brooding Health (BHI) — most critical factor" },
-              { icon: "🌡️", text: "Temperature → BHI — check daily during brooding" },
-              { icon: "🍽️", text: "Feed & Water → BHI + Intake ratio" },
-              { icon: "🤒", text: "Sickness events → Health History score" },
-              { icon: "👁️", text: "Behavior signs → Behaviour Stress Index (BSI)" },
-            ].map((f) => (
-              <div key={f.text} className="flex gap-2">
-                <span className="shrink-0">{f.icon}</span>
-                <span className="leading-snug">{f.text}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Full event timeline — visible to all roles */}
+      {/* Full event timeline — read-only display for all roles */}
       <section className="space-y-3">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">All events</h2>
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}

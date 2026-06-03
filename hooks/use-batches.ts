@@ -64,6 +64,19 @@ export function useChangeStage(batchId: number | string) {
   });
 }
 
+// Clears a manual stage override, returning the batch to age-based auto-progression.
+export function useAutoStage(batchId: number | string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => batchApi.useAutoStage(batchId),
+    onSuccess: (updated: Batch) => {
+      queryClient.setQueryData(qk.batches.detail(batchId), updated);
+      queryClient.invalidateQueries({ queryKey: qk.batches.lists() });
+      queryClient.invalidateQueries({ queryKey: qk.batches.overview(batchId) });
+    },
+  });
+}
+
 // Moves the batch between the working list and the archived list. Both lists are
 // invalidated so whichever the user is looking at refreshes.
 function useBatchArchiveMutation(

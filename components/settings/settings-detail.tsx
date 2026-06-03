@@ -7,8 +7,9 @@
 import { useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSection, type SettingsSectionKey } from "./sections";
 
@@ -60,6 +61,17 @@ export function SettingsDetailShell({
         <ChevronRight className="size-4 shrink-0" />
         <span className="font-medium text-foreground">{meta.title}</span>
       </nav>
+
+      {/* Back to settings */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="-ml-2 gap-1.5 text-muted-foreground rounded-xl"
+        nativeButton={false}
+        render={<Link href="/settings" />}
+      >
+        <ArrowLeft className="size-4" /> Back to settings
+      </Button>
 
       {/* Section header */}
       <div className="flex items-start gap-3">

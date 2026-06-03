@@ -36,13 +36,6 @@ function initials(name: string | undefined) {
     .toUpperCase();
 }
 
-function greeting(name: string | undefined) {
-  const hour = new Date().getHours();
-  const salutation =
-    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const first = name?.split(" ")[0] ?? "";
-  return first ? `${salutation}, ${first}!` : salutation;
-}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -53,7 +46,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [logoutOpen, setLogoutOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen">
+    // Pin the shell to the viewport so the sidebar stays put and only <main> scrolls.
+    <div className="flex h-screen overflow-hidden">
       <Dialog open={logoutOpen} onOpenChange={setLogoutOpen}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
@@ -89,15 +83,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        {/* Greeting */}
-        <div className="px-5 pt-5 pb-3">
-          <p className="text-xs font-medium text-sidebar-foreground/60 leading-snug">
-            {greeting(user?.fullName)}
-          </p>
-        </div>
-
-        {/* Nav links */}
-        <nav className="flex-1 space-y-0.5 px-3">
+        {/* Nav links — scrolls on its own if the list ever exceeds the sidebar,
+            keeping the profile + sign-out below always visible. */}
+        <nav className="flex-1 min-h-0 overflow-y-auto space-y-0.5 px-3">
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);
             const badge = href === "/alerts" ? unread : 0;

@@ -69,6 +69,9 @@ export const batchApi = {
     apiClient
       .patch<Batch>(`/batches/${batchId}/stage`, { stageId })
       .then((r) => r.data),
+  // Clears a manual stage override so the stage tracks the batch's age again.
+  useAutoStage: (batchId: Id) =>
+    apiClient.patch<Batch>(`/batches/${batchId}/stage/auto`).then((r) => r.data),
   archive: (batchId: Id) =>
     apiClient.patch<Batch>(`/batches/${batchId}/archive`).then((r) => r.data),
   restore: (batchId: Id) =>

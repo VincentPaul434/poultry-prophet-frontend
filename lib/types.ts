@@ -68,6 +68,8 @@ export interface Batch {
   source: string | null;
   stageId: number;
   stageName: string;
+  // True when the stage is derived from the batch's age; false when a manager pinned it.
+  stageAuto: boolean;
   status: BatchStatus;
   handlerUserIds: number[];
   createdAt: string; // ISO instant
@@ -77,7 +79,8 @@ export interface CreateBatchRequest {
   name: string;
   initialPopulation: number;
   startDate: string; // ISO date
-  stageId: number;
+  // Stage is auto-derived from the start date on the backend, so this is optional.
+  stageId?: number;
   bloodline?: string | null;
   source?: string | null;
   handlerUserIds?: number[];

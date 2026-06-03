@@ -547,7 +547,7 @@ export function EventTimeline({ events }: { events: BatchEvent[] }) {
       <div className="py-10 text-center space-y-2">
         <p className="text-4xl">📋</p>
         <p className="text-sm font-semibold text-muted-foreground">No events logged yet</p>
-        <p className="text-xs text-muted-foreground">Tap a quick-log button to record something</p>
+        <p className="text-xs text-muted-foreground">Events logged for this batch will appear here</p>
       </div>
     );
   }
