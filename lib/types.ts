@@ -3,7 +3,7 @@
 
 // ---- Enums ----
 export type Role = "MANAGER" | "HANDLER";
-export type BatchStatus = "ACTIVE" | "CLOSED";
+export type BatchStatus = "ACTIVE" | "CLOSED" | "ARCHIVED";
 export type Severity = "INFO" | "WARNING" | "CRITICAL";
 export type SyncStatus = "PENDING" | "SYNCED" | "FAILED";
 export type QualityRating = "C" | "B" | "B_PLUS" | "A" | "A_PLUS" | "A_PLUS_PLUS";

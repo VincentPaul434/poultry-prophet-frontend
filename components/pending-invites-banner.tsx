@@ -48,20 +48,21 @@ export function PendingInvitesBanner() {
   }
 
   return (
-    <Alert>
+    <Alert className="relative overflow-hidden rounded-2xl border border-amber-200/60 bg-gradient-to-br from-amber-50 via-card to-card p-5 shadow-sm">
+      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-amber-400/20 blur-2xl" />
       <MailPlus />
-      <AlertTitle>
+      <AlertTitle className="text-base font-semibold">
         {invites.length === 1
           ? "You have a farm invite"
           : `You have ${invites.length} farm invites`}
       </AlertTitle>
-      <AlertDescription>
+      <AlertDescription className="text-sm">
         <p>Accept an invite to join the farm and start logging records.</p>
-        <div className="flex flex-col gap-2">
+        <div className="mt-4 flex flex-col gap-3">
           {invites.map((invite) => (
             <div
               key={invite.token}
-              className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-2"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background/80 px-4 py-3 shadow-sm"
             >
               <div className="text-sm">
                 <span className="font-medium text-foreground">Farm #{invite.farmId}</span>
@@ -70,10 +71,11 @@ export function PendingInvitesBanner() {
                   · expires {new Date(invite.expiresAt).toLocaleDateString()}
                 </span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
                   variant="outline"
+                  className="rounded-full px-3"
                   onClick={() => decline(invite.token)}
                   disabled={busy}
                 >
@@ -84,6 +86,7 @@ export function PendingInvitesBanner() {
                 </Button>
                 <Button
                   size="sm"
+                  className="rounded-full px-3"
                   onClick={() => accept(invite.token)}
                   disabled={busy}
                 >

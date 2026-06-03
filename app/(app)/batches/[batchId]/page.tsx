@@ -4,15 +4,19 @@ import { use } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
+  Archive,
   ClipboardList,
   ListChecks,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { useBatchOverview, useChangeStage } from "@/hooks/use-batches";
 import { useAcknowledgeAlert } from "@/hooks/use-analytics";
 import { useLifecycleStages } from "@/hooks/use-reference";
 import { useBatchEvents } from "@/hooks/use-events";
+import { qk } from "@/lib/query-keys";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -29,6 +33,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BatchLogSection, EVENT_EMOJI } from "@/components/batch-log-section";
+import {
+  ArchiveBatchButton,
+  RestoreBatchButton,
+} from "@/components/archive-batch-controls";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -158,8 +166,14 @@ function StageSelect({ batchId, currentStageId }: { batchId: number; currentStag
 export default function BatchDetailPage({ params }: { params: Promise<{ batchId: string }> }) {
   const { batchId } = use(params);
   const { isManager } = useAuth();
+  const queryClient = useQueryClient();
+  const isFetching = useIsFetching({ queryKey: qk.batches.detail(batchId) }) > 0;
   const { data, isLoading, isError, error } = useBatchOverview(batchId);
   const { data: recentEvents } = useBatchEvents(batchId, 5);
+
+  function refreshAll() {
+    queryClient.invalidateQueries({ queryKey: qk.batches.detail(batchId) });
+  }
 
   if (isLoading) {
     return (
@@ -194,10 +208,20 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
       {/* ── 1. Compact header ──────────────────────────────────────────── */}
       <div className="space-y-1.5">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-2xl font-bold tracking-tight truncate">{batch.name}</h1>
               <Badge variant={batch.status === "ACTIVE" ? "default" : "secondary"}>{batch.status}</Badge>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-xl text-muted-foreground hover:text-foreground size-7"
+                onClick={refreshAll}
+                disabled={isFetching}
+                title="Refresh"
+              >
+                <RefreshCw className={cn("size-3.5", isFetching && "animate-spin")} />
+              </Button>
             </div>
             <p className="text-sm text-muted-foreground mt-0.5">
               {batch.currentPopulation} of {batch.initialPopulation} birds ·{" "}
@@ -208,14 +232,48 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
           {isManager && (
             <div className="shrink-0 flex flex-col items-end gap-1.5">
               <StageSelect batchId={batch.id} currentStageId={batch.stageId} />
-              <Link href={`/batches/${batch.id}/selection`}
-                className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors">
-                <ListChecks className="size-3.5" /> Selection
-              </Link>
+              <div className="flex items-center gap-1.5">
+                <Link href={`/batches/${batch.id}/selection`}
+                  className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors">
+                  <ListChecks className="size-3.5" /> Selection
+                </Link>
+                {batch.status === "ARCHIVED" ? (
+                  <RestoreBatchButton batch={batch} />
+                ) : (
+                  <ArchiveBatchButton batch={batch} className="h-9 px-3 text-xs" />
+                )}
+              </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* ── Archived notice ────────────────────────────────────────────── */}
+      {batch.status === "ARCHIVED" && (
+        <div className="flex items-center gap-2.5 rounded-2xl border bg-muted/50 px-4 py-3">
+          <Archive className="size-4 shrink-0 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            This batch is <span className="font-semibold text-foreground">archived</span> — hidden from the
+            active dashboard. Restore it to resume tracking.
+          </p>
+        </div>
+      )}
+
+      {/* ── No birds left → suggest archiving (managers only) ──────────── */}
+      {isManager && batch.status !== "ARCHIVED" && batch.currentPopulation <= 0 && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-amber-300/60 bg-amber-50 px-4 py-3.5 dark:border-amber-900 dark:bg-amber-950/40 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2.5">
+            <Archive className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div>
+              <p className="text-sm font-semibold">No birds left in this batch</p>
+              <p className="text-xs text-muted-foreground">
+                Archive it to clear it from your active dashboard. All records and scores are kept.
+              </p>
+            </div>
+          </div>
+          <ArchiveBatchButton batch={batch} className="h-9 px-3 text-xs sm:self-center" />
+        </div>
+      )}
 
       {/* ── 2. Quick Log (handlers) / Event log link (managers) ───────── */}
       {!isManager ? (

@@ -3,32 +3,59 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bird, Loader2, Lock, Mail, User } from "lucide-react";
+import { Bird, Loader2, Lock, Mail, User, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
+import { inviteApi } from "@/lib/api";
 import type { Role } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 export default function RegisterPage() {
   const { register } = useAuth();
   const router = useRouter();
+
+  // Registration form state
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
   const [role, setRole] = useState<Role>("MANAGER");
   const [submitting, setSubmitting] = useState(false);
 
+  // Farm setup modal state (manager only)
+  const [farmSetupOpen, setFarmSetupOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviting, setInviting] = useState(false);
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (password !== confirmPassword) {
+      setPasswordError("Passwords do not match.");
+      return;
+    }
+    setPasswordError("");
     setSubmitting(true);
     try {
       await register({ fullName, email, password, role });
       toast.success("Account created! Welcome.");
-      router.replace("/dashboard");
+      if (role === "MANAGER") {
+        setFarmSetupOpen(true);
+      } else {
+        router.replace("/dashboard");
+      }
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "Unable to create account.";
       toast.error(msg);
@@ -37,8 +64,90 @@ export default function RegisterPage() {
     }
   }
 
+  async function sendInvite() {
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    try {
+      await inviteApi.create({ email: inviteEmail.trim(), expiresInDays: 7 });
+      toast.success(`Invite sent to ${inviteEmail.trim()}.`);
+      router.replace("/dashboard");
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "Could not send invite.";
+      toast.error(msg);
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  function skipSetup() {
+    setFarmSetupOpen(false);
+    router.replace("/dashboard");
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
+      {/* Farm setup modal — shown only for MANAGER after successful registration */}
+      <Dialog open={farmSetupOpen} onOpenChange={() => {}}>
+        <DialogContent showCloseButton={false} className="max-w-sm">
+          <DialogHeader>
+            <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 mb-1">
+              <span className="text-2xl">🏡</span>
+            </div>
+            <DialogTitle className="text-lg font-bold">Set up your farm</DialogTitle>
+            <DialogDescription className="text-sm leading-relaxed">
+              Your farm has been created automatically. Invite your first handler now so they can start logging daily records — or skip and do it later from Settings.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            <Label htmlFor="inviteEmail" className="text-sm font-semibold">
+              Handler&apos;s email address
+            </Label>
+            <div className="relative">
+              <Mail className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
+                id="inviteEmail"
+                type="email"
+                placeholder="handler@example.com"
+                className="h-11 pl-10 rounded-xl"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendInvite()}
+                disabled={inviting}
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              They will receive an invite link valid for 7 days. You can invite more handlers later.
+            </p>
+          </div>
+
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button
+              className="w-full h-11 rounded-xl font-semibold"
+              onClick={sendInvite}
+              disabled={inviting || !inviteEmail.trim()}
+            >
+              {inviting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <>
+                  <UserPlus className="size-4 mr-2" />
+                  Send invite &amp; continue
+                </>
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full h-10 rounded-xl text-muted-foreground"
+              onClick={skipSetup}
+              disabled={inviting}
+            >
+              Skip for now
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Hero banner */}
       <div className="flex flex-col items-center justify-center bg-primary px-6 py-12 text-primary-foreground">
         <div className="flex size-16 items-center justify-center rounded-2xl bg-white/15 mb-4 shadow-lg">
@@ -110,6 +219,27 @@ export default function RegisterPage() {
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
+            </div>
+
+            {/* Confirm Password */}
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword" className="text-sm font-semibold">Confirm password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 size-4.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  placeholder="Re-enter your password"
+                  className={cn("h-12 pl-10 text-base rounded-xl", passwordError && "border-destructive focus-visible:ring-destructive")}
+                  value={confirmPassword}
+                  onChange={(e) => { setConfirmPassword(e.target.value); setPasswordError(""); }}
+                />
+              </div>
+              {passwordError && (
+                <p className="text-xs text-destructive">{passwordError}</p>
+              )}
             </div>
 
             {/* Role — visual card picker */}

@@ -8,7 +8,16 @@ import type { Batch, CreateBatchRequest } from "@/lib/types";
 export function useBatches() {
   return useQuery({
     queryKey: qk.batches.lists(),
-    queryFn: batchApi.list,
+    queryFn: () => batchApi.list(),
+  });
+}
+
+// Archived (retired) batches — fetched lazily, only when the user opens the section.
+export function useArchivedBatches(enabled = true) {
+  return useQuery({
+    queryKey: qk.batches.archived(),
+    queryFn: () => batchApi.list(true),
+    enabled,
   });
 }
 
@@ -53,4 +62,30 @@ export function useChangeStage(batchId: number | string) {
       queryClient.invalidateQueries({ queryKey: qk.batches.overview(batchId) });
     },
   });
+}
+
+// Moves the batch between the working list and the archived list. Both lists are
+// invalidated so whichever the user is looking at refreshes.
+function useBatchArchiveMutation(
+  batchId: number | string,
+  action: (id: number | string) => Promise<Batch>
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => action(batchId),
+    onSuccess: (updated: Batch) => {
+      queryClient.setQueryData(qk.batches.detail(batchId), updated);
+      queryClient.invalidateQueries({ queryKey: qk.batches.lists() });
+      queryClient.invalidateQueries({ queryKey: qk.batches.archived() });
+      queryClient.invalidateQueries({ queryKey: qk.batches.overview(batchId) });
+    },
+  });
+}
+
+export function useArchiveBatch(batchId: number | string) {
+  return useBatchArchiveMutation(batchId, batchApi.archive);
+}
+
+export function useRestoreBatch(batchId: number | string) {
+  return useBatchArchiveMutation(batchId, batchApi.restore);
 }

@@ -2,10 +2,13 @@
 
 import { use } from "react";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import { useBatch } from "@/hooks/use-batches";
 import { useBatchEvents } from "@/hooks/use-events";
+import { qk } from "@/lib/query-keys";
 import { useAuth } from "@/lib/auth-context";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { BatchLogSection, EventTimeline, VitalsStatus } from "@/components/batch-log-section";
@@ -17,8 +20,14 @@ export default function EventHistoryPage({
 }) {
   const { batchId } = use(params);
   const { isManager } = useAuth();
+  const queryClient = useQueryClient();
+  const isFetching = useIsFetching({ queryKey: qk.batches.detail(batchId) }) > 0;
   const { data: batch } = useBatch(batchId);
   const { data: events, isLoading } = useBatchEvents(batchId, 100);
+
+  function refreshAll() {
+    queryClient.invalidateQueries({ queryKey: qk.batches.detail(batchId) });
+  }
 
   const population = batch?.currentPopulation ?? 0;
 
@@ -36,10 +45,24 @@ export default function EventHistoryPage({
         >
           <ArrowLeft className="size-4" /> Back to batch
         </Button>
-        <h1 className="text-2xl font-bold">Event Log</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          {batch?.name ?? "Batch"} — full history of logged events
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Event Log</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              {batch?.name ?? "Batch"} — full history of logged events
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-xl text-muted-foreground hover:text-foreground"
+            onClick={refreshAll}
+            disabled={isFetching}
+            title="Refresh"
+          >
+            <RefreshCw className={cn("size-4", isFetching && "animate-spin")} />
+          </Button>
+        </div>
       </div>
 
       {/* Log section — handlers only */}
@@ -77,15 +100,13 @@ export default function EventHistoryPage({
       {/* Full event timeline — visible to all roles */}
       <section className="space-y-3">
         <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">All events</h2>
-        <div className="rounded-2xl border bg-card p-4">
-          {isLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
-            </div>
-          ) : (
-            <EventTimeline events={events ?? []} />
-          )}
-        </div>
+        {isLoading ? (
+          <div className="space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
+          </div>
+        ) : (
+          <EventTimeline events={events ?? []} />
+        )}
       </section>
 
     </div>
