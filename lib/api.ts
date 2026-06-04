@@ -58,7 +58,9 @@ export const accountApi = {
 
 // ---- Batches & lifecycle ----
 export const batchApi = {
-  list: () => apiClient.get<Batch[]>("/batches").then((r) => r.data),
+  // archived=false → the working dashboard list; archived=true → retired batches.
+  list: (archived = false) =>
+    apiClient.get<Batch[]>("/batches", { params: { archived } }).then((r) => r.data),
   get: (batchId: Id) =>
     apiClient.get<Batch>(`/batches/${batchId}`).then((r) => r.data),
   create: (body: CreateBatchRequest) =>
@@ -67,6 +69,13 @@ export const batchApi = {
     apiClient
       .patch<Batch>(`/batches/${batchId}/stage`, { stageId })
       .then((r) => r.data),
+  // Clears a manual stage override so the stage tracks the batch's age again.
+  useAutoStage: (batchId: Id) =>
+    apiClient.patch<Batch>(`/batches/${batchId}/stage/auto`).then((r) => r.data),
+  archive: (batchId: Id) =>
+    apiClient.patch<Batch>(`/batches/${batchId}/archive`).then((r) => r.data),
+  restore: (batchId: Id) =>
+    apiClient.patch<Batch>(`/batches/${batchId}/restore`).then((r) => r.data),
   overview: (batchId: Id) =>
     apiClient.get<BatchOverview>(`/batches/${batchId}/overview`).then((r) => r.data),
 };

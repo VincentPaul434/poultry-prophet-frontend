@@ -494,60 +494,224 @@ export const EVENT_EMOJI: Record<EventType, string> = {
   BEHAVIOR_OBSERVATION: "👁️",
 };
 
+const TYPE_CONFIG: Record<EventType, {
+  label: string;
+  stripe: string;
+  activeChip: string;
+  typeLabel: string;
+  countBadge: string;
+}> = {
+  MORTALITY: {
+    label: "Deaths",
+    stripe: "bg-red-500",
+    activeChip: "bg-red-500 text-white border-red-500",
+    typeLabel: "text-red-600 dark:text-red-400",
+    countBadge: "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-400 dark:border-red-800",
+  },
+  HEALTH_CONCERN: {
+    label: "Sickness",
+    stripe: "bg-amber-500",
+    activeChip: "bg-amber-500 text-white border-amber-500",
+    typeLabel: "text-amber-600 dark:text-amber-400",
+    countBadge: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800",
+  },
+  VACCINE_MEDICINE: {
+    label: "Medicine",
+    stripe: "bg-blue-500",
+    activeChip: "bg-blue-500 text-white border-blue-500",
+    typeLabel: "text-blue-600 dark:text-blue-400",
+    countBadge: "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800",
+  },
+  BEHAVIOR_OBSERVATION: {
+    label: "Behavior",
+    stripe: "bg-violet-500",
+    activeChip: "bg-violet-500 text-white border-violet-500",
+    typeLabel: "text-violet-600 dark:text-violet-400",
+    countBadge: "bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/40 dark:text-violet-400 dark:border-violet-800",
+  },
+};
+
+function relativeDate(dateStr: string): string {
+  const today = todayIso();
+  const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  if (dateStr === today) return "Today";
+  if (dateStr === yesterday) return "Yesterday";
+  return formatDate(dateStr);
+}
+
 export function EventTimeline({ events }: { events: BatchEvent[] }) {
+  const [filter, setFilter] = useState<EventType | "ALL">("ALL");
+
   if (events.length === 0) {
     return (
       <div className="py-10 text-center space-y-2">
         <p className="text-4xl">📋</p>
         <p className="text-sm font-semibold text-muted-foreground">No events logged yet</p>
-        <p className="text-xs text-muted-foreground">Tap a quick-log button to record something</p>
+        <p className="text-xs text-muted-foreground">Events logged for this batch will appear here</p>
       </div>
     );
   }
 
-  const byDate = events.reduce<Record<string, BatchEvent[]>>((acc, e) => {
+  const eventTypes = Object.keys(TYPE_CONFIG) as EventType[];
+  const filtered = filter === "ALL" ? events : events.filter((e) => e.eventType === filter);
+
+  const byDate = filtered.reduce<Record<string, BatchEvent[]>>((acc, e) => {
     if (!acc[e.eventDate]) acc[e.eventDate] = [];
     acc[e.eventDate].push(e);
     return acc;
   }, {});
 
   return (
-    <div className="space-y-5">
-      {Object.entries(byDate).map(([date, dayEvents]) => (
-        <div key={date}>
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-            {formatDate(date)}
+    <div className="space-y-4">
+
+      {/* ── Filter chips ───────────────────────────────────────────── */}
+      <div className="flex gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+        <button
+          type="button"
+          onClick={() => setFilter("ALL")}
+          className={cn(
+            "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+            filter === "ALL"
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border bg-background text-muted-foreground hover:text-foreground"
+          )}
+        >
+          All
+          <span className={cn(
+            "rounded-full px-1.5 text-[10px] font-bold leading-4",
+            filter === "ALL" ? "bg-white/20" : "bg-muted"
+          )}>
+            {events.length}
+          </span>
+        </button>
+
+        {eventTypes.map((type) => {
+          const cfg = TYPE_CONFIG[type];
+          const count = events.filter((e) => e.eventType === type).length;
+          if (count === 0) return null;
+          const active = filter === type;
+          return (
+            <button
+              key={type}
+              type="button"
+              onClick={() => setFilter(type)}
+              className={cn(
+                "flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+                active
+                  ? cfg.activeChip
+                  : "border-border bg-background text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {EVENT_EMOJI[type]} {cfg.label}
+              <span className={cn(
+                "rounded-full px-1.5 text-[10px] font-bold leading-4",
+                active ? "bg-black/20" : "bg-muted"
+              )}>
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── Empty filtered state ───────────────────────────────────── */}
+      {filtered.length === 0 && (
+        <div className="py-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            No {TYPE_CONFIG[filter as EventType]?.label.toLowerCase()} events logged yet.
           </p>
-          <div className="space-y-2">
+        </div>
+      )}
+
+      {/* ── Events grouped by date ─────────────────────────────────── */}
+      {Object.entries(byDate)
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([date, dayEvents]) => (
+          <div key={date} className="space-y-2">
+
+            {/* Date divider */}
+            <div className="flex items-center gap-2 px-0.5">
+              <span className="shrink-0 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                {relativeDate(date)}
+              </span>
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-[10px] font-medium text-muted-foreground">
+                {dayEvents.length}
+              </span>
+            </div>
+
+            {/* Cards */}
             {dayEvents.map((ev) => {
+              const cfg = TYPE_CONFIG[ev.eventType];
               const tags = ev.tags ? ev.tags.split(",").filter(Boolean) : [];
               return (
-                <div key={ev.id} className="flex gap-3 rounded-2xl border bg-card p-3.5">
-                  <span className="text-2xl shrink-0 mt-0.5">{EVENT_EMOJI[ev.eventType]}</span>
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-bold">{ev.title}</span>
-                      {ev.severityLabel && <Badge variant="outline" className="text-[10px] font-semibold">{ev.severityLabel}</Badge>}
-                      {ev.affectedCount > 0 && <span className="text-xs text-muted-foreground">{ev.affectedCount} bird{ev.affectedCount !== 1 ? "s" : ""}</span>}
-                    </div>
-                    {tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {tags.map((t) => <span key={t} className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{t}</span>)}
+                <div key={ev.id} className="relative overflow-hidden rounded-2xl border bg-card">
+                  {/* Left accent stripe */}
+                  <div className={cn("absolute inset-y-0 left-0 w-1", cfg.stripe)} />
+
+                  <div className="flex gap-3 p-3.5 pl-5">
+                    {/* Type icon */}
+                    <div className="mt-0.5 shrink-0 text-xl">{EVENT_EMOJI[ev.eventType]}</div>
+
+                    {/* Content */}
+                    <div className="min-w-0 flex-1 space-y-1">
+
+                      {/* Row 1 — type label + logged-at time */}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={cn("text-[10px] font-bold uppercase tracking-wide", cfg.typeLabel)}>
+                          {cfg.label}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {formatDateTime(ev.createdAt)}
+                        </span>
                       </div>
-                    )}
-                    {ev.details && <p className="text-xs text-muted-foreground">{ev.details}</p>}
-                    <div className="flex items-center gap-1.5 pt-0.5">
-                      <span className="text-[10px] font-semibold text-primary/70">{ev.handlerName}</span>
-                      <span className="text-[10px] text-muted-foreground">·</span>
-                      <span className="text-[10px] text-muted-foreground">{formatDateTime(ev.createdAt)}</span>
+
+                      {/* Row 2 — title + birds affected */}
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-bold leading-snug">{ev.title}</p>
+                        {ev.affectedCount > 0 && (
+                          <span className={cn(
+                            "shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-bold",
+                            cfg.countBadge
+                          )}>
+                            {ev.affectedCount} bird{ev.affectedCount !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Row 3 — tags */}
+                      {tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-0.5">
+                          {tags.map((t) => (
+                            <span key={t} className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Row 4 — notes */}
+                      {ev.details && (
+                        <p className="text-xs leading-snug text-muted-foreground">{ev.details}</p>
+                      )}
+
+                      {/* Row 5 — severity + handler */}
+                      <div className="flex items-center gap-2 pt-0.5">
+                        {ev.severityLabel && (
+                          <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-semibold">
+                            {ev.severityLabel}
+                          </Badge>
+                        )}
+                        <span className="text-[10px] text-muted-foreground">{ev.handlerName}</span>
+                      </div>
+
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
-      ))}
+        ))}
     </div>
   );
 }
