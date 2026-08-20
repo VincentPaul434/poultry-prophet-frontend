@@ -50,10 +50,19 @@ apiClient.interceptors.response.use(
     const status = error.response?.status ?? 0;
 
     if (status === 401 && typeof window !== "undefined") {
-      clearSession();
-      // Avoid redirect loops if we are already on an auth screen.
-      if (!window.location.pathname.startsWith("/login")) {
-        window.location.href = "/login";
+      const currentToken = getToken();
+      const requestAuthorization = error.config?.headers?.Authorization;
+      const requestUsedCurrentSession =
+        !currentToken || requestAuthorization === `Bearer ${currentToken}`;
+
+      // An old in-flight request must not log out a newer session that was
+      // established while it was still completing.
+      if (requestUsedCurrentSession) {
+        clearSession();
+        // Avoid redirect loops if we are already on an auth screen.
+        if (!window.location.pathname.startsWith("/login")) {
+          window.location.href = "/login";
+        }
       }
     }
 

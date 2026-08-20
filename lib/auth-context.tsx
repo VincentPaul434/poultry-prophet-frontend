@@ -52,18 +52,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (body: LoginRequest) => {
+    await queryClient.cancelQueries();
     const auth = await authApi.login(body);
+    // Discard queries from any previous session before the new user's
+    // farm-scoped requests start. Otherwise stale/in-flight queries can
+    // surface 401/403 responses after the redirect to the dashboard.
+    queryClient.clear();
     const stored = saveSession(auth);
     setUser(stored);
     return stored;
-  }, []);
+  }, [queryClient]);
 
   const register = useCallback(async (body: RegisterRequest) => {
+    await queryClient.cancelQueries();
     const auth = await authApi.register(body);
+    queryClient.clear();
     const stored = saveSession(auth);
     setUser(stored);
     return stored;
-  }, []);
+  }, [queryClient]);
 
   const acceptInvite = useCallback(
     async (token: string) => {
