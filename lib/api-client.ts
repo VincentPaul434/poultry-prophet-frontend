@@ -8,7 +8,8 @@ import axios, { AxiosError, type AxiosInstance } from "axios";
 import { clearSession, getToken } from "./auth-storage";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "https://poultry-prophet-backend.onrender.com/api";
 
 // Shape Spring's GlobalExceptionHandler returns.
 interface SpringApiError {

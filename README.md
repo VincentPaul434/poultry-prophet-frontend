@@ -24,6 +24,9 @@ The app expects the backend on `http://localhost:8080`. Configure via `.env.loca
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8080/api
 ```
 
+When `NEXT_PUBLIC_API_BASE_URL` is not set, the deployed app uses the live
+Render backend at `https://poultry-prophet-backend.onrender.com/api`.
+
 ## Architecture
 
 ```

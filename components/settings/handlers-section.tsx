@@ -98,7 +98,7 @@ function AddHandlerDialog() {
     try {
       const token = localStorage.getItem("pp_auth_token");
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api"}/handlers`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://poultry-prophet-backend.onrender.com/api"}/handlers`,
         {
           method: "POST",
           headers: {
