@@ -9,6 +9,7 @@ import Link from "next/link";
 import { ArrowRight, Warehouse, X } from "lucide-react";
 import { useFarm } from "@/hooks/use-farm";
 import { useAuth } from "@/lib/auth-context";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export function FarmOnboardingBanner() {
@@ -24,22 +25,30 @@ export function FarmOnboardingBanner() {
     <div
       role="region"
       aria-label="Farm setup"
-      className="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card p-5 shadow-sm sm:p-6"
+      className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/15 via-card to-card p-6 shadow-sm"
     >
+      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-primary/20 blur-2xl" />
+      <div className="pointer-events-none absolute -bottom-16 left-10 h-32 w-32 rounded-full bg-amber-400/15 blur-2xl" />
       <button
         type="button"
         onClick={() => setDismissed(true)}
         aria-label="Dismiss"
-        className="absolute top-3 right-3 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="absolute top-3 right-3 rounded-full bg-background/80 p-1 text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
       >
         <X className="size-4" />
       </button>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+        <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary shadow-sm">
           <Warehouse className="size-6" />
         </div>
         <div className="flex-1 space-y-3">
+          <Badge
+            variant="secondary"
+            className="w-fit rounded-full px-2 text-[10px] uppercase tracking-[0.2em]"
+          >
+            Setup required
+          </Badge>
           <div className="space-y-1">
             <h2 className="text-lg font-semibold tracking-tight">
               Complete Your Farm Setup
@@ -50,7 +59,11 @@ export function FarmOnboardingBanner() {
               analytics.
             </p>
           </div>
-          <Button render={<Link href="/settings/farm" />}>
+          <Button
+            nativeButton={false}
+            render={<Link href="/settings/farm" />}
+            className="rounded-full px-4 text-sm font-semibold"
+          >
             Go to Farm Settings
             <ArrowRight className="size-4" />
           </Button>

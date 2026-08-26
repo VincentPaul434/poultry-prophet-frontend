@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, Bird, LayoutDashboard, LogOut, Settings } from "lucide-react";
@@ -8,6 +9,15 @@ import { useFarmAlerts } from "@/hooks/use-analytics";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
 
 const NAV = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard },
@@ -26,13 +36,6 @@ function initials(name: string | undefined) {
     .toUpperCase();
 }
 
-function greeting(name: string | undefined) {
-  const hour = new Date().getHours();
-  const salutation =
-    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const first = name?.split(" ")[0] ?? "";
-  return first ? `${salutation}, ${first}!` : salutation;
-}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -40,9 +43,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Unacknowledged alerts across the farm, driving the nav bell badge.
   const { data: activeAlerts } = useFarmAlerts(true, !!user);
   const unread = activeAlerts?.length ?? 0;
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen">
+    // Pin the shell to the viewport so the sidebar stays put and only <main> scrolls.
+    <div className="flex h-screen overflow-hidden">
+      <Dialog open={logoutOpen} onOpenChange={setLogoutOpen}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Sign out?</DialogTitle>
+            <DialogDescription>
+              You will be returned to the login screen.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" />}>
+              Cancel
+            </DialogClose>
+            <Button variant="destructive" onClick={() => { setLogoutOpen(false); logout(); }}>
+              Sign out
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* ── Desktop sidebar ───────────────────────────────────────── */}
       <aside className="hidden w-64 shrink-0 flex-col border-r bg-sidebar md:flex">
         {/* Logo */}
@@ -60,15 +83,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
 
-        {/* Greeting */}
-        <div className="px-5 pt-5 pb-3">
-          <p className="text-xs font-medium text-sidebar-foreground/60 leading-snug">
-            {greeting(user?.fullName)}
-          </p>
-        </div>
-
-        {/* Nav links */}
-        <nav className="flex-1 space-y-0.5 px-3">
+        {/* Nav links — scrolls on its own if the list ever exceeds the sidebar,
+            keeping the profile + sign-out below always visible. */}
+        <nav className="flex-1 min-h-0 overflow-y-auto space-y-0.5 px-3">
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);
             const badge = href === "/alerts" ? unread : 0;
@@ -116,7 +133,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             variant="ghost"
             size="sm"
             className="mt-2 w-full justify-start gap-2 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-            onClick={logout}
+            onClick={() => setLogoutOpen(true)}
           >
             <LogOut className="size-4" />
             Sign out
@@ -187,7 +204,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
           {/* Sign out */}
           <button
-            onClick={logout}
+            onClick={() => setLogoutOpen(true)}
             className="flex flex-1 flex-col items-center justify-center gap-1 py-3 text-[11px] font-semibold text-muted-foreground hover:text-destructive transition-colors"
           >
             <LogOut className="size-5" />

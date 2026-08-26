@@ -19,6 +19,7 @@ export const qk = {
   batches: {
     all: ["batches"] as const,
     lists: () => [...qk.batches.all, "list"] as const,
+    archived: () => [...qk.batches.all, "archived"] as const,
     detail: (batchId: number | string) =>
       [...qk.batches.all, String(batchId)] as const,
     overview: (batchId: number | string) =>

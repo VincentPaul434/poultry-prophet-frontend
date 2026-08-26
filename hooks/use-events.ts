@@ -18,9 +18,11 @@ export function useCreateEvent(batchId: number | string) {
   return useMutation({
     mutationFn: (body: CreateBatchEventRequest) => batchEventApi.create(batchId, body),
     onSuccess: () => {
-      // Invalidate the whole batch subtree — a mortality event can change population
-      // and trigger indicator/alert recomputation via DailyRecord propagation.
+      // A mortality event can change currentPopulation and triggers indicator/alert
+      // recomputation via DailyRecord propagation. Invalidate the batch detail subtree
+      // AND the list so the dashboard head count stays current.
       queryClient.invalidateQueries({ queryKey: qk.batches.detail(batchId) });
+      queryClient.invalidateQueries({ queryKey: qk.batches.lists() });
     },
   });
 }
