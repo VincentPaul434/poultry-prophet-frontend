@@ -5,9 +5,23 @@ import { usePathname } from "next/navigation";
 import { Bell, Bird, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useFarmAlerts } from "@/hooks/use-analytics";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 
 const NAV = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard },
@@ -37,69 +51,71 @@ function greeting(name: string | undefined) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
-  // Unacknowledged alerts across the farm, driving the nav bell badge.
   const { data: activeAlerts } = useFarmAlerts(true, !!user);
   const unread = activeAlerts?.length ?? 0;
 
   return (
-    <div className="flex min-h-screen">
-      {/* ── Desktop sidebar ───────────────────────────────────────── */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r bg-sidebar md:flex">
-        {/* Logo */}
-        <div className="flex h-16 items-center gap-3 px-6 border-b border-sidebar-border">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-primary/20">
-            <Bird className="size-5 text-primary" />
+    <SidebarProvider className="md:h-screen md:min-h-0">
+      <Sidebar>
+        <SidebarHeader className="h-16 justify-center border-b border-sidebar-border px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-xl bg-primary/20">
+              <Bird className="size-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-bold tracking-tight text-sidebar-foreground">
+                Poultry Prophet
+              </p>
+              <p className="truncate text-[10px] uppercase tracking-widest text-sidebar-foreground/50">
+                {user?.role === "MANAGER" ? "Farm Manager" : "Handler"}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold text-sidebar-foreground tracking-tight">
-              Poultry Prophet
-            </p>
-            <p className="truncate text-[10px] text-sidebar-foreground/50 uppercase tracking-widest">
-              {user?.role === "MANAGER" ? "Farm Manager" : "Handler"}
+        </SidebarHeader>
+
+        <SidebarContent>
+          <div className="px-4 pb-2 pt-5">
+            <p className="text-xs font-medium leading-snug text-sidebar-foreground/60">
+              {greeting(user?.fullName)}
             </p>
           </div>
-        </div>
 
-        {/* Greeting */}
-        <div className="px-5 pt-5 pb-3">
-          <p className="text-xs font-medium text-sidebar-foreground/60 leading-snug">
-            {greeting(user?.fullName)}
-          </p>
-        </div>
+          <SidebarGroup className="p-3 pt-0">
+            <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {NAV.map(({ href, label, icon: Icon }) => {
+                  const active = pathname === href || pathname.startsWith(`${href}/`);
+                  const badge = href === "/alerts" ? unread : 0;
 
-        {/* Nav links */}
-        <nav className="flex-1 space-y-0.5 px-3">
-          {NAV.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(`${href}/`);
-            const badge = href === "/alerts" ? unread : 0;
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-colors",
-                  active
-                    ? "bg-sidebar-primary/20 text-sidebar-primary"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                )}
-              >
-                <Icon className="size-5" />
-                {label}
-                {badge > 0 && (
-                  <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-                    {badge > 99 ? "99+" : badge}
-                  </span>
-                )}
-              </Link>
-            );
-          })}
-        </nav>
+                  return (
+                    <SidebarMenuItem key={href}>
+                      <SidebarMenuButton
+                        render={<Link href={href} />}
+                        isActive={active}
+                        size="lg"
+                        tooltip={label}
+                      >
+                        <Icon />
+                        <span>{label}</span>
+                      </SidebarMenuButton>
+                      {badge > 0 && (
+                        <SidebarMenuBadge>
+                          {badge > 99 ? "99+" : badge}
+                        </SidebarMenuBadge>
+                      )}
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
 
-        {/* User profile + logout */}
-        <div className="border-t border-sidebar-border p-4">
-          <div className="flex items-center gap-3 rounded-xl px-2 py-2">
+        <SidebarFooter className="border-t border-sidebar-border p-3">
+          <div className="flex items-center gap-3 rounded-md px-2 py-2">
             <Avatar className="size-9 ring-2 ring-sidebar-primary/30">
-              <AvatarFallback className="bg-sidebar-primary/20 text-sidebar-primary text-xs font-bold">
+              <AvatarFallback className="bg-sidebar-primary/20 text-xs font-bold text-sidebar-primary">
                 {initials(user?.fullName)}
               </AvatarFallback>
             </Avatar>
@@ -112,89 +128,37 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </p>
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="mt-2 w-full justify-start gap-2 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-            onClick={logout}
-          >
-            <LogOut className="size-4" />
-            Sign out
-          </Button>
-        </div>
-      </aside>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={logout}
+                size="lg"
+                className="text-sidebar-foreground/70 hover:text-sidebar-foreground"
+                tooltip="Sign out"
+              >
+                <LogOut />
+                <span>Sign out</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
 
-      {/* ── Main content ──────────────────────────────────────────── */}
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile top bar */}
-        <header className="flex h-14 shrink-0 items-center justify-between border-b bg-card px-4 md:hidden">
+      <SidebarInset className="min-h-0">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b bg-card px-4 md:hidden">
+          <SidebarTrigger />
           <div className="flex items-center gap-2.5">
             <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
               <Bird className="size-4 text-primary" />
             </div>
             <span className="text-sm font-bold tracking-tight">Poultry Prophet</span>
           </div>
-          <div className="flex items-center gap-1">
-            <Avatar className="size-8">
-              <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                {initials(user?.fullName)}
-              </AvatarFallback>
-            </Avatar>
-          </div>
         </header>
 
-        {/* Page content — extra bottom padding for the mobile nav */}
-        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-6 md:pb-6">
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 pb-24 sm:p-6 md:pb-6 lg:p-8 xl:p-10">
           {children}
         </main>
-
-        {/* ── Mobile bottom navigation ──────────────────────────── */}
-        <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-stretch border-t bg-card shadow-lg md:hidden"
-             style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
-          {NAV.map(({ href, label, icon: Icon }) => {
-            const active = pathname === href || pathname.startsWith(`${href}/`);
-            const badge = href === "/alerts" ? unread : 0;
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "relative flex flex-1 flex-col items-center justify-center gap-1 py-3 text-[11px] font-semibold transition-colors",
-                  active
-                    ? "text-primary"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                <span className="relative">
-                  <Icon
-                    className={cn(
-                      "size-5 transition-transform",
-                      active && "scale-110"
-                    )}
-                  />
-                  {badge > 0 && (
-                    <span className="absolute -top-1.5 -right-2 inline-flex min-w-4 items-center justify-center rounded-full bg-red-500 px-1 py-0.5 text-[9px] font-bold leading-none text-white">
-                      {badge > 9 ? "9+" : badge}
-                    </span>
-                  )}
-                </span>
-                {label}
-                {active && (
-                  <span className="absolute top-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-primary" />
-                )}
-              </Link>
-            );
-          })}
-          {/* Sign out */}
-          <button
-            onClick={logout}
-            className="flex flex-1 flex-col items-center justify-center gap-1 py-3 text-[11px] font-semibold text-muted-foreground hover:text-destructive transition-colors"
-          >
-            <LogOut className="size-5" />
-            Sign out
-          </button>
-        </nav>
-      </div>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

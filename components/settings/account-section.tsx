@@ -21,9 +21,9 @@ export function AccountSection() {
   if (!user) return null;
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl border bg-card p-4 space-y-4">
-        <div className="flex items-center gap-3">
+    <div className="space-y-6">
+      <div className="space-y-6 rounded-2xl border bg-card p-5 sm:p-7">
+        <div className="flex items-center gap-4">
           <Avatar className="size-12">
             <AvatarFallback className="bg-primary/10 text-primary font-bold">
               {initials(user.fullName)}
@@ -72,30 +72,32 @@ function ProfileForm({ user }: { user: StoredUser }) {
   }
 
   return (
-    <form onSubmit={save} className="space-y-4 border-t pt-4">
-      <div className="space-y-2">
-        <Label htmlFor="acct-name" className="font-semibold">Full name</Label>
-        <Input
-          id="acct-name"
-          required
-          className="h-11 rounded-xl"
-          value={fullName}
-          onChange={(e) => setFullName(e.target.value)}
-        />
+    <form onSubmit={save} className="space-y-6 border-t pt-6">
+      <div className="grid gap-5 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="acct-name" className="font-semibold">Full name</Label>
+          <Input
+            id="acct-name"
+            required
+            className="h-11 rounded-xl"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="acct-email" className="font-semibold">Email address</Label>
+          <Input
+            id="acct-email"
+            type="email"
+            required
+            className="h-11 rounded-xl"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">Used to sign in. Changing it keeps you logged in.</p>
+        </div>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="acct-email" className="font-semibold">Email address</Label>
-        <Input
-          id="acct-email"
-          type="email"
-          required
-          className="h-11 rounded-xl"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <p className="text-xs text-muted-foreground">Used to sign in. Changing it keeps you logged in.</p>
-      </div>
-      <div className="flex justify-end">
+      <div className="flex justify-end border-t pt-5">
         <Button
           type="submit"
           className="h-11 rounded-xl px-5 font-semibold"
@@ -140,8 +142,8 @@ function PasswordForm() {
   }
 
   return (
-    <form onSubmit={submit} className="rounded-2xl border bg-card p-4 space-y-4">
-      <div className="flex items-center gap-2.5">
+    <form onSubmit={submit} className="space-y-6 rounded-2xl border bg-card p-5 sm:p-7">
+      <div className="flex items-center gap-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
           <KeyRound className="size-5" />
         </span>
@@ -150,44 +152,46 @@ function PasswordForm() {
           <p className="text-xs text-muted-foreground">Use at least 8 characters</p>
         </div>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="pw-current" className="font-semibold">Current password</Label>
-        <Input
-          id="pw-current"
-          type="password"
-          required
-          autoComplete="current-password"
-          className="h-11 rounded-xl"
-          value={current}
-          onChange={(e) => setCurrent(e.target.value)}
-        />
+      <div className="grid gap-5 md:grid-cols-3">
+        <div className="space-y-2">
+          <Label htmlFor="pw-current" className="font-semibold">Current password</Label>
+          <Input
+            id="pw-current"
+            type="password"
+            required
+            autoComplete="current-password"
+            className="h-11 rounded-xl"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="pw-new" className="font-semibold">New password</Label>
+          <Input
+            id="pw-new"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            className="h-11 rounded-xl"
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="pw-confirm" className="font-semibold">Confirm new password</Label>
+          <Input
+            id="pw-confirm"
+            type="password"
+            required
+            autoComplete="new-password"
+            className="h-11 rounded-xl"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+        </div>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="pw-new" className="font-semibold">New password</Label>
-        <Input
-          id="pw-new"
-          type="password"
-          required
-          minLength={8}
-          autoComplete="new-password"
-          className="h-11 rounded-xl"
-          value={next}
-          onChange={(e) => setNext(e.target.value)}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="pw-confirm" className="font-semibold">Confirm new password</Label>
-        <Input
-          id="pw-confirm"
-          type="password"
-          required
-          autoComplete="new-password"
-          className="h-11 rounded-xl"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-        />
-      </div>
-      <div className="flex justify-end">
+      <div className="flex justify-end border-t pt-5">
         <Button
           type="submit"
           className="h-11 rounded-xl px-5 font-semibold"

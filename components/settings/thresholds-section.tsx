@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
 import type { Threshold } from "@/lib/types";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -26,8 +27,8 @@ export function ThresholdsSection() {
   const thresholds = useThresholds();
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-muted-foreground">
+    <div className="space-y-5">
+      <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
         {isManager
           ? "Set the ranges that trigger alerts. Outside these limits = alert sent."
           : "Alert ranges set by your manager."}
@@ -35,14 +36,15 @@ export function ThresholdsSection() {
 
       {thresholds.isLoading && (
         <div className="space-y-2">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
         </div>
       )}
       {thresholds.isError && (
         <p className="text-sm text-destructive">Failed to load thresholds.</p>
       )}
       {thresholds.data && thresholds.data.length === 0 && (
-        <div className="rounded-2xl border border-dashed bg-card py-10 text-center space-y-2">
+        <Card className="border-dashed shadow-none">
+          <CardContent className="flex flex-col items-center gap-3 p-10 text-center">
           <p className="text-3xl">🔔</p>
           <p className="text-sm font-semibold">No alert thresholds yet</p>
           <p className="text-xs text-muted-foreground">
@@ -50,7 +52,8 @@ export function ThresholdsSection() {
               ? "Default thresholds aren't configured. Contact support if this persists."
               : "Your manager hasn't configured alert ranges yet."}
           </p>
-        </div>
+          </CardContent>
+        </Card>
       )}
       {thresholds.data?.map((t) => (
         // Keyed on the saved values so a server update re-initialises the inputs
@@ -88,8 +91,9 @@ function ThresholdCard({ threshold, editable }: { threshold: Threshold; editable
   }
 
   return (
-    <div className="rounded-2xl border bg-card p-4 space-y-3">
-      <div className="flex items-start justify-between gap-2">
+    <Card>
+      <CardContent className="space-y-6 p-5 sm:p-6">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <span className="text-2xl">{meta.icon}</span>
           <div>
@@ -103,8 +107,8 @@ function ThresholdCard({ threshold, editable }: { threshold: Threshold; editable
           </span>
         )}
       </div>
-      <div className="flex items-end gap-3">
-        <div className="space-y-1.5 flex-1">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-end">
+        <div className="space-y-1.5">
           <label className="text-xs font-semibold text-muted-foreground">Min</label>
           <Input
             type="number"
@@ -115,8 +119,8 @@ function ThresholdCard({ threshold, editable }: { threshold: Threshold; editable
             onChange={(e) => setMin(e.target.value)}
           />
         </div>
-        <div className="pb-3 text-muted-foreground font-bold">–</div>
-        <div className="space-y-1.5 flex-1">
+        <div className="hidden pb-3 text-muted-foreground font-bold sm:block">–</div>
+        <div className="space-y-1.5">
           <label className="text-xs font-semibold text-muted-foreground">Max</label>
           <Input
             type="number"
@@ -130,7 +134,7 @@ function ThresholdCard({ threshold, editable }: { threshold: Threshold; editable
         {editable && (
           <Button
             size="sm"
-            className="h-11 rounded-xl px-4 font-semibold"
+            className="h-11 w-full rounded-xl px-4 font-semibold sm:col-span-3"
             onClick={save}
             disabled={!dirty || update.isPending}
           >
@@ -139,6 +143,7 @@ function ThresholdCard({ threshold, editable }: { threshold: Threshold; editable
           </Button>
         )}
       </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

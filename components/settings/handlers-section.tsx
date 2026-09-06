@@ -31,16 +31,19 @@ export function HandlersSection() {
   const handlers = useHandlers(true);
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">People who care for the birds</p>
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 rounded-2xl border bg-card p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div>
+          <p className="text-base font-semibold">People who care for the birds</p>
+          <p className="mt-1 text-sm text-muted-foreground">Add handlers and give them access to daily farm work.</p>
+        </div>
         <AddHandlerDialog />
       </div>
 
-      <div className="rounded-2xl border bg-card overflow-hidden">
+      <div className="overflow-hidden rounded-2xl border bg-card">
         {handlers.isLoading && (
-          <div className="p-4 space-y-3">
-            {[1, 2].map((i) => <Skeleton key={i} className="h-14 rounded-xl" />)}
+          <div className="space-y-3 p-5 sm:p-6">
+            {[1, 2].map((i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
           </div>
         )}
         {handlers.data && handlers.data.length === 0 && (
@@ -56,7 +59,7 @@ export function HandlersSection() {
               <div
                 key={h.id}
                 className={cn(
-                  "flex items-center gap-3 px-4 py-3",
+                  "flex items-center gap-3 px-5 py-4 sm:px-6",
                   idx !== 0 && "border-t"
                 )}
               >
@@ -130,13 +133,13 @@ function AddHandlerDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button size="sm" className="h-9 rounded-xl px-4 font-semibold">
+          <Button size="sm" className="h-9 w-full rounded-xl px-4 font-semibold sm:w-auto">
             <UserPlus className="size-4" />
             Add Handler
           </Button>
         }
       />
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg">
         <form onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>Add a handler</DialogTitle>
@@ -144,7 +147,7 @@ function AddHandlerDialog() {
               Create a handler account for someone on your farm. Share their login details with them.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-5 py-5">
             <div className="space-y-2">
               <Label htmlFor="h-name" className="font-semibold">Full name</Label>
               <Input

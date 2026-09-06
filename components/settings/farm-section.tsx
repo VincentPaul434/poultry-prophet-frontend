@@ -20,7 +20,7 @@ export function FarmSection() {
 
   if (farm.isLoading) {
     return (
-      <div className="rounded-2xl border bg-card p-4 space-y-3">
+      <div className="space-y-4 rounded-2xl border bg-card p-5 sm:p-7">
         {[1, 2, 3].map((i) => <Skeleton key={i} className="h-11 rounded-xl" />)}
       </div>
     );
@@ -62,36 +62,38 @@ function FarmProfileForm({ farm }: { farm: Farm }) {
   }
 
   return (
-    <form onSubmit={save} className="rounded-2xl border bg-card p-4 space-y-4">
+    <form onSubmit={save} className="space-y-6 rounded-2xl border bg-card p-5 sm:p-7">
       {needsSetup && (
         <p className="rounded-xl bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
           Finish setting up your farm to unlock the full dashboard.
         </p>
       )}
-      <div className="space-y-2">
-        <Label htmlFor="farm-name" className="font-semibold">
-          Farm name <span className="text-destructive">*</span>
-        </Label>
-        <Input
-          id="farm-name"
-          required
-          placeholder="e.g. Sunrise Game Fowl Farm"
-          className="h-11 rounded-xl"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="farm-location" className="font-semibold">
-          Location <span className="font-normal text-muted-foreground">(optional)</span>
-        </Label>
-        <Input
-          id="farm-location"
-          placeholder="e.g. Batangas, Philippines"
-          className="h-11 rounded-xl"
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
-        />
+      <div className="grid gap-5 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="farm-name" className="font-semibold">
+            Farm name <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="farm-name"
+            required
+            placeholder="e.g. Sunrise Game Fowl Farm"
+            className="h-11 rounded-xl"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="farm-location" className="font-semibold">
+            Location <span className="font-normal text-muted-foreground">(optional)</span>
+          </Label>
+          <Input
+            id="farm-location"
+            placeholder="e.g. Batangas, Philippines"
+            className="h-11 rounded-xl"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+          />
+        </div>
       </div>
       <div className="space-y-2">
         <Label htmlFor="farm-description" className="font-semibold">
@@ -105,7 +107,7 @@ function FarmProfileForm({ farm }: { farm: Farm }) {
           onChange={(e) => setDescription(e.target.value)}
         />
       </div>
-      <div className="flex justify-end">
+      <div className="flex justify-end border-t pt-5">
         <Button
           type="submit"
           className="h-11 rounded-xl px-5 font-semibold"

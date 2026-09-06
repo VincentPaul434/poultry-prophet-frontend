@@ -13,15 +13,18 @@ import { useBatches } from "@/hooks/use-batches";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { formatDateTime } from "@/lib/format";
-import type { Alert, Severity } from "@/lib/types";
+import type { Alert as AlertRecord, Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const severityConfig: Record<Severity, { label: string; cls: string; icon: string }> = {
-  INFO: { label: "Info", cls: "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/40", icon: "ℹ️" },
-  WARNING: { label: "Warning", cls: "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40", icon: "⚠️" },
-  CRITICAL: { label: "Critical", cls: "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40", icon: "🚨" },
+  INFO: { label: "Info", cls: "border-primary/20 bg-primary/5", icon: "ℹ️" },
+  WARNING: { label: "Warning", cls: "border-accent bg-accent/25", icon: "⚠️" },
+  CRITICAL: { label: "Critical", cls: "border-destructive/25 bg-destructive/5", icon: "🚨" },
 };
 
 const SEVERITY_RANK: Record<Severity, number> = { CRITICAL: 0, WARNING: 1, INFO: 2 };
@@ -42,23 +45,23 @@ export default function AlertsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Alerts</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">
+    <div className="mx-auto w-full max-w-5xl space-y-8">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Alerts</h1>
+          <p className="text-sm text-muted-foreground">
             {showAll
               ? "All alerts across your batches."
               : "Unacknowledged alerts across your batches."}
           </p>
         </div>
         {/* Active / All toggle */}
-        <div className="flex shrink-0 rounded-xl border bg-card p-0.5 text-xs font-semibold">
+        <div className="flex self-start rounded-xl border bg-card p-1 text-xs font-semibold sm:self-auto">
           <button
             type="button"
             onClick={() => setShowAll(false)}
             className={cn(
-              "rounded-lg px-3 py-1.5 transition-colors",
+              "rounded-lg px-4 py-2 transition-colors",
               !showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -68,7 +71,7 @@ export default function AlertsPage() {
             type="button"
             onClick={() => setShowAll(true)}
             className={cn(
-              "rounded-lg px-3 py-1.5 transition-colors",
+              "rounded-lg px-4 py-2 transition-colors",
               showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -78,35 +81,41 @@ export default function AlertsPage() {
       </div>
 
       {alerts.isLoading && (
-        <div className="space-y-2">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 rounded-2xl" />)}
         </div>
       )}
 
       {alerts.isError && (
-        <p className="text-sm text-destructive">Failed to load alerts.</p>
+        <Alert variant="destructive">
+          <Bell />
+          <AlertTitle>Failed to load alerts</AlertTitle>
+          <AlertDescription>Please try again in a moment.</AlertDescription>
+        </Alert>
       )}
 
       {alerts.data && sorted.length === 0 && (
-        <div className="rounded-2xl border border-dashed bg-card py-14 text-center space-y-2">
+        <Card className="border-dashed shadow-none">
+          <CardContent className="flex flex-col items-center gap-3 p-10 text-center sm:p-16">
           <div className="flex justify-center">
             <span className="flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
               <Bell className="size-6" />
             </span>
           </div>
-          <p className="text-sm font-semibold">
+          <p className="text-base font-semibold">
             {showAll ? "No alerts yet" : "You're all caught up"}
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="max-w-md text-sm text-muted-foreground">
             {showAll
               ? "Alerts will appear here when a batch crosses a threshold."
               : "No unacknowledged alerts right now."}
           </p>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {sorted.length > 0 && (
-        <div className="space-y-2.5">
+        <div className="space-y-4">
           {sorted.map((a) => (
             <AlertRow
               key={a.id}
@@ -126,7 +135,7 @@ function AlertRow({
   batchName,
   canAck,
 }: {
-  alert: Alert;
+  alert: AlertRecord;
   batchName: string;
   canAck: boolean;
 }) {
@@ -141,13 +150,15 @@ function AlertRow({
   }
 
   return (
-    <div className={cn("rounded-2xl border p-4", cfg.cls)}>
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 shrink-0 text-xl">{cfg.icon}</span>
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-bold uppercase tracking-wide">{cfg.label}</span>
-            <span className="text-[10px] text-muted-foreground">{formatDateTime(alert.createdAt)}</span>
+    <div className={cn("rounded-2xl border p-5 sm:p-6", cfg.cls)}>
+      <div className="flex items-start gap-4">
+        <span className="mt-0.5 flex size-10 shrink-0 items-center justify-center rounded-xl bg-background/70 text-xl">
+          {cfg.icon}
+        </span>
+        <div className="min-w-0 flex-1 space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <Badge variant="outline" className="w-fit uppercase tracking-wide">{cfg.label}</Badge>
+            <span className="text-xs text-muted-foreground">{formatDateTime(alert.createdAt)}</span>
           </div>
 
           <Link
@@ -158,7 +169,7 @@ function AlertRow({
             <ChevronRight className="size-3.5" />
           </Link>
 
-          <p className="text-sm leading-snug">{alert.message}</p>
+          <p className="text-sm leading-relaxed sm:text-base">{alert.message}</p>
 
           {alert.acknowledged ? (
             <p className="flex items-center gap-1.5 pt-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">

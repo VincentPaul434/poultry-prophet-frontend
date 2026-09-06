@@ -3,11 +3,19 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bird, Loader2, Lock, Mail } from "lucide-react";
+import { Bird, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -34,90 +42,70 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      {/* Hero banner */}
-      <div className="flex flex-col items-center justify-center bg-primary px-6 py-14 text-primary-foreground">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-white/15 mb-4 shadow-lg">
-          <Bird className="size-9" />
-        </div>
-        <h1 className="text-2xl font-bold tracking-tight">Poultry Prophet</h1>
-        <p className="mt-1.5 text-sm text-primary-foreground/70 text-center max-w-xs">
-          Game fowl batch tracker for your farm
-        </p>
-      </div>
+    <div className="flex min-h-svh items-center justify-center bg-muted/40 p-6 md:p-10">
+      <div className="w-full max-w-sm">
+        <Card>
+          <CardHeader className="text-center">
+            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
+              <Bird className="size-6" aria-hidden="true" />
+            </div>
+            <CardTitle className="text-2xl">Login to your account</CardTitle>
+            <CardDescription>
+              Enter your email below to login to Poultry Prophet
+            </CardDescription>
+          </CardHeader>
 
-      {/* Form card */}
-      <div className="flex flex-1 items-start justify-center px-5 pt-8 pb-10">
-        <div className="w-full max-w-sm space-y-6">
-          <div className="space-y-1">
-            <h2 className="text-xl font-bold">Sign in</h2>
-            <p className="text-sm text-muted-foreground">Enter your account details below.</p>
-          </div>
-
-          <form onSubmit={onSubmit} className="space-y-4">
-            {/* Email */}
-            <div className="space-y-2">
-              <Label htmlFor="email" className="text-sm font-semibold">
-                Email address
-              </Label>
-              <div className="relative">
-                <Mail className="absolute left-3.5 top-1/2 size-4.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+          <CardContent>
+            <form onSubmit={onSubmit} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
                 <Input
                   id="email"
                   type="email"
                   autoComplete="email"
                   required
                   placeholder="you@example.com"
-                  className="h-12 pl-10 text-base rounded-xl"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-            </div>
 
-            {/* Password */}
-            <div className="space-y-2">
-              <Label htmlFor="password" className="text-sm font-semibold">
-                Password
-              </Label>
-              <div className="relative">
-                <Lock className="absolute left-3.5 top-1/2 size-4.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <Label htmlFor="password">Password</Label>
+                </div>
                 <Input
                   id="password"
                   type="password"
                   autoComplete="current-password"
                   required
-                  placeholder="••••••••"
-                  className="h-12 pl-10 text-base rounded-xl"
+                  placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
-            </div>
 
-            <Button
-              type="submit"
-              className="w-full h-12 text-base rounded-xl font-semibold"
-              disabled={submitting}
-            >
-              {submitting ? (
-                <Loader2 className="size-5 animate-spin" />
-              ) : (
-                "Sign in"
-              )}
-            </Button>
-          </form>
+              <Button type="submit" className="w-full" disabled={submitting}>
+                {submitting ? <Loader2 className="size-4 animate-spin" /> : "Login"}
+              </Button>
+            </form>
+          </CardContent>
 
-          <p className="text-center text-sm text-muted-foreground">
-            No account yet?{" "}
-            <Link
-              href="/register"
-              className="font-semibold text-primary hover:underline underline-offset-4"
-            >
-              Create one
-            </Link>
-          </p>
-        </div>
+          <CardFooter className="flex-col gap-2 border-t-0 bg-transparent p-4 pt-0 text-center">
+            <p className="text-sm text-muted-foreground">
+              Don&apos;t have an account?{" "}
+              <Link
+                href="/register"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Sign up
+              </Link>
+            </p>
+            <p className="w-full border-t border-border pt-3 text-xs text-muted-foreground">
+              Manage your farm, batches, and bird health in one place.
+            </p>
+          </CardFooter>
+        </Card>
       </div>
     </div>
   );

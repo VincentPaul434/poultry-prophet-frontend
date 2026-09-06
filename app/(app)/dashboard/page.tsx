@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ClipboardList, Loader2, Plus, Users } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  Loader2,
+  Plus,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useBatches, useCreateBatch } from "@/hooks/use-batches";
 import { useLifecycleStages } from "@/hooks/use-reference";
@@ -15,6 +22,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PendingInvitesBanner } from "@/components/pending-invites-banner";
 import { FarmOnboardingBanner } from "@/components/farm-onboarding-banner";
@@ -50,78 +67,114 @@ function stageColor(stageName: string): string {
   return "bg-primary";
 }
 
-function healthLabel(score: number | null | undefined) {
-  if (score == null) return null;
-  if (score >= 70) return { label: "Healthy", color: "text-emerald-600 dark:text-emerald-400" };
-  if (score >= 50) return { label: "Watch", color: "text-amber-600 dark:text-amber-400" };
-  return { label: "Alert", color: "text-red-600 dark:text-red-400" };
-}
+const PAGE_SIZE = 5;
 
 export default function DashboardPage() {
   const { isManager, user } = useAuth();
   const { data: batches, isLoading, isError, error } = useBatches();
+  const [page, setPage] = useState(1);
 
   const hour = new Date().getHours();
   const greeting =
     hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const firstName = user?.fullName?.split(" ")[0];
+  const totalPages = batches ? Math.max(1, Math.ceil(batches.length / PAGE_SIZE)) : 1;
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAGE_SIZE;
+  const visibleBatches = batches?.slice(pageStart, pageStart + PAGE_SIZE) ?? [];
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
+    <div className="mx-auto w-full max-w-5xl space-y-8">
       <FarmOnboardingBanner />
       <PendingInvitesBanner />
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
             {greeting}{firstName ? `, ${firstName}` : ""}!
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <p className="text-sm text-muted-foreground">
             {batches
               ? `${batches.filter((b) => b.status === "ACTIVE").length} active batch${batches.filter((b) => b.status === "ACTIVE").length !== 1 ? "es" : ""}`
               : "Loading your batches…"}
           </p>
         </div>
-        <CreateBatchDialog />
+        <div className="w-full sm:w-auto">
+          <CreateBatchDialog />
+        </div>
       </div>
 
       {/* Loading skeletons */}
       {isLoading && (
-        <div className="space-y-3">
+        <div className="space-y-5">
           {Array.from({ length: 2 }).map((_, i) => (
-            <Skeleton key={i} className="h-36 rounded-2xl" />
+            <Skeleton key={i} className="h-56 rounded-2xl" />
           ))}
         </div>
       )}
 
       {/* Error */}
       {isError && (
-        <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-6 text-center">
-          <p className="text-sm text-destructive font-medium">
-            {error instanceof ApiError ? error.message : "Could not load batches."}
-          </p>
-        </div>
+        <Alert variant="destructive">
+          <AlertCircle />
+          <AlertTitle>Could not load batches</AlertTitle>
+          <AlertDescription>
+            {error instanceof ApiError ? error.message : "Please try again in a moment."}
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Empty state */}
       {batches && batches.length === 0 && (
-        <div className="rounded-2xl border border-dashed bg-card p-10 text-center space-y-3">
-          <div className="text-5xl">🐔</div>
-          <p className="font-semibold text-foreground">No batches yet</p>
-          <p className="text-sm text-muted-foreground">
-            Create your first batch to start tracking your game fowl.
-          </p>
-          <CreateBatchDialog variant="inline" />
-        </div>
+        <Card className="border-dashed shadow-none">
+          <CardContent className="flex flex-col items-center gap-4 p-8 text-center sm:p-14">
+            <div className="text-5xl">🐔</div>
+            <CardTitle className="text-base">No batches yet</CardTitle>
+            <CardDescription>
+              Create your first batch to start tracking your game fowl.
+            </CardDescription>
+            <CreateBatchDialog variant="inline" />
+          </CardContent>
+        </Card>
       )}
 
       {/* Batch cards */}
       {batches && batches.length > 0 && (
-        <div className="space-y-3">
-          {batches.map((batch) => (
+        <div className="space-y-5">
+          {visibleBatches.map((batch) => (
             <BatchCard key={batch.id} batch={batch} isManager={isManager} />
           ))}
+          {totalPages > 1 && (
+            <div className="flex flex-col gap-4 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-muted-foreground">
+                Showing {pageStart + 1}–{Math.min(pageStart + PAGE_SIZE, batches.length)} of {batches.length} batches
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Previous page"
+                  disabled={currentPage === 1}
+                  onClick={() => setPage((value) => Math.max(1, value - 1))}
+                >
+                  <ChevronLeft />
+                </Button>
+                <span className="min-w-16 text-center text-xs font-medium tabular-nums">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  aria-label="Next page"
+                  disabled={currentPage === totalPages}
+                  onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
+                >
+                  <ChevronRight />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -141,16 +194,15 @@ function BatchCard({
   const stageBar = stageColor(batch.stageName);
 
   return (
-    <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
+    <Card className="overflow-hidden">
       {/* Colored top strip by stage */}
       <div className={cn("h-1.5 w-full", stageBar)} />
 
-      <div className="p-4 space-y-4">
-        {/* Top row */}
+      <CardHeader className="p-5 pb-0 sm:p-6 sm:pb-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base font-bold truncate">{batch.name}</h2>
+              <CardTitle className="truncate text-base">{batch.name}</CardTitle>
               <Badge
                 variant={batch.status === "ACTIVE" ? "default" : "secondary"}
                 className="shrink-0 text-[10px]"
@@ -164,14 +216,16 @@ function BatchCard({
             </p>
           </div>
           {/* Days badge */}
-          <div className="shrink-0 rounded-xl bg-muted px-3 py-1.5 text-center">
-            <p className="text-lg font-bold leading-none">{days}</p>
-            <p className="text-[10px] text-muted-foreground mt-0.5 font-medium">days old</p>
-          </div>
+          <Badge variant="secondary" className="h-auto min-w-16 shrink-0 flex-col rounded-lg px-2 py-1.5 text-center">
+            <span className="text-lg font-bold leading-none">{days}</span>
+            <span className="mt-0.5 text-[10px] font-medium text-muted-foreground">days old</span>
+          </Badge>
         </div>
+      </CardHeader>
 
+      <CardContent className="space-y-6 p-5 sm:p-6">
         {/* Stats row */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <StatPill
             value={`${batch.currentPopulation}`}
             label="Birds alive"
@@ -198,43 +252,29 @@ function BatchCard({
               {" "}of 150 &nbsp;·&nbsp; {progress}%
             </span>
           </div>
-          <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-            <div
-              className={cn("h-full rounded-full transition-all", stageBar)}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+          <Progress value={progress} aria-label={`${batch.name} lifecycle progress`} className="gap-0 [&_[data-slot=progress-track]]:h-2" />
         </div>
+      </CardContent>
 
+      <CardFooter className="flex-col gap-3 border-t-0 bg-transparent p-5 pt-0 sm:flex-row sm:p-6 sm:pt-0">
         {/* Actions */}
-        <div className="flex gap-2 pt-0.5">
-          {isManager ? (
-            <Link
-              href={`/batches/${batch.id}`}
-              className="flex-1 rounded-xl bg-primary px-4 py-2.5 text-center text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-            >
+        {isManager ? (
+          <Button className="w-full sm:flex-1" render={<Link href={`/batches/${batch.id}`} />}>
+            View details
+          </Button>
+        ) : (
+          <>
+            <Button variant="outline" className="w-full sm:flex-1" render={<Link href={`/batches/${batch.id}`} />}>
               View details
-            </Link>
-          ) : (
-            <>
-              <Link
-                href={`/batches/${batch.id}`}
-                className="flex-1 rounded-xl border border-border bg-background px-4 py-2.5 text-center text-sm font-semibold hover:bg-muted transition-colors"
-              >
-                View details
-              </Link>
-              <Link
-                href={`/batches/${batch.id}`}
-                className="flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
-              >
-                <ClipboardList className="size-4" />
-                Log now
-              </Link>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+            </Button>
+            <Button className="w-full sm:flex-1" render={<Link href={`/batches/${batch.id}`} />}>
+              <ClipboardList className="size-4" />
+              Log now
+            </Button>
+          </>
+        )}
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -248,7 +288,7 @@ function StatPill({
   icon: string;
 }) {
   return (
-    <div className="rounded-xl bg-muted/60 p-2.5 text-center">
+    <div className="rounded-xl bg-muted/60 p-4 text-center sm:p-5">
       <div className="text-base">{icon}</div>
       <p className="text-sm font-bold mt-0.5">{value}</p>
       <p className="text-[10px] text-muted-foreground font-medium">{label}</p>
@@ -296,17 +336,17 @@ function CreateBatchDialog({ variant }: { variant?: "inline" }) {
       <DialogTrigger
         render={
           variant === "inline" ? (
-            <Button className="h-11 rounded-xl px-5 font-semibold">
+            <Button className="h-11 w-full rounded-xl px-5 font-semibold sm:w-auto">
               <Plus className="size-4" /> Create first batch
             </Button>
           ) : (
-            <Button className="h-10 rounded-xl px-4 font-semibold">
+            <Button className="h-10 w-full rounded-xl px-4 font-semibold sm:w-auto">
               <Plus className="size-4" /> New batch
             </Button>
           )
         }
       />
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg">
         <form onSubmit={onSubmit}>
           <DialogHeader>
             <DialogTitle>Create new batch</DialogTitle>
@@ -326,7 +366,7 @@ function CreateBatchDialog({ variant }: { variant?: "inline" }) {
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="pop" className="font-semibold">Number of birds</Label>
                 <Input
@@ -367,7 +407,7 @@ function CreateBatchDialog({ variant }: { variant?: "inline" }) {
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="bloodline" className="font-semibold">
                   Bloodline <span className="font-normal text-muted-foreground">(optional)</span>
