@@ -9,6 +9,13 @@ export type SyncStatus = "PENDING" | "SYNCED" | "FAILED";
 export type QualityRating = "C" | "B" | "B_PLUS" | "A" | "A_PLUS" | "A_PLUS_PLUS";
 export type HealthEventSeverity = "NONE" | "ROUTINE" | "MINOR" | "MODERATE" | "MAJOR";
 export type SelectionOutcome = "ADVANCE" | "REJECT";
+export type InterventionStatus =
+  | "PENDING"
+  | "ACKNOWLEDGED"
+  | "IN_PROGRESS"
+  | "COMPLETED"
+  | "ESCALATED"
+  | "DISMISSED";
 
 // ---- Auth ----
 export interface AuthResponse {
@@ -236,6 +243,61 @@ export interface BatchOverview {
   latestIndicator: Indicator | null;
   recentRecords: DailyRecord[];
   activeAlerts: Alert[];
+  activeInterventions: Intervention[];
+}
+
+// ---- Operational interventions ----
+export interface Intervention {
+  id: number;
+  alertId: number;
+  batchId: number;
+  indicatorType: string;
+  severity: Severity;
+  title: string;
+  instructions: string;
+  status: InterventionStatus;
+  managerReviewRequired: boolean;
+  assignedHandlerId: number | null;
+  assignedHandlerName: string | null;
+  resolvedByUserId: number | null;
+  outcomeNote: string | null;
+  acknowledgedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  escalatedAt: string | null;
+  dismissedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InterventionEvent {
+  interventionId: number;
+  alertId: number;
+  batchId: number;
+  indicatorType: string;
+  severity: Severity;
+  title: string;
+  status: InterventionStatus;
+  assignedHandlerId: number | null;
+  occurredAt: string;
+}
+
+export interface InterventionHistoryEntry {
+  id: number;
+  status: InterventionStatus;
+  action: string;
+  actorUserId: number | null;
+  actorName: string | null;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface InterventionActionRequest {
+  note?: string | null;
+}
+
+export interface AssignInterventionRequest {
+  handlerUserId: number;
 }
 
 // ---- Reports ----

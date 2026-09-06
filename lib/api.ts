@@ -6,6 +6,7 @@
 import { apiClient } from "./api-client";
 import type {
   Alert,
+  AssignInterventionRequest,
   AuthResponse,
   Batch,
   BatchEvent,
@@ -22,6 +23,9 @@ import type {
   Farm,
   Handler,
   Indicator,
+  Intervention,
+  InterventionActionRequest,
+  InterventionHistoryEntry,
   InviteResponse,
   LifecycleStage,
   LoginRequest,
@@ -134,6 +138,31 @@ export const alertApi = {
       .then((r) => r.data),
   acknowledge: (id: number, note?: string) =>
     apiClient.post<Alert>(`/alerts/${id}/acknowledge`, { note }).then((r) => r.data),
+};
+
+// ---- Operational interventions ----
+export const interventionApi = {
+  list: (status?: string, limit = 100) =>
+    apiClient
+      .get<Intervention[]>("/interventions", { params: { status, limit } })
+      .then((r) => r.data),
+  listForBatch: (batchId: Id, status?: string, limit = 100) =>
+    apiClient
+      .get<Intervention[]>(`/batches/${batchId}/interventions`, { params: { status, limit } })
+      .then((r) => r.data),
+  get: (id: number) => apiClient.get<Intervention>(`/interventions/${id}`).then((r) => r.data),
+  history: (id: number) =>
+    apiClient.get<InterventionHistoryEntry[]>(`/interventions/${id}/history`).then((r) => r.data),
+  claim: (id: number) => apiClient.post<Intervention>(`/interventions/${id}/claim`).then((r) => r.data),
+  start: (id: number) => apiClient.post<Intervention>(`/interventions/${id}/start`).then((r) => r.data),
+  complete: (id: number, body: InterventionActionRequest = {}) =>
+    apiClient.post<Intervention>(`/interventions/${id}/complete`, body).then((r) => r.data),
+  escalate: (id: number, body: InterventionActionRequest) =>
+    apiClient.post<Intervention>(`/interventions/${id}/escalate`, body).then((r) => r.data),
+  assign: (id: number, body: AssignInterventionRequest) =>
+    apiClient.put<Intervention>(`/interventions/${id}/assignment`, body).then((r) => r.data),
+  dismiss: (id: number, body: InterventionActionRequest) =>
+    apiClient.post<Intervention>(`/interventions/${id}/dismiss`, body).then((r) => r.data),
 };
 
 // ---- Selection (month-5 ranked view + manager decisions) ----

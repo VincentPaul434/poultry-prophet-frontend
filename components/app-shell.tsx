@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Bird, LayoutDashboard, LogOut, Settings } from "lucide-react";
+import { Bell, Bird, ClipboardCheck, LayoutDashboard, LogOut, Settings } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { useFarmAlerts } from "@/hooks/use-analytics";
+import { useInterventionRealtime } from "@/hooks/use-intervention-realtime";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Sidebar,
@@ -26,6 +27,7 @@ import {
 const NAV = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard },
   { href: "/alerts", label: "Alerts", icon: Bell },
+  { href: "/interventions", label: "Interventions", icon: ClipboardCheck },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -52,6 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { data: activeAlerts } = useFarmAlerts(true, !!user);
+  useInterventionRealtime(user?.farmId, !!user);
   const unread = activeAlerts?.length ?? 0;
 
   return (

@@ -15,6 +15,7 @@ export const qk = {
   invitesPending: ["invites", "pending"] as const,
   // Farm-wide alert feed (notifications centre), distinct from per-batch alerts.
   alertsFarm: (activeOnly?: boolean) => ["alerts", "farm", { activeOnly }] as const,
+  interventionsFarm: (status?: string) => ["interventions", "farm", { status }] as const,
 
   batches: {
     all: ["batches"] as const,
@@ -39,5 +40,7 @@ export const qk = {
       [...qk.batches.detail(batchId), "birds", String(birdId), "ranging"] as const,
     events: (batchId: number | string, limit?: number) =>
       [...qk.batches.detail(batchId), "events", { limit }] as const,
+    interventions: (batchId: number | string, status?: string) =>
+      [...qk.batches.detail(batchId), "interventions", { status }] as const,
   },
 } as const;

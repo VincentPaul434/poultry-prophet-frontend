@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 import { useBatchOverview, useChangeStage } from "@/hooks/use-batches";
 import { useAcknowledgeAlert } from "@/hooks/use-analytics";
-import { useLifecycleStages } from "@/hooks/use-reference";
+import { useHandlers, useLifecycleStages } from "@/hooks/use-reference";
 import { useBatchEvents } from "@/hooks/use-events";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BatchLogSection, EVENT_EMOJI } from "@/components/batch-log-section";
+import { InterventionQueue } from "@/components/interventions/intervention-queue";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -160,6 +161,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
   const { isManager } = useAuth();
   const { data, isLoading, isError, error } = useBatchOverview(batchId);
   const { data: recentEvents } = useBatchEvents(batchId, 5);
+  const { data: handlers } = useHandlers(isManager);
 
   if (isLoading) {
     return (
@@ -185,7 +187,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
     );
   }
 
-  const { batch, latestIndicator, activeAlerts } = data;
+  const { batch, latestIndicator, activeAlerts, activeInterventions = [] } = data;
   const days = daysElapsed(batch.startDate);
 
   return (
@@ -279,7 +281,27 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
         </section>
       )}
 
-      {/* ── 6. Recent field events ─────────────────────────────────────── */}
+      {/* ── 6. Operational interventions ──────────────────────────────── */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between px-0.5">
+          <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">
+            <ClipboardList className="size-4 text-primary" />
+            Interventions
+          </h2>
+          <Link href="/interventions" className="text-xs font-semibold text-primary hover:underline underline-offset-4">
+            Open queue
+          </Link>
+        </div>
+        <InterventionQueue
+          interventions={activeInterventions}
+          handlers={handlers}
+          assignedHandlerIds={batch.handlerUserIds}
+          batchName={batch.name}
+          showBatch={false}
+        />
+      </section>
+
+      {/* ── 7. Recent field events ─────────────────────────────────────── */}
       {recentEvents && recentEvents.length > 0 && (
         <section className="space-y-2">
           <div className="flex items-center justify-between px-0.5">
