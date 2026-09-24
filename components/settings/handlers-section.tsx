@@ -8,6 +8,11 @@ import { Loader2, UserPlus } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useHandlers } from "@/hooks/use-reference";
+import { useFarm } from "@/hooks/use-farm";
+import { useAuth } from "@/lib/auth-context";
+import { handlerApi } from "@/lib/api";
+import { ApiError } from "@/lib/api-client";
+import { getHandlerFarmDisplayName } from "@/lib/farm-display";
 import { qk } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,13 +33,16 @@ import {
 import { initials } from "./sections";
 
 export function HandlersSection() {
+  const { user } = useAuth();
   const handlers = useHandlers(true);
+  const farm = useFarm(user?.farmId != null);
+  const farmName = getHandlerFarmDisplayName(farm.data, user?.farmId);
 
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 rounded-2xl border bg-card p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
-          <p className="text-base font-semibold">People who care for the birds</p>
+          <p className="text-base font-semibold">Handlers at {farmName}</p>
           <p className="mt-1 text-sm text-muted-foreground">Add handlers and give them access to daily farm work.</p>
         </div>
         <AddHandlerDialog />
@@ -71,8 +79,9 @@ export function HandlersSection() {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold truncate">{h.fullName}</p>
                   <p className="text-xs text-muted-foreground truncate">{h.email}</p>
+                  <p className="text-xs text-muted-foreground truncate">{farmName}</p>
                 </div>
-                <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-bold text-primary uppercase tracking-wide">
+                <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary uppercase tracking-wide">
                   Handler
                 </span>
               </div>
@@ -94,27 +103,11 @@ function AddHandlerDialog() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Uses the POST /api/handlers endpoint we built earlier
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const token = localStorage.getItem("pp_auth_token");
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://poultry-prophet-backend.onrender.com/api"}/handlers`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ email, password, fullName }),
-        }
-      );
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { message?: string }).message ?? "Failed to add handler");
-      }
+      await handlerApi.create({ email, password, fullName });
       toast.success(`${fullName} added as handler!`);
       setOpen(false);
       setFullName("");
@@ -123,7 +116,7 @@ function AddHandlerDialog() {
       // Refresh the roster from cache instead of a full page reload.
       queryClient.invalidateQueries({ queryKey: qk.handlers });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not add handler");
+      toast.error(err instanceof ApiError ? err.message : "Could not add handler");
     } finally {
       setSubmitting(false);
     }
@@ -133,7 +126,7 @@ function AddHandlerDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button size="sm" className="h-9 w-full rounded-xl px-4 font-semibold sm:w-auto">
+          <Button size="sm" className="h-11 w-full rounded-xl px-4 font-semibold sm:w-auto">
             <UserPlus className="size-4" />
             Add Handler
           </Button>

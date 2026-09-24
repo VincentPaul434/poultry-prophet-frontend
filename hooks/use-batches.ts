@@ -9,6 +9,8 @@ export function useBatches() {
   return useQuery({
     queryKey: qk.batches.lists(),
     queryFn: batchApi.list,
+    refetchOnWindowFocus: true,
+    refetchInterval: 15_000,
   });
 }
 
@@ -39,18 +41,6 @@ export function useCreateBatch() {
       queryClient.invalidateQueries({ queryKey: qk.batches.lists() });
       // Seed the detail cache so navigating to the new batch is instant.
       queryClient.setQueryData(qk.batches.detail(created.id), created);
-    },
-  });
-}
-
-export function useChangeStage(batchId: number | string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (stageId: number) => batchApi.changeStage(batchId, stageId),
-    onSuccess: (updated: Batch) => {
-      queryClient.setQueryData(qk.batches.detail(batchId), updated);
-      queryClient.invalidateQueries({ queryKey: qk.batches.lists() });
-      queryClient.invalidateQueries({ queryKey: qk.batches.overview(batchId) });
     },
   });
 }

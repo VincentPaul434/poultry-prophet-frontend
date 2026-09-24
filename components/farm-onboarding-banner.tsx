@@ -46,8 +46,8 @@ export function FarmOnboardingBanner() {
             </h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
               Your farm profile is not yet configured. Set up your farm information to
-              start managing batches, monitoring records, and accessing predictive
-              analytics.
+              start managing batches, recording observations, and preparing traceable
+              batch review reports for manager follow-up.
             </p>
           </div>
           <Button render={<Link href="/settings/farm" />}>

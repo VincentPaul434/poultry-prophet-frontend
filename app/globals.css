@@ -49,50 +49,51 @@
 }
 
 :root {
-  /* Oxblood, brass, parchment, and charcoal — a premium gamefowl palette */
-  --primary: #7f2d2d;
-  --primary-foreground: #fffdf8;
-  --ring: #c6923b;
+  /* Bright, white-based farm palette with strong outdoor contrast. */
+  color-scheme: light;
+  --primary: #28633f;
+  --primary-foreground: #ffffff;
+  --ring: #a66a08;
 
-  --background: #f5efe4;
-  --foreground: #2a2420;
+  --background: #f7f9f6;
+  --foreground: #17211a;
 
-  --card: #fffdf8;
-  --card-foreground: #2a2420;
-  --popover: #fffdf8;
-  --popover-foreground: #2a2420;
+  --card: #ffffff;
+  --card-foreground: #17211a;
+  --popover: #ffffff;
+  --popover-foreground: #17211a;
 
-  --secondary: #eae1d5;
-  --secondary-foreground: #2a2420;
-  --muted: #e8ded1;
-  --muted-foreground: #6f6257;
-  --accent: #ead9be;
-  --accent-foreground: #5c231f;
+  --secondary: #e8efe8;
+  --secondary-foreground: #17211a;
+  --muted: #eef3ee;
+  --muted-foreground: #566158;
+  --accent: #e8f2ea;
+  --accent-foreground: #1f5133;
 
-  --destructive: #c45a28;
-  --border: #d8cec0;
-  --input: #d8cec0;
+  --destructive: #b42318;
+  --border: #d5ded4;
+  --input: #b9c8ba;
 
-  /* Brass, oxblood, burnt orange, and warm neutrals */
-  --chart-1: #7f2d2d;
-  --chart-2: #c6923b;
-  --chart-3: #c45a28;
-  --chart-4: #a75a3a;
-  --chart-5: #6f6257;
+  --chart-1: #28633f;
+  --chart-2: #a66a08;
+  --chart-3: #b42318;
+  --chart-4: #477a5a;
+  --chart-5: #566158;
 
   --radius: 0.75rem;
 
-  --sidebar: #211d1a;
-  --sidebar-foreground: #f5efe4;
-  --sidebar-primary: #c6923b;
-  --sidebar-primary-foreground: #211d1a;
-  --sidebar-accent: #392d25;
-  --sidebar-accent-foreground: #fffdf8;
-  --sidebar-border: rgb(255 253 248 / 12%);
-  --sidebar-ring: #c6923b;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #17211a;
+  --sidebar-primary: #28633f;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e8f2ea;
+  --sidebar-accent-foreground: #1f5133;
+  --sidebar-border: #d5ded4;
+  --sidebar-ring: #28633f;
 }
 
 .dark {
+  color-scheme: dark;
   --primary: #b44a45;
   --primary-foreground: #fff5ea;
   --ring: #c6923b;
@@ -138,9 +139,22 @@
   }
   body {
     @apply bg-background text-foreground;
+    min-width: 320px;
+    -webkit-tap-highlight-color: transparent;
   }
   html {
     @apply font-sans;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

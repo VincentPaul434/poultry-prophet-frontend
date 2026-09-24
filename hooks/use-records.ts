@@ -18,9 +18,11 @@ export function useCreateRecord(batchId: number | string) {
   return useMutation({
     mutationFn: (body: CreateRecordRequest) => recordApi.create(batchId, body),
     onSuccess: () => {
-      // A new daily record triggers backend indicator/alert recomputation, so
-      // invalidate the whole batch subtree (records, indicators, alerts, overview).
+      // Daily records feed indicators and alerts; invalidate the batch list too because
+      // mortality compatibility imports can change the population.
+      queryClient.invalidateQueries({ queryKey: qk.batches.all });
       queryClient.invalidateQueries({ queryKey: qk.batches.detail(batchId) });
+      queryClient.invalidateQueries({ queryKey: ["alerts", "farm"] });
     },
   });
 }

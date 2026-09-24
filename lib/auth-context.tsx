@@ -20,6 +20,7 @@ import { accountApi, authApi, inviteApi } from "./api";
 import {
   clearSession,
   getStoredUser,
+  getToken,
   saveSession,
   type StoredUser,
 } from "./auth-storage";
@@ -47,8 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Hydrate from localStorage once on mount (avoids SSR/client mismatch).
   useEffect(() => {
-    setUser(getStoredUser());
-    setIsLoading(false);
+    const storedUser = getStoredUser();
+    const timer = window.setTimeout(() => {
+      setUser(storedUser);
+      setIsLoading(false);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   const login = useCallback(async (body: LoginRequest) => {
@@ -105,7 +111,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
-      isAuthenticated: !!user,
+      // A cached profile without its token is not a valid session. This can
+      // happen after storage is partially cleared or an old session expires.
+      isAuthenticated: !!user && !!getToken(),
       isManager: user?.role === "MANAGER",
       isLoading,
       login,

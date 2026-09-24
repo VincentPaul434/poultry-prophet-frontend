@@ -16,11 +16,17 @@ export function useBatchEvents(batchId: number | string, limit = 30, enabled = t
 export function useCreateEvent(batchId: number | string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: CreateBatchEventRequest) => batchEventApi.create(batchId, body),
+    mutationFn: (body: CreateBatchEventRequest) =>
+      batchEventApi.create(batchId, {
+        ...body,
+        operationId: body.operationId ?? crypto.randomUUID(),
+      }),
     onSuccess: () => {
-      // Invalidate the whole batch subtree — a mortality event can change population
-      // and trigger indicator/alert recomputation via DailyRecord propagation.
+      // Mortality changes the batch list and all batch-scoped derived data, plus the
+      // manager's farm-wide notification feed.
+      queryClient.invalidateQueries({ queryKey: qk.batches.all });
       queryClient.invalidateQueries({ queryKey: qk.batches.detail(batchId) });
+      queryClient.invalidateQueries({ queryKey: ["alerts", "farm"] });
     },
   });
 }

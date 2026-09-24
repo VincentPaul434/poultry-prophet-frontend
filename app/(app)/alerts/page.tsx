@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageBackLink } from "@/components/page-back-link";
 
 const severityConfig: Record<Severity, { label: string; cls: string; icon: string }> = {
   INFO: { label: "Info", cls: "border-primary/20 bg-primary/5", icon: "ℹ️" },
@@ -46,6 +47,7 @@ export default function AlertsPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8">
+      <PageBackLink destination="dashboard" />
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Alerts</h1>
@@ -60,8 +62,9 @@ export default function AlertsPage() {
           <button
             type="button"
             onClick={() => setShowAll(false)}
+            aria-pressed={!showAll}
             className={cn(
-              "rounded-lg px-4 py-2 transition-colors",
+              "min-h-11 rounded-lg px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
               !showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -70,8 +73,9 @@ export default function AlertsPage() {
           <button
             type="button"
             onClick={() => setShowAll(true)}
+            aria-pressed={showAll}
             className={cn(
-              "rounded-lg px-4 py-2 transition-colors",
+              "min-h-11 rounded-lg px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
               showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
             )}
           >
@@ -90,7 +94,12 @@ export default function AlertsPage() {
         <Alert variant="destructive">
           <Bell />
           <AlertTitle>Failed to load alerts</AlertTitle>
-          <AlertDescription>Please try again in a moment.</AlertDescription>
+          <AlertDescription className="flex flex-wrap items-center gap-3">
+            <span>Please try again in a moment.</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => alerts.refetch()}>
+              Try again
+            </Button>
+          </AlertDescription>
         </Alert>
       )}
 
@@ -107,7 +116,7 @@ export default function AlertsPage() {
           </p>
           <p className="max-w-md text-sm text-muted-foreground">
             {showAll
-              ? "Alerts will appear here when a batch crosses a threshold."
+              ? "Factual event notices and review reminders will appear here when available."
               : "No unacknowledged alerts right now."}
           </p>
           </CardContent>
@@ -181,7 +190,7 @@ function AlertRow({
               <Button
                 size="sm"
                 variant="outline"
-                className="mt-1 h-8 rounded-lg text-xs font-semibold"
+                className="mt-1 h-11 rounded-lg text-sm font-semibold"
                 disabled={acknowledge.isPending}
                 onClick={ack}
               >

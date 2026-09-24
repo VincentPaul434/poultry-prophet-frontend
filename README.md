@@ -1,8 +1,10 @@
 # Poultry Prophet — Frontend
 
 Next.js (App Router) dashboard for the [Poultry Prophet Spring Boot backend](https://github.com/VincentPaul434/poultry-prophet-backend).
-Tracks game fowl brooding/ranging, computes readiness indicators, and supports
-the manager's month-5 selection decision.
+Poultry Prophet is a rule-based batch-monitoring and decision-support prototype. It records farm
+observations, compares them with configured ranges, calculates provisional indicators, and flags
+conditions for manager review. It does not diagnose disease or predict future biological or
+fighting performance.
 
 ## Stack
 
@@ -15,6 +17,7 @@ the manager's month-5 selection decision.
 
 ```bash
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
@@ -39,7 +42,7 @@ app/
     dashboard/          Batch list + create
     batches/[batchId]/  Overview (KPIs, records, alerts)
       data-entry/       Daily record form
-      selection/        Month-5 ranked selection (manager only)
+      selection/        Deferred/marked-not-included CRS view
     settings/           Thresholds + handlers
 components/
   providers.tsx         QueryClientProvider + ThemeProvider + Toaster + AuthProvider
@@ -69,3 +72,8 @@ lib/
 - **Cache seeding & patching**: creating a batch seeds its detail cache; threshold and
   selection mutations patch the cached list in place, then revalidate.
 - On logout the entire query cache is cleared so no data leaks between users.
+
+For controlled stakeholder validation, point `NEXT_PUBLIC_API_BASE_URL` at the isolated validation API,
+set the version/environment variables from `.env.validation.example`, and confirm the in-app
+validation banner before entering synthetic data. The primary MVP flow excludes individual
+selection, offline capability claims, report UI, and advanced charts.

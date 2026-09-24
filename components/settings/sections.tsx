@@ -2,9 +2,9 @@
 // detail routes, and the breadcrumb labels all read from this catalog so they
 // can never drift out of sync.
 
-import { Sliders, User, Users, Warehouse, type LucideIcon } from "lucide-react";
+import { Languages, Sliders, User, Users, Warehouse, type LucideIcon } from "lucide-react";
 
-export type SettingsSectionKey = "account" | "farm" | "handlers" | "alerts";
+export type SettingsSectionKey = "account" | "farm" | "handlers" | "alerts" | "preferences";
 
 export interface SettingsSectionMeta {
   key: SettingsSectionKey;
@@ -19,6 +19,15 @@ export interface SettingsSectionMeta {
 }
 
 export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
+  {
+    key: "preferences",
+    href: "/settings/preferences",
+    title: "Language and appearance",
+    description: "Choose English or Taglish and use Light or Dark mode.",
+    icon: Languages,
+    emoji: "🌐",
+    managerOnly: false,
+  },
   {
     key: "account",
     href: "/settings/account",
@@ -49,8 +58,8 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   {
     key: "alerts",
     href: "/settings/alerts",
-    title: "Alert Thresholds",
-    description: "Set the ranges that trigger health and stress alerts.",
+    title: "Archived Alert Thresholds",
+    description: "Legacy score thresholds retained for audit; not used by the active workflow.",
     icon: Sliders,
     emoji: "🔔",
     managerOnly: false,

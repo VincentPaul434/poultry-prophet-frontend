@@ -7,11 +7,9 @@ import { Bird, Loader2, Lock, Mail, User } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
-import type { Role } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -19,14 +17,13 @@ export default function RegisterPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<Role>("MANAGER");
   const [submitting, setSubmitting] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await register({ fullName, email, password, role });
+      await register({ fullName, email, password });
       toast.success("Account created! Welcome.");
       router.replace("/dashboard");
     } catch (err) {
@@ -109,45 +106,6 @@ export default function RegisterPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
-              </div>
-            </div>
-
-            {/* Role — visual card picker */}
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Your role</Label>
-              <div className="grid grid-cols-2 gap-3">
-                {(
-                  [
-                    {
-                      value: "MANAGER" as Role,
-                      emoji: "🏡",
-                      title: "Manager",
-                      desc: "Owns the farm, manages batches",
-                    },
-                    {
-                      value: "HANDLER" as Role,
-                      emoji: "🤲",
-                      title: "Handler",
-                      desc: "Cares for the birds daily",
-                    },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setRole(opt.value)}
-                    className={cn(
-                      "rounded-xl border-2 p-4 text-left transition-all",
-                      role === opt.value
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-primary/30 hover:bg-muted"
-                    )}
-                  >
-                    <div className="text-2xl mb-1">{opt.emoji}</div>
-                    <p className="text-sm font-semibold">{opt.title}</p>
-                    <p className="text-xs text-muted-foreground leading-snug mt-0.5">{opt.desc}</p>
-                  </button>
-                ))}
               </div>
             </div>
 

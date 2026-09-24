@@ -8,15 +8,19 @@ import { ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { SETTINGS_SECTIONS } from "@/components/settings/sections";
 import { Card, CardContent } from "@/components/ui/card";
+import { PageBackLink } from "@/components/page-back-link";
+import { useLocale } from "@/components/locale-provider";
 
 export default function SettingsPage() {
   const { isManager } = useAuth();
+  const { t } = useLocale();
   const sections = SETTINGS_SECTIONS.filter((s) => !s.managerOnly || isManager);
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8">
+      <PageBackLink destination="dashboard" />
       <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Settings</h1>
+        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{t("settings.title")}</h1>
         <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">
           Manage your account and farm configuration.
         </p>
@@ -34,8 +38,8 @@ export default function SettingsPage() {
                   <ChevronRight className="size-5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
                 </div>
                 <div className="mt-auto space-y-2">
-                  <h2 className="text-lg font-bold">{s.title}</h2>
-                  <p className="text-sm leading-relaxed text-muted-foreground">{s.description}</p>
+                  <h2 className="text-lg font-bold">{s.key === "preferences" ? t("settings.preferences") : s.title}</h2>
+                  <p className="text-sm leading-relaxed text-muted-foreground">{s.key === "preferences" ? t("settings.preferencesDescription") : s.description}</p>
                 </div>
               </CardContent>
             </Link>

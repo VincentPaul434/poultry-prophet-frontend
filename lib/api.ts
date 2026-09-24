@@ -14,6 +14,7 @@ import type {
   CreateBatchEventRequest,
   CreateBatchRequest,
   CreateBirdRequest,
+  CreateHandlerRequest,
   CreateInviteRequest,
   ChangePasswordRequest,
   CreateRangingRecordRequest,
@@ -31,10 +32,25 @@ import type {
   SelectionDecisionRequest,
   SelectionRow,
   SelectionView,
+  SelectionReviewPayload,
+  SelectionReviewResponse,
+  FinalizeSelectionReviewRequest,
   Threshold,
   UpdateFarmRequest,
   UpdateProfileRequest,
   UpdateThresholdRequest,
+  VersionInfo,
+  CompleteIncubationRequest,
+  CreateFarmInputRequest,
+  CreateFinancialTransactionRequest,
+  CreateIncubationCycleRequest,
+  CreateTaskRequest,
+  FarmInputLog,
+  FinancialTransaction,
+  HandlerTask,
+  IncubationCycle,
+  OperationsAnalytics,
+  UpdateTaskStatusRequest,
 } from "./types";
 
 type Id = number | string;
@@ -45,6 +61,10 @@ export const authApi = {
     apiClient.post<AuthResponse>("/auth/login", body).then((r) => r.data),
   register: (body: RegisterRequest) =>
     apiClient.post<AuthResponse>("/auth/register", body).then((r) => r.data),
+};
+
+export const versionApi = {
+  get: () => apiClient.get<VersionInfo>("/version").then((r) => r.data),
 };
 
 // ---- Account (the caller's own profile/password) ----
@@ -63,10 +83,6 @@ export const batchApi = {
     apiClient.get<Batch>(`/batches/${batchId}`).then((r) => r.data),
   create: (body: CreateBatchRequest) =>
     apiClient.post<Batch>("/batches", body).then((r) => r.data),
-  changeStage: (batchId: Id, stageId: number) =>
-    apiClient
-      .patch<Batch>(`/batches/${batchId}/stage`, { stageId })
-      .then((r) => r.data),
   overview: (batchId: Id) =>
     apiClient.get<BatchOverview>(`/batches/${batchId}/overview`).then((r) => r.data),
 };
@@ -108,17 +124,17 @@ export const rangingApi = {
 // ---- Analytics: indicators & thresholds ----
 export const indicatorApi = {
   latest: (batchId: Id) =>
-    apiClient.get<Indicator>(`/batches/${batchId}/indicators/latest`).then((r) => r.data),
+    apiClient.get<Indicator>(`/legacy/batches/${batchId}/indicators/latest`).then((r) => r.data),
   recent: (batchId: Id, limit = 14) =>
     apiClient
-      .get<Indicator[]>(`/batches/${batchId}/indicators`, { params: { limit } })
+      .get<Indicator[]>(`/legacy/batches/${batchId}/indicators`, { params: { limit } })
       .then((r) => r.data),
 };
 
 export const thresholdApi = {
-  list: () => apiClient.get<Threshold[]>("/thresholds").then((r) => r.data),
+  list: () => apiClient.get<Threshold[]>("/legacy/thresholds").then((r) => r.data),
   update: (id: number, body: UpdateThresholdRequest) =>
-    apiClient.put<Threshold>(`/thresholds/${id}`, body).then((r) => r.data),
+    apiClient.put<Threshold>(`/legacy/thresholds/${id}`, body).then((r) => r.data),
 };
 
 // ---- Alerts ----
@@ -136,13 +152,34 @@ export const alertApi = {
     apiClient.post<Alert>(`/alerts/${id}/acknowledge`, { note }).then((r) => r.data),
 };
 
-// ---- Selection (month-5 ranked view + manager decisions) ----
+// ---- Legacy selection (kept only for historical/demo compatibility) ----
 export const selectionApi = {
   view: (batchId: Id) =>
-    apiClient.get<SelectionView>(`/batches/${batchId}/selection`).then((r) => r.data),
+    apiClient.get<SelectionView>(`/legacy/batches/${batchId}/selection`).then((r) => r.data),
   decide: (batchId: Id, birdId: Id, body: SelectionDecisionRequest) =>
     apiClient
-      .post<SelectionRow>(`/batches/${batchId}/selection/birds/${birdId}`, body)
+      .post<SelectionRow>(`/legacy/batches/${batchId}/selection/birds/${birdId}`, body)
+      .then((r) => r.data),
+};
+
+export const selectionReviewApi = {
+  preview: (batchId: Id, params?: { periodStart?: string; periodEnd?: string; asOfDate?: string }) =>
+    apiClient
+      .get<SelectionReviewPayload>(`/batches/${batchId}/selection-review/preview`, { params })
+      .then((r) => r.data),
+  list: (batchId: Id) =>
+    apiClient.get<SelectionReviewResponse[]>(`/batches/${batchId}/selection-reviews`).then((r) => r.data),
+  create: (batchId: Id, body?: { periodStart?: string; periodEnd?: string; asOfDate?: string; purpose?: string; snapshotNote?: string; idempotencyKey?: string }) =>
+    apiClient
+      .post<SelectionReviewResponse>(`/batches/${batchId}/selection-reviews`, body ?? {})
+      .then((r) => r.data),
+  finalize: (batchId: Id, reviewId: number, body: FinalizeSelectionReviewRequest) =>
+    apiClient
+      .post<SelectionReviewResponse>(`/batches/${batchId}/selection-reviews/${reviewId}/finalize`, body)
+      .then((r) => r.data),
+  pdf: (batchId: Id, reviewId: number) =>
+    apiClient
+      .get<Blob>(`/batches/${batchId}/selection-reviews/${reviewId}/pdf`, { responseType: "blob" })
       .then((r) => r.data),
 };
 
@@ -150,12 +187,12 @@ export const selectionApi = {
 export const reportApi = {
   build: (batchId: Id, start: string, end: string) =>
     apiClient
-      .get<ReportResponse>(`/batches/${batchId}/reports`, { params: { start, end } })
+      .get<ReportResponse>(`/legacy/batches/${batchId}/reports`, { params: { start, end } })
       .then((r) => r.data),
   // Returns a downloadable blob (PDF/CSV) from the export endpoint.
   export: (reportId: number, format: "pdf" | "csv" = "pdf") =>
     apiClient
-      .post<Blob>(`/reports/${reportId}/export`, null, {
+      .post<Blob>(`/legacy/reports/${reportId}/export`, null, {
         params: { format },
         responseType: "blob",
       })
@@ -184,6 +221,8 @@ export const farmApi = {
 // ---- Handlers & invites ----
 export const handlerApi = {
   list: () => apiClient.get<Handler[]>("/handlers").then((r) => r.data),
+  create: (body: CreateHandlerRequest) =>
+    apiClient.post<Handler>("/handlers", body).then((r) => r.data),
 };
 
 export const inviteApi = {
@@ -196,4 +235,28 @@ export const inviteApi = {
     apiClient.post<AuthResponse>(`/invites/${token}/accept`).then((r) => r.data),
   decline: (token: string) =>
     apiClient.post<void>(`/invites/${token}/decline`).then((r) => r.data),
+};
+
+// ---- Incubation, inputs, tasks, finance, and descriptive analytics ----
+export const incubationApi = {
+  list: () => apiClient.get<IncubationCycle[]>("/incubation-cycles").then((r) => r.data),
+  create: (body: CreateIncubationCycleRequest) => apiClient.post<IncubationCycle>("/incubation-cycles", body).then((r) => r.data),
+  complete: (id: number, body: CompleteIncubationRequest) => apiClient.post<IncubationCycle>(`/incubation-cycles/${id}/complete`, body).then((r) => r.data),
+  createBatch: (id: number) => apiClient.post<Batch>(`/incubation-cycles/${id}/create-batch`).then((r) => r.data),
+};
+export const inputApi = {
+  list: (batchId?: number, incubationCycleId?: number) => apiClient.get<FarmInputLog[]>("/inputs", { params: { batchId, incubationCycleId } }).then((r) => r.data),
+  create: (body: CreateFarmInputRequest) => apiClient.post<FarmInputLog>("/inputs", body).then((r) => r.data),
+};
+export const taskApi = {
+  list: (mine = false) => apiClient.get<HandlerTask[]>("/tasks", { params: { mine } }).then((r) => r.data),
+  create: (body: CreateTaskRequest) => apiClient.post<HandlerTask>("/tasks", body).then((r) => r.data),
+  updateStatus: (id: number, body: UpdateTaskStatusRequest) => apiClient.post<HandlerTask>(`/tasks/${id}/status`, body).then((r) => r.data),
+};
+export const financeApi = {
+  list: () => apiClient.get<FinancialTransaction[]>("/financial-transactions").then((r) => r.data),
+  create: (body: CreateFinancialTransactionRequest) => apiClient.post<FinancialTransaction>("/financial-transactions", body).then((r) => r.data),
+};
+export const operationsAnalyticsApi = {
+  get: (start?: string, end?: string) => apiClient.get<OperationsAnalytics>("/analytics/operations", { params: { start, end } }).then((r) => r.data),
 };

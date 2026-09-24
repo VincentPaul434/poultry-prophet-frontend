@@ -2,7 +2,12 @@
 
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const d = new Date(iso);
+  // Date-only API values (YYYY-MM-DD) are parsed as UTC by JavaScript. Create
+  // them as local dates instead so users west of UTC do not see the previous
+  // calendar day.
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+    ? new Date(`${iso}T00:00:00`)
+    : new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString(undefined, {
     year: "numeric",
@@ -37,7 +42,14 @@ export function scoreColor(value: number | null | undefined): string {
 }
 
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+export function isFutureDate(value: string | null | undefined): boolean {
+  return !!value && value > todayIso();
 }
 
 export const QUALITY_RATINGS = [

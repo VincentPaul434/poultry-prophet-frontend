@@ -5,13 +5,11 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ClipboardList,
-  ListChecks,
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useBatchOverview, useChangeStage } from "@/hooks/use-batches";
+import { useBatchOverview } from "@/hooks/use-batches";
 import { useAcknowledgeAlert } from "@/hooks/use-analytics";
-import { useLifecycleStages } from "@/hooks/use-reference";
 import { useBatchEvents } from "@/hooks/use-events";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
@@ -21,14 +19,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { BatchLogSection, EVENT_EMOJI } from "@/components/batch-log-section";
+import { PageBackLink } from "@/components/page-back-link";
+import { EVENT_EMOJI } from "@/components/batch-log-section";
+import { getLoggingHref, LOGGING_ORIGINS } from "@/lib/logging-navigation";
+import { SelectionReviewSummary } from "@/components/selection-review-summary";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -40,13 +34,6 @@ function stageStep(days: number) {
   if (days <= 30) return 1;
   if (days <= 120) return 2;
   return 3;
-}
-
-function scoreToStatus(score: number | null | undefined) {
-  if (score == null) return { label: "Not yet scored", color: "text-muted-foreground", dot: "bg-muted-foreground" };
-  if (score >= 70) return { label: "Good", color: "text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500" };
-  if (score >= 50) return { label: "Watch", color: "text-amber-600 dark:text-amber-400", dot: "bg-amber-500" };
-  return { label: "Alert", color: "text-red-600 dark:text-red-400", dot: "bg-red-500" };
 }
 
 const severityConfig: Record<Severity, { label: string; cls: string; icon: string }> = {
@@ -62,7 +49,7 @@ function StageProgress({ days }: { days: number }) {
   const steps = [
     { n: 1, label: "Brooding", range: "Day 1–30" },
     { n: 2, label: "Ranging", range: "Day 31–120" },
-    { n: 3, label: "Selection", range: "Day 121–150" },
+    { n: 3, label: "Pre-conditioning", range: "Day 121+" },
   ];
   return (
     <div className="rounded-2xl border bg-card p-4">
@@ -74,35 +61,13 @@ function StageProgress({ days }: { days: number }) {
                 s.n < step ? "bg-primary text-primary-foreground" : s.n === step ? "bg-primary text-primary-foreground ring-4 ring-primary/20" : "bg-muted text-muted-foreground")}>
                 {s.n < step ? "✓" : s.n}
               </div>
-              <p className={cn("text-[10px] font-semibold text-center leading-tight", s.n === step ? "text-primary" : "text-muted-foreground")}>{s.label}</p>
-              <p className="text-[9px] text-muted-foreground text-center">{s.range}</p>
+              <p className={cn("text-xs font-semibold text-center leading-tight", s.n === step ? "text-primary" : "text-muted-foreground")}>{s.label}</p>
+              <p className="text-xs text-muted-foreground text-center">{s.range}</p>
             </div>
             {i < steps.length - 1 && <div className={cn("h-0.5 w-6 shrink-0 rounded-full", s.n < step ? "bg-primary" : "bg-muted")} />}
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-// ─── Health card ──────────────────────────────────────────────────────────────
-
-function HealthCard({ label, technicalLabel, score, icon }: { label: string; technicalLabel: string; score: number | null | undefined; icon: string }) {
-  const status = scoreToStatus(score);
-  return (
-    <div className="rounded-2xl border bg-card p-4 space-y-2">
-      <div className="flex items-center justify-between">
-        <span className="text-xl">{icon}</span>
-        <div className={cn("flex items-center gap-1.5", status.color)}>
-          <div className={cn("size-2 rounded-full", status.dot)} />
-          <span className="text-xs font-bold">{status.label}</span>
-        </div>
-      </div>
-      <div>
-        <p className="text-sm font-bold leading-tight">{label}</p>
-        <p className="text-[10px] text-muted-foreground">{technicalLabel}</p>
-      </div>
-      <p className={cn("text-2xl font-bold", status.color)}>{score != null ? score.toFixed(1) : "—"}</p>
     </div>
   );
 }
@@ -119,11 +84,11 @@ function AlertItem({ batchId, alert, canAck }: { batchId: number; alert: Alert; 
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-bold uppercase tracking-wide">{cfg.label}</span>
-            <span className="text-[10px] text-muted-foreground">{formatDateTime(alert.createdAt)}</span>
+            <span className="text-xs text-muted-foreground">{formatDateTime(alert.createdAt)}</span>
           </div>
           <p className="text-sm leading-snug">{alert.message}</p>
           {canAck && (
-            <Button size="sm" variant="outline" className="mt-1 h-8 w-full rounded-lg text-xs font-semibold" disabled={acknowledge.isPending}
+            <Button size="sm" variant="outline" className="mt-1 h-11 w-full rounded-lg text-sm font-semibold" disabled={acknowledge.isPending}
               onClick={() => acknowledge.mutateAsync({ id: alert.id }).then(() => toast.success("Alert acknowledged")).catch((err) => toast.error(err instanceof ApiError ? err.message : "Failed"))}>
               {acknowledge.isPending && <Loader2 className="size-3 animate-spin" />}
               Mark as seen
@@ -132,24 +97,6 @@ function AlertItem({ batchId, alert, canAck }: { batchId: number; alert: Alert; 
         </div>
       </div>
     </div>
-  );
-}
-
-// ─── Stage selector (manager-only) ───────────────────────────────────────────
-
-function StageSelect({ batchId, currentStageId }: { batchId: number; currentStageId: number }) {
-  const { data: stages } = useLifecycleStages();
-  const changeStage = useChangeStage(batchId);
-  return (
-    <Select value={String(currentStageId)} onValueChange={(v) => {
-      if (!v) return;
-      changeStage.mutateAsync(Number(v)).then(() => toast.success("Stage updated")).catch((err) => toast.error(err instanceof ApiError ? err.message : "Failed to change stage"));
-    }}>
-      <SelectTrigger className="h-10 w-44 rounded-xl capitalize text-sm"><SelectValue /></SelectTrigger>
-      <SelectContent>
-        {stages?.map((s) => <SelectItem key={s.id} value={String(s.id)} className="capitalize">{s.name}</SelectItem>)}
-      </SelectContent>
-    </Select>
   );
 }
 
@@ -164,6 +111,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
   if (isLoading) {
     return (
       <div className="mx-auto max-w-2xl space-y-4">
+        <PageBackLink destination="dashboard" />
         <Skeleton className="h-20 w-full rounded-2xl" />
         <Skeleton className="h-36 w-full rounded-2xl" />
         <div className="grid grid-cols-2 gap-3">
@@ -175,7 +123,8 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
 
   if (isError || !data) {
     return (
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-2xl space-y-4">
+        <PageBackLink destination="dashboard" />
         <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-8 text-center">
           <p className="text-sm font-medium text-destructive">
             {error instanceof ApiError ? error.message : "Failed to load batch."}
@@ -185,11 +134,12 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
     );
   }
 
-  const { batch, latestIndicator, activeAlerts } = data;
+  const { batch, activeAlerts } = data;
   const days = daysElapsed(batch.startDate);
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
+      <PageBackLink destination="dashboard" />
 
       {/* ── 1. Compact header ──────────────────────────────────────────── */}
       <div className="space-y-1.5">
@@ -205,38 +155,42 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
               {batch.bloodline ? ` · ${batch.bloodline}` : ""}
             </p>
           </div>
-          {isManager && (
-            <div className="shrink-0 flex flex-col items-end gap-1.5">
-              <StageSelect batchId={batch.id} currentStageId={batch.stageId} />
-              <Link href={`/batches/${batch.id}/selection`}
-                className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors">
-                <ListChecks className="size-3.5" /> Selection
-              </Link>
-            </div>
-          )}
+          <div className="shrink-0 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-right">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Current stage</p>
+            <p className="text-sm font-bold capitalize text-primary">{batch.stageName.replace("-", " ")}</p>
+            <p className="text-xs text-muted-foreground">Based on age</p>
+          </div>
         </div>
       </div>
 
-      {/* ── 2. Quick Log (handlers) / Event log link (managers) ───────── */}
+      {/* ── 2. Task shortcut (handlers) / Event log link (managers) ───── */}
       {!isManager ? (
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-              Quick Log
-            </h2>
-            <Link
-              href={`/batches/${batch.id}/data-entry`}
-              className="flex items-center gap-1 text-xs font-semibold text-primary hover:underline underline-offset-4"
-            >
-              <ClipboardList className="size-3.5" />
-              View all events
-            </Link>
+        <section className="flex flex-col gap-4 rounded-2xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <ClipboardList className="size-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold">Record field activity</h2>
+              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                Log deaths, sickness, medicine, behavior, or today&apos;s readings.
+              </p>
+            </div>
           </div>
-          <BatchLogSection batchId={String(batch.id)} population={batch.currentPopulation} />
+          <Button
+            className="w-full shrink-0 sm:w-auto"
+            render={
+              <Link
+                href={getLoggingHref(batch.id, LOGGING_ORIGINS.batch, true)}
+              />
+            }
+          >
+            Log an event
+          </Button>
         </section>
       ) : (
         <Link
-          href={`/batches/${batch.id}/data-entry`}
+          href={getLoggingHref(batch.id, LOGGING_ORIGINS.batch)}
           className="flex items-center justify-between rounded-2xl border bg-card px-4 py-3.5 text-sm font-semibold hover:bg-muted transition-colors"
         >
           <div className="flex items-center gap-2.5">
@@ -250,21 +204,8 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
       {/* ── 3. Stage progress ──────────────────────────────────────────── */}
       <StageProgress days={days} />
 
-      {/* ── 4. Health KPIs ─────────────────────────────────────────────── */}
-      <section className="space-y-2">
-        <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider px-0.5">Health indicators</h2>
-        <div className="grid grid-cols-2 gap-3">
-          <HealthCard label="Overall Readiness" technicalLabel="CRS score" score={latestIndicator?.readinessScore} icon="🏆" />
-          <HealthCard label="Brooding Health" technicalLabel="BHI score" score={latestIndicator?.bhi} icon="🌡️" />
-          <HealthCard label="Behavior Stress" technicalLabel="BSI score" score={latestIndicator?.bsi} icon="😤" />
-          <HealthCard label="Feed vs. Water" technicalLabel="WFR ratio" score={latestIndicator?.wfr} icon="💧" />
-        </div>
-        {latestIndicator && (
-          <p className="text-[11px] text-muted-foreground px-0.5">
-            Last computed from records on {formatDate(latestIndicator.recordDate)}.
-          </p>
-        )}
-      </section>
+      {/* ── 4. Factual selection-review summary ────────────────────────── */}
+      <SelectionReviewSummary batchId={batch.id} />
 
       {/* ── 5. Active alerts ───────────────────────────────────────────── */}
       {activeAlerts.length > 0 && (
@@ -284,7 +225,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
         <section className="space-y-2">
           <div className="flex items-center justify-between px-0.5">
             <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Recent events</h2>
-            <Link href={`/batches/${batch.id}/data-entry`} className="text-xs font-semibold text-primary hover:underline underline-offset-4">
+            <Link href={getLoggingHref(batch.id, LOGGING_ORIGINS.batch)} className="text-xs font-semibold text-primary hover:underline underline-offset-4">
               See all
             </Link>
           </div>
@@ -299,7 +240,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
                       <span className="shrink-0 text-xs text-muted-foreground">{ev.affectedCount} bird{ev.affectedCount !== 1 ? "s" : ""}</span>
                     )}
                   </div>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     {ev.handlerName} · {formatDate(ev.eventDate)}
                   </p>
                 </div>

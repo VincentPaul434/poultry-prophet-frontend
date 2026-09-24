@@ -10,7 +10,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Poultry Prophet",
-  description: "Game fowl brooding, ranging and month-5 selection dashboard.",
+  description: "Rule-based batch-monitoring and decision-support prototype for farm observations.",
 };
 
 export default function RootLayout({
@@ -24,7 +24,8 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${inter.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-background text-foreground">
+      {/* Browser extensions may add attributes to body before hydration. */}
+      <body suppressHydrationWarning className="min-h-full bg-background text-foreground">
         <Providers>{children}</Providers>
       </body>
     </html>
