@@ -256,7 +256,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </DialogContent>
       </Dialog>
 
-      <SidebarInset className="min-h-0">
+      <SidebarInset className="min-h-0 min-w-0">
         <header className="relative flex min-h-16 shrink-0 items-center justify-center border-b bg-card px-4 py-2 md:hidden">
           <SidebarTrigger className="absolute left-4 top-1/2 size-11 -translate-y-1/2" />
           <div className="flex flex-col items-center text-center leading-none">
@@ -275,7 +275,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="safe-pb min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10">
+        <main className="safe-pb min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10">
           <NetworkStatusBanner />
           {isValidation && (
             <div
@@ -346,29 +346,27 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
         aria-label="Mobile navigation"
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 shadow-[0_-8px_24px_rgba(42,36,32,0.12)] backdrop-blur md:hidden"
       >
-        <div className="safe-pb mx-auto grid max-w-lg grid-cols-5 items-center gap-1 px-2 pt-2">
+        <div className="safe-nav-pb mx-auto grid max-w-lg grid-cols-5 items-center gap-1 px-2 pt-2">
           {items.slice(0, 2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
 
           {!isManager && (
             <button
               type="button"
               onClick={() => setRecordOpen(true)}
-              className="-mt-6 flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-primary px-3 text-primary-foreground shadow-lg shadow-primary/25 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+              className="-mt-6 flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl bg-primary px-1 text-primary-foreground shadow-lg shadow-primary/25 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
               aria-label={t("record.title")}
             >
               <Plus className="size-6" aria-hidden="true" />
-              <span className="text-xs font-bold">{t("nav.record")}</span>
+              <span className="max-w-full truncate text-[11px] font-bold">{t("nav.record")}</span>
             </button>
           )}
-
-          {isManager && <div aria-hidden="true" />}
 
           {items.slice(2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} />)}
 
           <button
             type="button"
             onClick={toggleSidebar}
-            className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+            className="flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
             aria-label="Open more navigation options"
           >
             <MoreHorizontal className="size-5" aria-hidden="true" />
@@ -384,7 +382,7 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
               <SheetTitle>{t("record.title")}</SheetTitle>
               <SheetDescription>{t("record.choose")}</SheetDescription>
             </SheetHeader>
-            <div className="safe-pb space-y-3 overflow-y-auto p-5">
+            <div className="safe-nav-pb space-y-3 overflow-y-auto p-5">
               {activeBatches.length === 0 && (
                 <p className="rounded-2xl border border-dashed p-5 text-center text-sm text-muted-foreground">
                   {t("common.noRecords")}
@@ -424,12 +422,12 @@ function MobileNavLink({ item, pathname, unread = 0 }: { item: MobileNavItem; pa
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-2 text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
+        "relative flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
         active ? "bg-primary/10 text-primary" : "hover:bg-muted hover:text-foreground"
       )}
     >
       <Icon className="size-5" aria-hidden="true" />
-      <span className="text-xs font-semibold">{t(item.labelKey)}</span>
+      <span className="max-w-full truncate text-[11px] font-semibold">{t(item.labelKey)}</span>
       {unread > 0 && <span className="absolute right-2 top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-bold text-white">{unread > 99 ? "99+" : unread}</span>}
     </Link>
   );

@@ -98,10 +98,10 @@ export default function FinancePage() {
         </div>
       </header>
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
         <Summary label={t("finance.income")} value={`₱${income.toLocaleString()}`} tone="positive" />
         <Summary label={t("finance.expenses")} value={`₱${expense.toLocaleString()}`} tone="negative" />
-        <Summary label={t("finance.net")} value={`₱${(income - expense).toLocaleString()}`} tone="neutral" />
+        <Summary className="col-span-2 sm:col-span-1" label={t("finance.net")} value={`₱${(income - expense).toLocaleString()}`} tone="neutral" />
       </div>
 
       <Card className="overflow-hidden shadow-sm">
@@ -213,6 +213,6 @@ export default function FinancePage() {
   );
 }
 
-function Summary({ label, value, tone }: { label: string; value: string; tone: "positive" | "negative" | "neutral" }) {
-  return <Card className="shadow-none"><CardContent className="p-3 sm:p-4"><p className="text-xs font-medium text-muted-foreground">{label}</p><p className={tone === "positive" ? "mt-1 truncate text-lg font-bold text-emerald-700 dark:text-emerald-300 sm:text-xl" : tone === "negative" ? "mt-1 truncate text-lg font-bold text-red-700 dark:text-red-300 sm:text-xl" : "mt-1 truncate text-lg font-bold sm:text-xl"}>{value}</p></CardContent></Card>;
+function Summary({ label, value, tone, className }: { label: string; value: string; tone: "positive" | "negative" | "neutral"; className?: string }) {
+  return <Card className={`shadow-none ${className ?? ""}`}><CardContent className="p-3 sm:p-4"><p className="text-xs font-medium text-muted-foreground">{label}</p><p className={tone === "positive" ? "mt-1 truncate text-lg font-bold text-emerald-700 dark:text-emerald-300 sm:text-xl" : tone === "negative" ? "mt-1 truncate text-lg font-bold text-red-700 dark:text-red-300 sm:text-xl" : "mt-1 truncate text-lg font-bold sm:text-xl"}>{value}</p></CardContent></Card>;
 }

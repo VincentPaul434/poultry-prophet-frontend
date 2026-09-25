@@ -163,4 +163,8 @@
   .safe-pb {
     padding-bottom: calc(env(safe-area-inset-bottom) + 5rem);
   }
+
+  .safe-nav-pb {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
+  }
 }
