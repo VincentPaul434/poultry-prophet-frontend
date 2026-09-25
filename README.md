@@ -21,19 +21,24 @@ cp .env.example .env.local
 npm run dev
 ```
 
-The app expects the backend on `http://localhost:8080`. Configure via `.env.local`:
+Configure the backend API URL in `.env.local`:
 
 ```
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8080/api
 ```
 
-When `NEXT_PUBLIC_API_BASE_URL` is not set, the deployed app uses the live
-Render backend at `https://poultry-prophet-backend.onrender.com/api`.
+The server-side `/api/backend` route reads this setting and forwards browser
+requests to the backend. The client only calls the same-origin proxy, so the
+backend host is not included in the client bundle. Although the `NEXT_PUBLIC_`
+prefix can expose a variable when client code references it, this setting is
+only read by the server route. Keep it out of client-side modules and set it in
+the deployment build environment.
 
 ## Architecture
 
 ```
 app/
+  api/backend/[...path]/route.ts  Server-side proxy to NEXT_PUBLIC_API_BASE_URL
   layout.tsx            Root layout → wraps everything in <Providers>
   page.tsx              Redirects to /dashboard or /login
   login, register/      Public auth screens
@@ -65,6 +70,7 @@ lib/
   `gcTime` 5m, retry transient errors only (never 4xx), refetch on window focus.
 - **Per-query tuning**: lifecycle stages are `staleTime: Infinity` (static reference
   data); handlers/thresholds 5m; live data (overview, alerts, indicators) 15s.
+- **Live refresh**: active batch queries and the farm alert feed refresh every 30s.
 - **Hierarchical keys** ([lib/query-keys.ts](lib/query-keys.ts)): everything for a batch
   lives under `["batches", id, ...]`, so a mutation can invalidate the whole subtree
   (e.g. logging a daily record recomputes indicators + alerts, so it invalidates

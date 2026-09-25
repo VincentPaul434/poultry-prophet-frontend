@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, Bird, ClipboardList, Egg, LayoutDashboard, LineChart, LogOut, MoreHorizontal, Package, Plus, Settings, WalletCards } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useBatches } from "@/hooks/use-batches";
 import { useFarmAlerts } from "@/hooks/use-analytics";
@@ -91,10 +92,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { t } = useLocale();
   useFarmRealtime();
   const { data: activeAlerts } = useFarmAlerts(true, !!user);
+  const previousAlerts = useRef<{ farmId: number | null; ids: Set<number> } | null>(null);
   const farm = useFarm(!!user && user.farmId != null);
   const release = useReleaseVersion(!!user);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const unread = activeAlerts?.length ?? 0;
+
+  useEffect(() => {
+    if (!activeAlerts || user?.farmId == null) return;
+
+    const farmId = user.farmId;
+    const previous = previousAlerts.current;
+    const currentIds = new Set(activeAlerts.map((alert) => alert.id));
+    previousAlerts.current = { farmId, ids: currentIds };
+
+    if (!previous || previous.farmId !== farmId || user.role !== "MANAGER") return;
+
+    for (const alert of activeAlerts) {
+      if (
+        previous.ids.has(alert.id) ||
+        (alert.indicatorType !== "HEALTH_DEATH" && alert.indicatorType !== "MORTALITY")
+      ) {
+        continue;
+      }
+
+      const count = alert.deathCount ?? 0;
+      const label = `${count} bird${count === 1 ? "" : "s"} died`;
+      const description = [alert.batchName, alert.handlerName, alert.cause]
+        .filter(Boolean)
+        .join(" · ");
+      const notify = alert.severity === "CRITICAL" ? toast.error : toast.warning;
+      notify(description ? `${label} · ${description}` : label, { id: `alert-${alert.id}` });
+    }
+  }, [activeAlerts, user?.farmId, user?.role]);
+
   const farmName = getFarmDisplayName({
     farm: farm.data,
     farmId: user?.farmId,

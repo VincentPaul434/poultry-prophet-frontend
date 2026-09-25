@@ -7,9 +7,10 @@
 import axios, { AxiosError, type AxiosInstance } from "axios";
 import { clearSession, getToken } from "./auth-storage";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  "https://poultry-prophet-backend.onrender.com/api";
+// Browser requests stay on this origin. The Next.js route handler forwards
+// them to the server-side API URL, keeping the upstream host out of the client
+// bundle and browser network requests.
+const API_PROXY_BASE_URL = "/api/backend";
 
 // Shape Spring's GlobalExceptionHandler returns.
 interface SpringApiError {
@@ -32,7 +33,7 @@ export class ApiError extends Error {
 }
 
 export const apiClient: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: API_PROXY_BASE_URL,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -76,5 +77,3 @@ apiClient.interceptors.response.use(
     return Promise.reject(new ApiError(message, status, body?.fieldErrors));
   }
 );
-
-export { API_BASE_URL };
