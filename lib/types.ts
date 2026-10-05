@@ -74,6 +74,22 @@ export interface Batch {
   createdAt: string; // ISO instant
 }
 
+/** Farm-scoped dashboard projection. Keep this separate from Batch so the
+ * card can show processed facts without making one request per batch. */
+export interface BatchDashboardSummary {
+  healthRelatedDeaths: number;
+  otherPopulationChanges: number;
+  recordedHealthEvents: number;
+  activeAlertCount: number;
+  highestActiveAlertSeverity: Severity | null;
+  lastEventDate: string | null;
+}
+
+export interface BatchDashboardItem {
+  batch: Batch;
+  summary: BatchDashboardSummary;
+}
+
 export interface CreateBatchRequest {
   name: string;
   initialPopulation: number;
@@ -110,7 +126,7 @@ export interface DailyRecord {
   handlerId: number;
   handlerName: string;
   recordDate: string; // ISO date
-  temperatureC: number;
+  temperatureC: number | null;
   mortalityCount: number;
   feedIntakeG: number | null;
   waterIntakeMl: number | null;
@@ -124,7 +140,7 @@ export interface DailyRecord {
 
 export interface CreateRecordRequest {
   recordDate?: string | null;
-  temperatureC: number;
+  temperatureC?: number | null;
   mortalityCount?: number | null;
   feedIntakeG?: number | null;
   waterIntakeMl?: number | null;
@@ -191,6 +207,11 @@ export interface FarmInputLog {
   purpose: string | null;
   notes: string | null;
   recordedBy: number;
+  operationId?: string | null;
+  farmProductId?: number | null;
+  inventoryMovementId?: number | null;
+  inventoryStatus?: "DEDUCTED" | "PENDING_STOCK_REVIEW" | "UNTRACKED" | "NOT_APPLICABLE" | "LEGACY" | null;
+  affectedBirdCount?: number | null;
 }
 export interface CreateFarmInputRequest {
   batchId?: number | null;
@@ -204,6 +225,66 @@ export interface CreateFarmInputRequest {
   route?: string | null;
   purpose?: string | null;
   notes?: string | null;
+  operationId?: string;
+  farmProductId?: number | null;
+  affectedBirdCount?: number | null;
+}
+
+export type InventoryProductType = InputProductType;
+export interface FarmProduct {
+  id: number;
+  farmId: number;
+  productType: InventoryProductType;
+  brandName: string;
+  productName: string | null;
+  packageDescription: string | null;
+  stockUnit: string;
+  stockOnHand: string | number;
+  reorderLevel: string | number | null;
+  lowStock: boolean;
+  allowFractionalQuantity: boolean;
+  active: boolean;
+}
+export interface CreateFarmProductRequest {
+  productType: InventoryProductType;
+  brandName: string;
+  productName?: string | null;
+  packageDescription?: string | null;
+  stockUnit: string;
+  openingQuantity?: number;
+  reorderLevel?: number | null;
+  allowFractionalQuantity?: boolean;
+}
+export interface StockInRequest {
+  quantity: number;
+  stockDate?: string | null;
+  totalCost?: number | null;
+  batchId?: number | null;
+  supplier?: string | null;
+  recordExpense?: boolean;
+  notes?: string | null;
+  operationId?: string;
+}
+export interface InventoryAdjustmentRequest {
+  quantityDelta: number;
+  reason: string;
+  occurredOn?: string | null;
+  operationId?: string;
+}
+export interface InventoryMovement {
+  id: number;
+  farmProductId: number;
+  movementType: string;
+  quantityDelta: string | number;
+  balanceAfter: string | number;
+  occurredAt: string;
+  batchId: number | null;
+  farmInputLogId: number | null;
+  financialTransactionId: number | null;
+  reversesMovementId: number | null;
+  reason: string | null;
+  recordedBy: number;
+  operationId: string | null;
 }
 
 export type TaskPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
@@ -273,6 +354,33 @@ export interface OperationsAnalytics {
   tasks: { totalTasks: number; openTasks: number; completedTasks: number; overdueTasks: number; completionRatePercent: number };
   inputs: { totalLogs: number; byProductType: Record<string, number>; byBrand: Record<string, number> };
   finance: { currency: string; income: string; expense: string; net: string; transactionCount: number };
+}
+
+export interface FinanceAnalytics {
+  scope: "BATCH" | "FARM";
+  batchId: number | null;
+  batchName: string | null;
+  startDate: string;
+  endDate: string;
+  currency: string;
+  totals: {
+    recordedIncome: string;
+    recordedExpense: string;
+    recordedNetCashFlow: string;
+    postedTransactionCount: number;
+    voidedTransactionCount: number;
+  };
+  series: Array<{
+    periodStart: string;
+    periodEnd: string;
+    label: string;
+    income: string;
+    expense: string;
+    netChange: string;
+    cumulativeNetCashFlow: string;
+  }>;
+  categoryTotals: Array<{ category: string; amount: string }>;
+  limitations: { farmWideCostsExcluded: boolean; message: string };
 }
 
 // ---- Per-bird ranging records ----
@@ -454,6 +562,7 @@ export interface SelectionReviewPayload {
   incubation: SelectionReviewIncubation | null;
   finance: SelectionReviewFinance | null;
   dataAvailability: SelectionReviewDataAvailability[];
+  selectionSummary: SelectionReviewSelectionSummary | null;
   reviewInstructions: SelectionReviewInstructions;
 }
 
@@ -474,6 +583,9 @@ export interface SelectionReviewBatchOverview {
 export interface SelectionReviewPopulation {
   initialPopulation: number;
   currentPopulation: number;
+  calculatedPopulationFromEvents: number;
+  reconciliationRequired: boolean;
+  reconciliationMessage: string | null;
   healthRelatedDeaths: number;
   healthRelatedLossPercentage: number | null;
   accidentalDeaths: number;
@@ -547,6 +659,62 @@ export interface SelectionReviewDataAvailability {
   recordCount: number;
   latestDate: string | null;
   message: string;
+}
+
+export interface SelectionReviewSelectionSummary {
+  sessionId: number;
+  selectionDate: string;
+  status: "DRAFT" | "FINALIZED" | "SUPERSEDED";
+  evaluatedCount: number;
+  acceptedCount: number;
+  continueObservationCount: number;
+  notAcceptedCount: number;
+  otherCount: number;
+  selectionRatePercent: number | null;
+  criterionCodes: string[];
+  reviewerId: number;
+  criteriaNotes: string | null;
+  notes: string | null;
+}
+
+export type SelectionSessionStatus = "DRAFT" | "FINALIZED" | "SUPERSEDED";
+
+export interface CreateSelectionSessionRequest {
+  selectionDate?: string;
+  evaluatedCount: number;
+  acceptedCount: number;
+  continueObservationCount: number;
+  notAcceptedCount: number;
+  otherCount: number;
+  criterionCodes: string[];
+  criteriaNotes?: string | null;
+  sessionNotes?: string | null;
+  operationId: string;
+}
+
+export interface SelectionSession {
+  id: number;
+  farmId: number;
+  batchId: number;
+  selectionDate: string;
+  reviewerId: number;
+  evaluatedCount: number;
+  acceptedCount: number;
+  continueObservationCount: number;
+  notAcceptedCount: number;
+  otherCount: number;
+  selectionRatePercent: number | null;
+  selectionRateNumerator: number;
+  selectionRateDenominator: number;
+  status: SelectionSessionStatus;
+  criterionCodes: string[];
+  criteriaNotes: string | null;
+  sessionNotes: string | null;
+  operationId: string | null;
+  supersedesSessionId: number | null;
+  createdAt: string;
+  updatedAt: string;
+  finalizedAt: string | null;
 }
 
 export interface SelectionReviewInstructions {
@@ -650,6 +818,7 @@ export interface BatchEvent {
   populationDelta?: number | null;
   populationAfter?: number | null;
   remainingPopulation?: number | null;
+  salePurpose?: "BREEDING" | "OTHER" | "NOT_SPECIFIED" | null;
 }
 
 export interface CreateBatchEventRequest {
@@ -664,6 +833,36 @@ export interface CreateBatchEventRequest {
   tags?: string | null;
 }
 
+export type SyncEntityType = "BATCH_EVENT" | "FARM_INPUT";
+export type SyncResultStatus = "APPLIED" | "ALREADY_APPLIED" | "CONFLICT" | "REJECTED" | "RETRYABLE" | "AUTH_REQUIRED";
+export interface SyncOperationRequest {
+  operationId: string;
+  schemaVersion: number;
+  entityType: SyncEntityType;
+  batchId: number;
+  occurredAt: string;
+  payload: Record<string, unknown>;
+}
+export interface SyncOperationsRequest {
+  deviceId: string;
+  operations: SyncOperationRequest[];
+}
+export interface SyncOperationResult {
+  operationId: string;
+  status: SyncResultStatus;
+  serverId: number | null;
+  serverTime: string;
+  message: string | null;
+}
+export interface SyncOperationsResponse {
+  received: number;
+  applied: number;
+  conflicts: number;
+  rejected: number;
+  retryable: number;
+  results: SyncOperationResult[];
+}
+
 export interface VersionInfo {
   application: string;
   version: string;
@@ -671,6 +870,41 @@ export interface VersionInfo {
   buildTime: string;
   environment: string;
   compatibleFrontendVersion: string;
+}
+
+// ---- Local Test Lab (server-guarded; never available on a remote database) ----
+export type TestLabProfile = "REALISTIC" | "DAILY_COVERAGE" | "ANALYTICS_PACK";
+
+export interface TestLabStatus {
+  enabled: boolean;
+  environment: string;
+  message: string;
+}
+
+export interface GenerateTestBatchRequest {
+  sourceBatchId: number;
+  profile: TestLabProfile;
+  seed?: number;
+  confirmation: "CREATE_TEST_COPY";
+}
+
+export interface GenerateTestBatchResponse {
+  classification: "SYNTHETIC_VALIDATION";
+  sourceBatchId: number;
+  batchId: number;
+  batchName: string;
+  profile: TestLabProfile;
+  seed: number;
+  startDate: string;
+  endDate: string;
+  initialPopulation: number;
+  finalPopulation: number;
+  eventCount: number;
+  observationCount: number;
+  inputCount: number;
+  financeCount: number;
+  completedTaskCount: number;
+  reportCount: number;
 }
 
 // ---- Handlers & invites ----

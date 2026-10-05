@@ -7,6 +7,13 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(__dirname),
   },
+  experimental: {
+    // Reduce the initial development-server footprint. Routes can still be
+    // compiled lazily when opened.
+    preloadEntriesOnStart: false,
+    // Applies to the explicit Webpack development fallback only.
+    webpackMemoryOptimizations: true,
+  },
 };
 
 export default nextConfig;

@@ -1,0 +1,268 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-04T03:21:24+08:00",
+  "title": "Design System: Poultry Prophet",
+  "extensions": {
+    "colorMeta": {
+      "field-canopy-green": {
+        "role": "primary",
+        "displayName": "Field Canopy Green",
+        "canonical": "#28633f",
+        "tonalRamp": ["#0b1f12", "#123820", "#1b4c2c", "#28633f", "#4c8a63", "#79ad8a", "#afd0b8", "#e8f2ea"]
+      },
+      "field-canopy-green-dark": {
+        "role": "primary",
+        "displayName": "Field Canopy Green — dark theme",
+        "canonical": "#b44a45",
+        "tonalRamp": ["#2a0b09", "#551612", "#7b2823", "#b44a45", "#c87470", "#da9a96", "#edc2c0", "#f8e9e8"]
+      },
+      "soft-farm-paper": {
+        "role": "neutral",
+        "displayName": "Soft Farm Paper",
+        "canonical": "#f7f9f6",
+        "tonalRamp": ["#1b211d", "#38423a", "#5d685f", "#879188", "#adb6ae", "#cfd6d0", "#e5e9e5", "#f7f9f6"]
+      },
+      "night-earth": {
+        "role": "neutral",
+        "displayName": "Night Earth",
+        "canonical": "#1f1a17",
+        "tonalRamp": ["#120e0c", "#1f1a17", "#392f29", "#574943", "#786861", "#9d8d85", "#c8bbb3", "#f5efe4"]
+      },
+      "surface-white": {
+        "role": "neutral",
+        "displayName": "Surface White",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#171a18", "#303530", "#555b56", "#7c827d", "#a4aaa5", "#c8ccc9", "#e4e7e5", "#ffffff"]
+      },
+      "night-card": {
+        "role": "neutral",
+        "displayName": "Night Card",
+        "canonical": "#2a2320",
+        "tonalRamp": ["#171311", "#2a2320", "#453a34", "#62564e", "#82766e", "#a79a91", "#d0c5bd", "#fff7ee"]
+      },
+      "harvest-ochre": {
+        "role": "secondary",
+        "displayName": "Harvest Ochre",
+        "canonical": "#a66a08",
+        "tonalRamp": ["#2d1b02", "#513304", "#774b06", "#a66a08", "#c18b2d", "#d8ab5b", "#ebce98", "#f9edcf"]
+      },
+      "harvest-gold": {
+        "role": "secondary",
+        "displayName": "Harvest Gold — dark theme",
+        "canonical": "#c6923b",
+        "tonalRamp": ["#3a260d", "#654317", "#916426", "#c6923b", "#d8ae66", "#e6c78f", "#f2dfba", "#fbf1dd"]
+      },
+      "barn-red": {
+        "role": "tertiary",
+        "displayName": "Barn Red",
+        "canonical": "#b42318",
+        "tonalRamp": ["#310805", "#5e100b", "#841711", "#b42318", "#cb4c42", "#df7b73", "#efb0ab", "#fbe4e2"]
+      },
+      "warning-clay": {
+        "role": "tertiary",
+        "displayName": "Warning Clay — dark theme",
+        "canonical": "#d26a32",
+        "tonalRamp": ["#351507", "#67290f", "#984319", "#d26a32", "#df8b5f", "#ebb08d", "#f4d1ba", "#fbece2"]
+      },
+      "deep-green-ink": {
+        "role": "neutral",
+        "displayName": "Deep Green Ink",
+        "canonical": "#17211a",
+        "tonalRamp": ["#090d0a", "#17211a", "#2e3d31", "#526054", "#7c887e", "#a9b1aa", "#d1d6d2", "#f5f7f5"]
+      },
+      "warm-paper-ink": {
+        "role": "neutral",
+        "displayName": "Warm Paper Ink",
+        "canonical": "#f5efe4",
+        "tonalRamp": ["#2b2823", "#4f4a42", "#716b62", "#958e84", "#b7b0a5", "#d2cbc0", "#e8e1d7", "#f5efe4"]
+      },
+      "accent-mist": {
+        "role": "neutral",
+        "displayName": "Accent Mist",
+        "canonical": "#e8f2ea",
+        "tonalRamp": ["#102015", "#1f5133", "#3b764f", "#67a178", "#93be9f", "#b8d4be", "#d5e7d8", "#e8f2ea"]
+      },
+      "accent-earth": {
+        "role": "neutral",
+        "displayName": "Accent Earth — dark theme",
+        "canonical": "#3f3029",
+        "tonalRamp": ["#17100d", "#2b1f1a", "#3f3029", "#604b40", "#80695a", "#a48c7b", "#cdb9aa", "#f3e8df"]
+      },
+      "accent-deep-green": {
+        "role": "neutral",
+        "displayName": "Accent Deep Green",
+        "canonical": "#1f5133",
+        "tonalRamp": ["#08170d", "#102a1b", "#1f5133", "#397452", "#5e9a74", "#8ab99a", "#c0dcc8", "#e8f2ea"]
+      },
+      "muted-sage": {
+        "role": "neutral",
+        "displayName": "Muted Sage",
+        "canonical": "#eef3ee",
+        "tonalRamp": ["#222b24", "#3e4d41", "#5d6e60", "#7f8f82", "#a5b2a7", "#c6d0c7", "#dfe6e0", "#eef3ee"]
+      },
+      "muted-earth": {
+        "role": "neutral",
+        "displayName": "Muted Earth — dark theme",
+        "canonical": "#3a302b",
+        "tonalRamp": ["#181310", "#2a211c", "#3a302b", "#574941", "#76675e", "#998a80", "#c3b8ad", "#f0e7de"]
+      },
+      "border-sage": {
+        "role": "neutral",
+        "displayName": "Border Sage",
+        "canonical": "#d5ded4",
+        "tonalRamp": ["#303b32", "#556359", "#78867b", "#98a59a", "#b4c0b5", "#c6d0c7", "#d5ded4", "#eef3ee"]
+      },
+      "border-night": {
+        "role": "neutral",
+        "displayName": "Border Night",
+        "canonical": "rgb(255 247 238 / 12%)",
+        "tonalRamp": ["rgb(255 247 238 / 5%)", "rgb(255 247 238 / 8%)", "rgb(255 247 238 / 12%)", "rgb(255 247 238 / 16%)", "rgb(255 247 238 / 22%)", "rgb(255 247 238 / 30%)", "rgb(255 247 238 / 42%)", "rgb(255 247 238 / 60%)"]
+      },
+      "input-sage": {
+        "role": "neutral",
+        "displayName": "Input Sage",
+        "canonical": "#b9c8ba",
+        "tonalRamp": ["#344338", "#566959", "#758a78", "#92a695", "#aabaaa", "#b9c8ba", "#d0dad1", "#eef3ee"]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page titles and primary route headings; keep the weight confident and the copy short."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Everyday records, helper text, and controls where clarity matters more than flourish."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Compact metadata, chart labels, and occasional uppercase role or navigation context."
+      }
+    },
+    "shadows": [
+      {
+        "name": "quiet-card",
+        "value": "ring 1px foreground/10; no box-shadow",
+        "purpose": "Default container depth without making every card appear lifted."
+      },
+      {
+        "name": "interactive-lift",
+        "value": "0 4px 12px rgb(23 33 26 / 0.10)",
+        "purpose": "Subtle hover or active emphasis for settings and interactive surfaces."
+      },
+      {
+        "name": "overlay",
+        "value": "0 4px 16px rgb(23 33 26 / 0.14)",
+        "purpose": "Modals and dropdowns that must sit above the record surface."
+      },
+      {
+        "name": "mobile-dock",
+        "value": "0 -8px 24px rgba(42, 36, 32, 0.12)",
+        "purpose": "Fixed mobile navigation that overlays the scrollable record surface."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Short, quiet transitions for hover, focus, navigation, and disclosure."
+      },
+      {
+        "name": "duration-fast",
+        "value": "100ms",
+        "purpose": "Dialog, dropdown, tooltip, and state feedback transitions."
+      },
+      {
+        "name": "duration-standard",
+        "value": "200ms",
+        "purpose": "Sidebar and interactive surface transitions; respect reduced-motion preferences."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The confident action for saving, logging, and moving a farm workflow forward.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\">Save record</button>",
+      "css": ".ds-btn-primary { appearance: none; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 1px solid transparent; border-radius: 12px; background: var(--primary); color: var(--primary-foreground); font: 500 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif; white-space: nowrap; cursor: pointer; transition: background 200ms cubic-bezier(0.4,0,0.2,1), transform 100ms ease, box-shadow 200ms ease; } .ds-btn-primary:hover { background: color-mix(in oklch, var(--primary), white 20%); } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring), transparent 50%); } .ds-btn-primary:disabled { cursor: not-allowed; opacity: .5; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "A quiet secondary action that keeps the record surface visible.",
+      "html": "<button class=\"ds-btn-outline\" type=\"button\">View history</button>",
+      "css": ".ds-btn-outline { appearance: none; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--background); color: var(--foreground); font: 500 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif; white-space: nowrap; cursor: pointer; transition: background 200ms cubic-bezier(0.4,0,0.2,1), color 200ms ease; } .ds-btn-outline:hover { background: var(--muted); } .ds-btn-outline:focus-visible { outline: none; border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring), transparent 50%); } .ds-btn-outline:disabled { cursor: not-allowed; opacity: .5; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A sturdy, touch-friendly field for everyday farm records.",
+      "html": "<label class=\"ds-field\"><span>Batch name</span><input class=\"ds-input\" placeholder=\"e.g. South Coop June\" /></label>",
+      "css": ".ds-field { display: grid; gap: 6px; color: var(--foreground); font: 600 12px/1 Inter, ui-sans-serif, system-ui, sans-serif; letter-spacing: .025em; } .ds-input { box-sizing: border-box; width: 100%; min-height: 44px; padding: 0 12px; border: 1px solid var(--input); border-radius: 12px; background: transparent; color: var(--foreground); font: 400 16px/1.5 Inter, ui-sans-serif, system-ui, sans-serif; outline: none; transition: border-color 200ms ease, box-shadow 200ms ease, background 200ms ease; } .ds-input::placeholder { color: var(--muted-foreground); } .ds-input:hover { border-color: var(--ring); } .ds-input:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring), transparent 50%); } .ds-input:disabled { cursor: not-allowed; opacity: .5; background: color-mix(in oklch, var(--input), transparent 50%); }"
+    },
+    {
+      "name": "Record Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "The default container for a batch fact, review section, or compact record group.",
+      "html": "<section class=\"ds-card\"><p class=\"ds-card-kicker\">Current batch</p><h3>North Coop / June 2026</h3><p class=\"ds-card-copy\">28 birds · ranging · 2 open alerts</p></section>",
+      "css": ".ds-card { box-sizing: border-box; padding: 16px; border-radius: 12px; background: var(--card); color: var(--card-foreground); box-shadow: 0 0 0 1px color-mix(in oklch, var(--foreground), transparent 90%); } .ds-card-kicker { margin: 0 0 4px; color: var(--muted-foreground); font: 600 12px/1 Inter, ui-sans-serif, system-ui, sans-serif; letter-spacing: .025em; text-transform: uppercase; } .ds-card h3 { margin: 0; color: var(--card-foreground); font: 600 16px/1.375 Inter, ui-sans-serif, system-ui, sans-serif; } .ds-card-copy { margin: 6px 0 0; color: var(--muted-foreground); font: 400 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif; } .ds-card:hover { box-shadow: 0 0 0 1px color-mix(in oklch, var(--primary), transparent 70%), 0 4px 12px rgb(23 33 26 / 0.06); }"
+    },
+    {
+      "name": "Sidebar Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "A calm desktop navigation pattern that keeps farm context and role visible.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Main navigation\"><p class=\"ds-nav-brand\">Poultry Prophet</p><a class=\"ds-nav-item ds-nav-item-active\" href=\"#dashboard\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\"><path d=\"M3 12 12 3l9 9v8a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-8Z\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linejoin=\"round\"/></svg><span>Dashboard</span></a><a class=\"ds-nav-item\" href=\"#alerts\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\"><path d=\"M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"/></svg><span>Alerts</span></a></nav>",
+      "css": ".ds-nav { width: 240px; display: grid; gap: 8px; padding: 20px 12px; background: var(--sidebar); color: var(--sidebar-foreground); font: 400 14px/1.5 Inter, ui-sans-serif, system-ui, sans-serif; } .ds-nav-brand { margin: 0 8px 12px; color: var(--sidebar-foreground); font: 700 12px/1 Inter, ui-sans-serif, system-ui, sans-serif; letter-spacing: .2em; text-transform: uppercase; } .ds-nav-item { min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 12px; color: color-mix(in oklch, var(--sidebar-foreground), transparent 30%); text-decoration: none; transition: background 200ms ease, color 200ms ease; } .ds-nav-item svg { width: 18px; height: 18px; flex: 0 0 auto; } .ds-nav-item:hover { background: var(--muted); color: var(--sidebar-foreground); } .ds-nav-item-active { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); } .ds-nav-item:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in oklch, var(--sidebar-ring), transparent 50%); }"
+    },
+    {
+      "name": "Status Banner",
+      "kind": "custom",
+      "description": "Text-first status feedback for offline, validation, review, and error states.",
+      "html": "<div class=\"ds-status\" role=\"status\"><svg aria-hidden=\"true\" viewBox=\"0 0 24 24\"><path d=\"M12 3v3m0 12v3M3 12h3m12 0h3m-4.2-6.8-2.1 2.1m-7.4 7.4-2.1 2.1m0-11.6 2.1 2.1m7.4 7.4 2.1 2.1\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\"/></svg><span><strong>Offline queue</strong> · 2 records waiting to sync.</span></div>",
+      "css": ".ds-status { min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid color-mix(in oklch, var(--ring), transparent 45%); border-radius: 12px; background: color-mix(in oklch, var(--ring), transparent 88%); color: var(--foreground); font: 400 12px/1.5 Inter, ui-sans-serif, system-ui, sans-serif; } .ds-status svg { width: 16px; height: 16px; flex: 0 0 auto; color: var(--ring); } .ds-status strong { font-weight: 700; } .ds-status:focus-within { box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring), transparent 70%); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Field Ledger",
+    "overview": "Poultry Prophet is a practical field ledger with the warmth of a working coop and the clarity of a farm watchtower. The incumbent interface keeps the record itself in the foreground: a light, paper-like canvas; clear green actions; compact cards; and enough hierarchy to help a manager review what happened without turning the farm into a control-room spectacle.\n\nThe system is practical, calm, clear, and trustworthy. It is designed for daily use by handlers with limited technical experience and for focused review by owners and managers. The visual language should stay plainspoken and low-friction: useful grouping, familiar controls, readable status, and restrained decoration. Avoid glossy ag-tech marketing, dense enterprise dashboards, futuristic “AI” styling, decorative farm illustrations, and an excess of scores, badges, or explanatory copy competing with the records.",
+    "keyCharacteristics": [
+      "Light, white-based surfaces with grounded farm greens and a small set of semantic status colors.",
+      "Inter used consistently for a direct, highly legible voice.",
+      "Thin borders and tonal layering establish grouping; shadows are reserved for meaningful elevation.",
+      "Rounded controls and cards support touch use without making the interface playful or ornamental.",
+      "Responsive desktop sidebar and mobile bottom navigation keep daily logging close at hand."
+    ],
+    "rules": [
+      { "name": "The Ledger Contrast Rule", "body": "Use strong contrast for the primary action and important status, but keep most of the screen quiet so the recorded facts remain the visual priority.", "section": "colors" },
+      { "name": "The Plainspoken Type Rule", "body": "Prefer short, readable labels and a clear weight step over display treatments, all-caps blocks, or ornamental typography.", "section": "typography" },
+      { "name": "The Selective Lift Rule", "body": "Do not make every card float. Use borders and tonal surfaces for ordinary grouping; reserve visible shadows for overlays, active states, and the mobile dock.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do let batch records, history, and source facts command the hierarchy.",
+      "Do use Field Canopy Green for primary actions and active states, keeping it purposeful rather than omnipresent.",
+      "Do use thin borders and tonal backgrounds before adding a shadow.",
+      "Do keep touch targets around 44px or taller and preserve readable 16px mobile field text.",
+      "Do pair status color with a label, icon, or clear text explanation.",
+      "Do preserve the calm Field Ledger voice across manager review and handler logging."
+    ],
+    "donts": [
+      "Don't turn every card into a floating panel or add decorative elevation without hierarchy.",
+      "Don't use glossy ag-tech gradients, futuristic AI motifs, or ornamental farm illustrations as primary interface language.",
+      "Don't make badges, scores, indicators, or helper copy compete with the recorded facts.",
+      "Don't rely on color alone to communicate offline, warning, error, inventory, or review state.",
+      "Don't introduce a new font pairing or unrelated hue family without an explicit redesign decision."
+    ]
+  }
+}

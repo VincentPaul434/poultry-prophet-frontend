@@ -59,8 +59,10 @@ export function useFarmAlerts(activeOnly = true, enabled = true) {
     queryFn: () => alertApi.listFarm(activeOnly, 100),
     enabled,
     staleTime: 15_000,
-    // Poll so the nav badge and centre stay fresh without realtime wiring.
-    refetchInterval: 30_000,
+    // WebSocket invalidation is the fast path. Keep a slower visible-tab
+    // fallback for reconnects or events emitted by older backend versions.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 }
 

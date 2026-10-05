@@ -59,7 +59,7 @@ export default function EventHistoryPage({
           <div className="flex items-center justify-between">
             <div><h2 className="text-base font-bold">{t("record.choose")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("record.optionalMeasurements")}</p></div>
           </div>
-          <BatchLogSection batchId={batchId} population={population} />
+          <BatchLogSection batchId={batchId} population={population} batchName={batch?.name} stageName={batch?.stageName} />
         </section>
       )}
 

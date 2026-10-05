@@ -1,16 +1,14 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "Poultry Prophet",
-  description: "Rule-based batch-monitoring and decision-support prototype for farm observations.",
+  title: {
+    default: "Poultry Prophet | Batch Monitoring for Gamefowl Farms",
+    template: "%s | Poultry Prophet",
+  },
+  description:
+    "Record batch health observations, population changes, product use, and farm finances in one traceable system for managers and handlers.",
 };
 
 export default function RootLayout({
@@ -22,7 +20,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${inter.variable} h-full antialiased`}
+      className="h-full antialiased"
     >
       {/* Browser extensions may add attributes to body before hydration. */}
       <body suppressHydrationWarning className="min-h-full bg-background text-foreground">

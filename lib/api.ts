@@ -4,10 +4,12 @@
 // normalises errors. These are consumed by the React Query hooks in /hooks.
 
 import { apiClient } from "./api-client";
+import type { BatchComparison, FarmSummaryAnalytics } from "./farm-summary-types";
 import type {
   Alert,
   AuthResponse,
   Batch,
+  BatchDashboardItem,
   BatchEvent,
   BatchOverview,
   Bird,
@@ -34,6 +36,8 @@ import type {
   SelectionView,
   SelectionReviewPayload,
   SelectionReviewResponse,
+  CreateSelectionSessionRequest,
+  SelectionSession,
   FinalizeSelectionReviewRequest,
   Threshold,
   UpdateFarmRequest,
@@ -47,10 +51,20 @@ import type {
   CreateTaskRequest,
   FarmInputLog,
   FinancialTransaction,
+  FinanceAnalytics,
   HandlerTask,
   IncubationCycle,
-  OperationsAnalytics,
   UpdateTaskStatusRequest,
+  GenerateTestBatchRequest,
+  GenerateTestBatchResponse,
+  TestLabStatus,
+  SyncOperationsRequest,
+  SyncOperationsResponse,
+  FarmProduct,
+  CreateFarmProductRequest,
+  StockInRequest,
+  InventoryAdjustmentRequest,
+  InventoryMovement,
 } from "./types";
 
 type Id = number | string;
@@ -63,8 +77,19 @@ export const authApi = {
     apiClient.post<AuthResponse>("/auth/register", body).then((r) => r.data),
 };
 
+export const syncApi = {
+  operations: (body: SyncOperationsRequest) =>
+    apiClient.post<SyncOperationsResponse>("/sync/v2/operations", body).then((r) => r.data),
+};
+
 export const versionApi = {
   get: () => apiClient.get<VersionInfo>("/version").then((r) => r.data),
+};
+
+export const testLabApi = {
+  status: () => apiClient.get<TestLabStatus>("/test-lab/status").then((r) => r.data),
+  generate: (body: GenerateTestBatchRequest) =>
+    apiClient.post<GenerateTestBatchResponse>("/test-lab/generate", body).then((r) => r.data),
 };
 
 // ---- Account (the caller's own profile/password) ----
@@ -79,6 +104,7 @@ export const accountApi = {
 // ---- Batches & lifecycle ----
 export const batchApi = {
   list: () => apiClient.get<Batch[]>("/batches").then((r) => r.data),
+  dashboard: () => apiClient.get<BatchDashboardItem[]>("/batches/dashboard").then((r) => r.data),
   get: (batchId: Id) =>
     apiClient.get<Batch>(`/batches/${batchId}`).then((r) => r.data),
   create: (body: CreateBatchRequest) =>
@@ -183,6 +209,21 @@ export const selectionReviewApi = {
       .then((r) => r.data),
 };
 
+export const selectionSessionApi = {
+  list: (batchId: Id) =>
+    apiClient.get<SelectionSession[]>(`/batches/${batchId}/selection-sessions`).then((r) => r.data),
+  get: (batchId: Id, sessionId: number) =>
+    apiClient.get<SelectionSession>(`/batches/${batchId}/selection-sessions/${sessionId}`).then((r) => r.data),
+  create: (batchId: Id, body: CreateSelectionSessionRequest) =>
+    apiClient.post<SelectionSession>(`/batches/${batchId}/selection-sessions`, body).then((r) => r.data),
+  update: (batchId: Id, sessionId: number, body: CreateSelectionSessionRequest) =>
+    apiClient.patch<SelectionSession>(`/batches/${batchId}/selection-sessions/${sessionId}`, body).then((r) => r.data),
+  finalize: (batchId: Id, sessionId: number) =>
+    apiClient.post<SelectionSession>(`/batches/${batchId}/selection-sessions/${sessionId}/finalize`).then((r) => r.data),
+  supersede: (batchId: Id, sessionId: number, body: CreateSelectionSessionRequest) =>
+    apiClient.post<SelectionSession>(`/batches/${batchId}/selection-sessions/${sessionId}/supersede`, body).then((r) => r.data),
+};
+
 // ---- Reports ----
 export const reportApi = {
   build: (batchId: Id, start: string, end: string) =>
@@ -248,6 +289,15 @@ export const inputApi = {
   list: (batchId?: number, incubationCycleId?: number) => apiClient.get<FarmInputLog[]>("/inputs", { params: { batchId, incubationCycleId } }).then((r) => r.data),
   create: (body: CreateFarmInputRequest) => apiClient.post<FarmInputLog>("/inputs", body).then((r) => r.data),
 };
+export const inventoryApi = {
+  products: (includeInactive = false) => apiClient.get<FarmProduct[]>("/inventory/products", { params: { includeInactive } }).then((r) => r.data),
+  createProduct: (body: CreateFarmProductRequest) => apiClient.post<FarmProduct>("/inventory/products", body).then((r) => r.data),
+  stockIn: (productId: number, body: StockInRequest) => apiClient.post<InventoryMovement>(`/inventory/products/${productId}/stock-ins`, body).then((r) => r.data),
+  adjust: (productId: number, body: InventoryAdjustmentRequest) => apiClient.post<InventoryMovement>(`/inventory/products/${productId}/adjustments`, body).then((r) => r.data),
+  movements: (params: { productId?: number; batchId?: number } = {}) => apiClient.get<InventoryMovement[]>("/inventory/movements", { params }).then((r) => r.data),
+  pendingReview: () => apiClient.get<FarmInputLog[]>("/inventory/pending-review").then((r) => r.data),
+  retryPending: (inputId: number) => apiClient.post<FarmInputLog>(`/inventory/pending-review/${inputId}/apply`).then((r) => r.data),
+};
 export const taskApi = {
   list: (mine = false) => apiClient.get<HandlerTask[]>("/tasks", { params: { mine } }).then((r) => r.data),
   create: (body: CreateTaskRequest) => apiClient.post<HandlerTask>("/tasks", body).then((r) => r.data),
@@ -256,7 +306,9 @@ export const taskApi = {
 export const financeApi = {
   list: () => apiClient.get<FinancialTransaction[]>("/financial-transactions").then((r) => r.data),
   create: (body: CreateFinancialTransactionRequest) => apiClient.post<FinancialTransaction>("/financial-transactions", body).then((r) => r.data),
+  analytics: (batchId?: number, start?: string, end?: string) => apiClient.get<FinanceAnalytics>("/financial-transactions/analytics", { params: { batchId, start, end } }).then((r) => r.data),
 };
 export const operationsAnalyticsApi = {
-  get: (start?: string, end?: string) => apiClient.get<OperationsAnalytics>("/analytics/operations", { params: { start, end } }).then((r) => r.data),
+  get: (params: { scope?: "FARM" | "BATCH"; batchId?: number; start?: string; end?: string; origin?: "REAL" | "SYNTHETIC" | "ALL"; testRunId?: string } = {}) => apiClient.get<FarmSummaryAnalytics>("/analytics/operations/v2", { params }).then((r) => r.data),
+  compare: (params: { batchIds: number[]; windowDays: number; origin?: "REAL" | "SYNTHETIC" | "ALL" }) => apiClient.get<BatchComparison>("/analytics/batches/compare", { params: { batchIds: params.batchIds.join(","), windowDays: params.windowDays, origin: params.origin ?? "REAL" } }).then((r) => r.data),
 };

@@ -28,7 +28,7 @@ export default function SettingsPage() {
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {sections.map((s) => (
-          <Card key={s.key} className="group transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md">
+          <Card key={s.key} className="group transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[var(--shadow-interactive-lift)]">
             <Link href={s.href} className="block h-full">
               <CardContent className="flex h-full min-h-52 flex-col gap-6 p-6">
                 <div className="flex items-center justify-between">

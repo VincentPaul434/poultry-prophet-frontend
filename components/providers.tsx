@@ -8,6 +8,8 @@ import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth-context";
 import { makeQueryClient } from "@/lib/query-client";
 import { LocaleProvider } from "@/components/locale-provider";
+import { OfflineSyncProvider } from "@/lib/offline-sync-provider";
+import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
 
 export function Providers({ children }: { children: ReactNode }) {
   // useState ensures one QueryClient per browser session (survives re-renders,
@@ -18,8 +20,11 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} themes={["light", "dark"]}>
         <LocaleProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <OfflineSyncProvider>{children}</OfflineSyncProvider>
+          </AuthProvider>
         </LocaleProvider>
+        <ServiceWorkerRegistration />
         <Toaster richColors position="top-right" />
       </ThemeProvider>
       {process.env.NODE_ENV === "development" && <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />}

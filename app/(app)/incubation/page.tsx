@@ -42,9 +42,9 @@ const EMPTY_FORM: LoadForm = {
 };
 
 function statusTone(status: IncubationCycle["status"]) {
-  if (status === "COMPLETED") return "bg-emerald-100 text-emerald-700";
-  if (status === "CANCELLED") return "bg-red-100 text-red-700";
-  return "bg-amber-100 text-amber-700";
+  if (status === "COMPLETED") return "bg-success-muted text-success";
+  if (status === "CANCELLED") return "bg-destructive/10 text-destructive";
+  return "bg-warning-muted text-warning-ink";
 }
 
 export default function IncubationPage() {
@@ -136,7 +136,7 @@ export default function IncubationPage() {
         </div>
       </header>
 
-      <Card className="overflow-hidden border-primary/20 shadow-sm">
+      <Card className="overflow-hidden border-primary/20 shadow-none">
         <div className="h-1.5 bg-primary" />
         <CardHeader className="gap-1 pb-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -283,7 +283,7 @@ function CycleCard({
   const resultsReconcile = hasAllResults && resultTotal === cycle.eggsLoaded;
 
   return (
-    <Card className="overflow-hidden shadow-sm">
+    <Card className="overflow-hidden shadow-none">
       <CardHeader className="space-y-3 pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -311,7 +311,7 @@ function CycleCard({
               <div className="space-y-1.5"><Label htmlFor={`unhatched-${cycle.id}`}>{t("incubation.unhatched")}</Label><Input id={`unhatched-${cycle.id}`} type="number" min="0" step="1" value={hatchValue.unhatchedCount} onChange={(event) => setValue("unhatchedCount", event.target.value)} placeholder="0" /></div>
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor={`removed-${cycle.id}`}>{t("incubation.removed")}</Label><Input id={`removed-${cycle.id}`} type="number" min="0" step="1" value={hatchValue.removedDamagedCount} onChange={(event) => setValue("removedDamagedCount", event.target.value)} placeholder="0" /></div>
             </div>
-            {hasAllResults && <p className={resultsReconcile ? "rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200" : "rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-800 dark:bg-red-950/30 dark:text-red-200"}>{resultTotal} of {cycle.eggsLoaded} eggs accounted for{resultsReconcile ? "" : " — check the counts"}.</p>}
+            {hasAllResults && <p className={resultsReconcile ? "rounded-xl border border-success-border bg-success-muted px-3 py-2 text-sm font-semibold text-success" : "rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm font-semibold text-destructive"}>{resultTotal} of {cycle.eggsLoaded} eggs accounted for{resultsReconcile ? "" : " — check the counts"}.</p>}
             <Button onClick={onComplete} disabled={completePending || !resultsReconcile} className="w-full">
               {completePending ? <Loader2 className="animate-spin" /> : <Check />}
               {t("incubation.saveResults")}

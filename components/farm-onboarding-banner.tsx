@@ -9,10 +9,12 @@ import Link from "next/link";
 import { ArrowRight, Warehouse, X } from "lucide-react";
 import { useFarm } from "@/hooks/use-farm";
 import { useAuth } from "@/lib/auth-context";
+import { useLocale } from "@/components/locale-provider";
 import { Button } from "@/components/ui/button";
 
 export function FarmOnboardingBanner() {
   const { isManager } = useAuth();
+  const { t } = useLocale();
   // Only a manager owns/configures the farm profile.
   const { data: farm } = useFarm(isManager);
   const [dismissed, setDismissed] = useState(false);
@@ -23,39 +25,31 @@ export function FarmOnboardingBanner() {
   return (
     <div
       role="region"
-      aria-label="Farm setup"
-      className="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card to-card p-5 shadow-sm sm:p-6"
+      aria-label={t("farmSetup.ariaLabel")}
+      className="relative overflow-hidden rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5"
     >
       <button
         type="button"
         onClick={() => setDismissed(true)}
-        aria-label="Dismiss"
-        className="absolute top-3 right-3 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        aria-label={t("common.dismiss")}
+        className="absolute right-2 top-2 flex size-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <X className="size-4" />
       </button>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-        <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
           <Warehouse className="size-6" />
         </div>
-        <div className="flex-1 space-y-3">
-          <div className="space-y-1">
-            <h2 className="text-lg font-semibold tracking-tight">
-              Complete Your Farm Setup
-            </h2>
-            <p className="max-w-2xl text-sm text-muted-foreground">
-              Your farm profile is not yet configured. Set up your farm information to
-              start managing batches, recording observations, and preparing traceable
-              batch review reports for manager follow-up.
-            </p>
-          </div>
-          <Button render={<Link href="/settings/farm" />}>
-            Go to Farm Settings
-            <ArrowRight className="size-4" />
-          </Button>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-semibold tracking-tight">{t("farmSetup.title")}</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">{t("farmSetup.description")}</p>
         </div>
-      </div>
+        <Button className="min-h-11 shrink-0 rounded-xl" render={<Link href="/settings/farm" />}>
+            {t("farmSetup.action")}
+            <ArrowRight className="size-4" />
+        </Button>
+        </div>
     </div>
   );
 }

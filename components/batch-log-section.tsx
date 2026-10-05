@@ -9,8 +9,8 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import { AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useCreateRecord, useRecords } from "@/hooks/use-records";
-import { useBatchEvents, useCreateEvent } from "@/hooks/use-events";
-import { useCreateFarmInput } from "@/hooks/use-operations";
+import { useCreateEvent } from "@/hooks/use-events";
+import { useCreateFarmInput, useFarmProducts } from "@/hooks/use-operations";
 import { ApiError } from "@/lib/api-client";
 import { formatDate, formatDateTime, isFutureDate, todayIso } from "@/lib/format";
 import type { BatchEvent, EventType } from "@/lib/types";
@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   Dialog,
   DialogContent,
@@ -96,28 +97,28 @@ const ACTION_BUTTONS = [
     emoji: "💀",
     label: "Population change",
     cardCls:
-      "border-red-200 bg-red-50/80 hover:bg-red-100 active:scale-[0.97] dark:border-red-900 dark:bg-red-950/40",
+      "border-destructive/25 bg-destructive/5 hover:bg-destructive/10 active:scale-[0.97]",
   },
   {
     type: "HEALTH_CONCERN" as DialogType,
     emoji: "🤒",
     label: "Sickness",
     cardCls:
-      "border-amber-200 bg-amber-50/80 hover:bg-amber-100 active:scale-[0.97] dark:border-amber-900 dark:bg-amber-950/40",
+      "border-warning-border bg-warning-muted/70 hover:bg-warning-muted active:scale-[0.97]",
   },
   {
     type: "VACCINE_MEDICINE" as DialogType,
     emoji: "💊",
     label: "Product used",
     cardCls:
-      "border-blue-200 bg-blue-50/80 hover:bg-blue-100 active:scale-[0.97] dark:border-blue-900 dark:bg-blue-950/40",
+      "border-success-border bg-success-muted/70 hover:bg-success-muted active:scale-[0.97]",
   },
   {
     type: "BEHAVIOR_OBSERVATION" as DialogType,
     emoji: "👁️",
     label: "Behavior",
     cardCls:
-      "border-violet-200 bg-violet-50/80 hover:bg-violet-100 active:scale-[0.97] dark:border-violet-900 dark:bg-violet-950/40",
+      "border-border bg-muted/40 hover:bg-muted active:scale-[0.97]",
   },
 ] as const;
 
@@ -157,6 +158,45 @@ function InlineError({ message }: { message: string }) {
   return <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive">{message}</p>;
 }
 
+function EventDateControl({
+  id,
+  date,
+  onChange,
+  showOverride,
+  onShowOverrideChange,
+}: {
+  id: string;
+  date: string;
+  onChange: (value: string) => void;
+  showOverride: boolean;
+  onShowOverrideChange: (open: boolean) => void;
+}) {
+  const today = todayIso();
+  return (
+    <div className="space-y-1.5">
+      <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">When / Kailan</p>
+          <p className="text-sm font-semibold">{date === today ? "Ngayon · Today" : formatDate(date)}</p>
+        </div>
+        <button
+          type="button"
+          className="shrink-0 text-xs font-semibold text-primary underline-offset-4 hover:underline"
+          onClick={() => onShowOverrideChange(!showOverride)}
+        >
+          {showOverride ? "Use today" : "Ibang date"}
+        </button>
+      </div>
+      {showOverride && (
+        <div>
+          <Label htmlFor={id} className="sr-only">Different date</Label>
+          <Input id={id} type="date" required max={today} value={date} onChange={(event) => onChange(event.target.value)} className="h-11 rounded-lg" />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TagPill({ label, selected, onToggle }: { label: string; selected: boolean; onToggle: () => void }) {
   return (
     <button
@@ -164,7 +204,7 @@ function TagPill({ label, selected, onToggle }: { label: string; selected: boole
       onClick={onToggle}
       aria-pressed={selected}
       className={cn(
-        "flex items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-all active:scale-95",
+        "flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-all active:scale-95",
         selected
           ? "border-primary bg-primary text-primary-foreground shadow-sm"
           : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-muted"
@@ -189,37 +229,36 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
   const createEvent = useCreateEvent(batchId);
   const [count, setCount] = useState("1");
   const [lossType, setLossType] = useState<(typeof LOSS_CATEGORIES)[number]["type"] | "">("");
+  const [salePurpose, setSalePurpose] = useState<"BREEDING" | "OTHER" | "NOT_SPECIFIED" | "">("");
   const [details, setDetails] = useState("");
   const [date, setDate] = useState(todayIso());
-  const [showMoreCategories, setShowMoreCategories] = useState(false);
   const [formError, setFormError] = useState("");
+  const [showDateOverride, setShowDateOverride] = useState(false);
   const isCountCorrection = lossType === "COUNT_CORRECTION";
   const addsPopulation = lossType === "FOUND_RETURNED" || lossType === "TRANSFER_IN";
   const canLogWithNoPopulation = isCountCorrection || addsPopulation;
+  const selectedCategory = LOSS_CATEGORIES.find((item) => item.type === lossType);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setFormError("");
-    if (!date) { setFormError("Choose a date."); return; }
-    if (isFutureDate(date)) { setFormError("The date cannot be in the future."); return; }
+    if (!date || isFutureDate(date)) { setFormError("Choose a valid date."); return; }
     if (!lossType) { setFormError("Choose a population-change category."); return; }
     const n = Number(count);
     if (!Number.isInteger(n) || (isCountCorrection ? n === 0 : n < 1)) {
-      setFormError(isCountCorrection ? "Enter a non-zero whole-number adjustment." : "Enter at least 1 bird.");
-      return;
+      setFormError(isCountCorrection ? "Enter a non-zero whole-number adjustment." : "Enter at least 1 bird."); return;
     }
     if (!addsPopulation && !isCountCorrection && n > population) {
-      setFormError(`Only ${population} bird${population === 1 ? "" : "s"} are currently alive.`);
-      return;
+      setFormError(`Only ${population} bird${population === 1 ? "" : "s"} are currently alive.`); return;
     }
     try {
-      const category = LOSS_CATEGORIES.find((item) => item.type === lossType);
       await createEvent.mutateAsync({
         eventDate: date,
         eventType: lossType,
-        title: category?.label ?? lossType,
+        title: selectedCategory?.label ?? lossType,
         affectedCount: isCountCorrection ? 0 : n,
         populationDelta: isCountCorrection ? n : null,
+        tags: lossType === "SALE" && salePurpose ? `SALE_PURPOSE:${salePurpose}` : null,
         details: details || null,
       });
       toast.success(isCountCorrection ? "Population count corrected" : "Population event recorded");
@@ -230,63 +269,33 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
   }
 
   return (
-    <form onSubmit={submit} className="space-y-5">
+    <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} allowPopulationRestore={canLogWithNoPopulation} />
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label className="font-semibold">When did it happen?</Label>
-          <Input type="date" required max={todayIso()} value={date} onChange={(e) => setDate(e.target.value)} className="h-12 rounded-xl" />
-        </div>
-        <div className="space-y-2">
-          <Label className="font-semibold">
-            {isCountCorrection ? "Signed population adjustment" : "How many?"}
-            {!isCountCorrection && !addsPopulation && <span className="font-normal text-muted-foreground"> (max {population})</span>}
-          </Label>
-          <Input
-            type="number"
-            min={isCountCorrection ? undefined : 1}
-            max={!isCountCorrection && !addsPopulation ? population : undefined}
-            step={1}
-            required
-            value={count}
-            onChange={(e) => setCount(e.target.value)}
-            placeholder={isCountCorrection ? "+2 or -1" : undefined}
-            className="h-12 rounded-xl text-center text-lg font-bold"
-          />
-        </div>
+      <div className="grid grid-cols-2 gap-2.5">
+        <EventDateControl id="population-event-date" date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} />
+        <div className="space-y-1.5"><Label className="text-sm font-semibold">{isCountCorrection ? "Signed adjustment" : "How many?"}</Label><Input type="number" min={isCountCorrection ? undefined : 1} max={!isCountCorrection && !addsPopulation ? population : undefined} step={1} required value={count} onChange={(e) => setCount(e.target.value)} placeholder={isCountCorrection ? "+2 or -1" : undefined} className="h-11 rounded-lg text-center text-base font-bold" /></div>
       </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">What happened?</Label>
-        <p className="text-sm text-muted-foreground">Choose the closest description. This keeps health-related deaths separate from other changes.</p>
-        <div className="grid grid-cols-1 gap-2">
-          {LOSS_CATEGORIES.slice(0, 6).map((category) => (
-            <button key={category.type} type="button" aria-pressed={lossType === category.type} onClick={() => setLossType(category.type)}
-              className={cn("rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all",
-                lossType === category.type ? "border-red-500 bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400" : "border-border hover:border-primary/30 hover:bg-muted")}>
-              <span className="block">{lossType === category.type ? "✓ " : ""}{category.label}</span>
-              <span className="mt-0.5 block text-xs font-normal text-muted-foreground">{category.hint}</span>
-            </button>
-          ))}
+      <div className="space-y-1.5">
+        <Label className="text-sm font-semibold">What happened?</Label>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {LOSS_CATEGORIES.map((category) => <button key={category.type} type="button" aria-pressed={lossType === category.type} onClick={() => setLossType(category.type)} className={cn("min-h-11 rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-colors", lossType === category.type ? "border-destructive bg-destructive/10 text-destructive" : "border-border hover:bg-muted")}>{lossType === category.type ? "✓ " : ""}{category.label}</button>)}
         </div>
-        <button type="button" onClick={() => setShowMoreCategories((value) => !value)} className="min-h-11 w-full rounded-xl border border-dashed px-4 text-left text-sm font-semibold text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60" aria-expanded={showMoreCategories}>
-          {showMoreCategories ? "Hide less common changes" : "More population changes"}
-        </button>
-        {showMoreCategories && <div className="grid grid-cols-1 gap-2">
-          {LOSS_CATEGORIES.slice(6).map((category) => (
-            <button key={category.type} type="button" aria-pressed={lossType === category.type} onClick={() => setLossType(category.type)} className={cn("rounded-xl border px-4 py-3 text-left text-sm font-medium transition-all", lossType === category.type ? "border-red-500 bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-400" : "border-border hover:border-primary/30 hover:bg-muted")}>
-              <span className="block">{lossType === category.type ? "✓ " : ""}{category.label}</span><span className="mt-0.5 block text-xs font-normal text-muted-foreground">{category.hint}</span>
-            </button>
-          ))}
-        </div>}
+        {selectedCategory && <p className="text-xs text-muted-foreground">{selectedCategory.hint}</p>}
+      {lossType === "SALE" && (
+        <div className="space-y-1.5">
+          <Label className="text-sm font-semibold">Sale purpose <span className="font-normal text-muted-foreground">(optional)</span></Label>
+          <NativeSelect value={salePurpose} onChange={(event) => setSalePurpose(event.target.value as typeof salePurpose)}>
+            <option value="">Not specified</option>
+            <option value="BREEDING">Sold as breeder</option>
+            <option value="OTHER">Other purpose</option>
+          </NativeSelect>
+          <p className="text-xs text-muted-foreground">This describes the sale only. It does not change the batch stage.</p>
+        </div>
+      )}
       </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">Evidence / notes <span className="font-normal text-muted-foreground">(optional)</span></Label>
-        <Textarea rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Where it happened, what you observed, or what needs review…" className="rounded-xl resize-none" />
-      </div>
+      <div className="space-y-1.5"><Label className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you observe?" className="resize-none rounded-lg" /></div>
       <InlineError message={formError} />
-      <Button type="submit" variant="destructive" className="w-full h-12 rounded-xl text-base font-bold" disabled={createEvent.isPending || (population <= 0 && !canLogWithNoPopulation)}>
-        {createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save — Population event"}
-      </Button>
+      <Button type="submit" variant="destructive" className="sticky bottom-0 z-10 h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || (population <= 0 && !canLogWithNoPopulation)}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save population event"}</Button>
     </form>
   );
 }
@@ -301,65 +310,27 @@ function HealthForm({ batchId, population, onDone }: { batchId: string; populati
   const [details, setDetails] = useState("");
   const [date, setDate] = useState(todayIso());
   const [formError, setFormError] = useState("");
-  const toggle = (s: string) => setSymptoms((p) => p.includes(s) ? p.filter((x) => x !== s) : [...p, s]);
-
+  const [showDateOverride, setShowDateOverride] = useState(false);
+  const toggle = (value: string) => setSymptoms((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
   async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError("");
-    if (!date) { setFormError("Choose a date."); return; }
-    if (isFutureDate(date)) { setFormError("The date cannot be in the future."); return; }
+    e.preventDefault(); setFormError("");
+    if (!date || isFutureDate(date)) { setFormError("Choose a valid date."); return; }
     const n = Number(count);
-    if (n < 1) { setFormError("Enter at least 1 bird."); return; }
-    if (n > population) { setFormError(`Only ${population} bird${population === 1 ? "" : "s"} are currently alive.`); return; }
-    if (!severity) { setFormError("Choose how serious the concern is."); return; }
-    if (symptoms.length === 0) { setFormError("Select at least one symptom."); return; }
+    if (n < 1 || n > population) { setFormError(`Enter 1–${population} affected bird${population === 1 ? "" : "s"}.`); return; }
+    if (!severity || symptoms.length === 0) { setFormError("Choose the concern level and at least one symptom."); return; }
     try {
       await createEvent.mutateAsync({ eventDate: date, eventType: "HEALTH_CONCERN", title: symptoms[0], severityLabel: severity, affectedCount: n, details: details || null, tags: symptoms.join(",") });
-      toast.success("Sickness report saved");
-      onDone();
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again.");
-    }
+      toast.success("Sickness report saved"); onDone();
+    } catch (err) { setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again."); }
   }
-
   return (
-    <form onSubmit={submit} className="space-y-5">
+    <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label className="font-semibold">Date noticed</Label>
-          <Input type="date" required max={todayIso()} value={date} onChange={(e) => setDate(e.target.value)} className="h-12 rounded-xl" />
-        </div>
-        <div className="space-y-2">
-          <Label className="font-semibold">How many? <span className="font-normal text-muted-foreground">(max {population})</span></Label>
-          <Input type="number" min={1} max={population} required value={count} onChange={(e) => setCount(e.target.value)} className="h-12 rounded-xl text-center text-lg font-bold" />
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">How serious is it?</Label>
-        <div className="grid grid-cols-3 gap-2">
-          {[{ v: "MINOR", label: "Mild", emoji: "🟡" }, { v: "MODERATE", label: "Serious", emoji: "🟠" }, { v: "MAJOR", label: "Urgent!", emoji: "🔴" }].map((s) => (
-            <button key={s.v} type="button" aria-pressed={severity === s.v} onClick={() => setSeverity(s.v)}
-              className={cn("rounded-xl border py-3 text-sm font-semibold transition-all", severity === s.v ? "border-amber-500 bg-amber-50 dark:bg-amber-950/50" : "border-border hover:bg-muted")}>
-              <div className="text-xl mb-0.5">{s.emoji}</div>{s.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">What symptoms do you see?</Label>
-        <div className="flex flex-wrap gap-2">
-          {HEALTH_SYMPTOMS.map((s) => <TagPill key={s} label={s} selected={symptoms.includes(s)} onToggle={() => toggle(s)} />)}
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label>
-        <Textarea rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Which pen, how long you've noticed it…" className="rounded-xl resize-none" />
-      </div>
-      <InlineError message={formError} />
-      <Button type="submit" className="w-full h-12 rounded-xl text-base font-bold bg-amber-600 hover:bg-amber-700 text-white" disabled={createEvent.isPending || population <= 0}>
-        {createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save — Sickness Report"}
-      </Button>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id="health-event-date" date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label className="text-sm font-semibold">Affected birds</Label><Input type="number" min={1} max={population} required value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg text-center font-bold" /></div></div>
+      <div className="space-y-1.5"><Label className="text-sm font-semibold">Concern level</Label><div className="grid grid-cols-3 gap-2">{[{ v: "MINOR", label: "Mild", emoji: "🟡" }, { v: "MODERATE", label: "Serious", emoji: "🟠" }, { v: "MAJOR", label: "Urgent", emoji: "🔴" }].map((item) => <button key={item.v} type="button" aria-pressed={severity === item.v} onClick={() => setSeverity(item.v)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold", severity === item.v ? "border-warning bg-warning-muted text-warning-ink" : "border-border hover:bg-muted")}>{item.emoji} {item.label}</button>)}</div></div>
+      <div className="space-y-1.5"><Label className="text-sm font-semibold">Signs noticed</Label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{HEALTH_SYMPTOMS.map((item) => <TagPill key={item} label={item} selected={symptoms.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
+      <div className="space-y-1.5"><Label className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you observe?" className="resize-none rounded-lg" /></div>
+      <InlineError message={formError} /><Button type="submit" className="sticky bottom-0 z-10 h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || population <= 0}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save sickness report"}</Button>
     </form>
   );
 }
@@ -368,91 +339,56 @@ function HealthForm({ batchId, population, onDone }: { batchId: string; populati
 
 function TreatmentForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
   const createInput = useCreateFarmInput();
-  const [medicineName, setMedicineName] = useState("");
+  const { data: farmProducts } = useFarmProducts(false);
+  const [farmProductId, setFarmProductId] = useState<number | null>(null);
+  const [productType, setProductType] = useState<"FEED" | "VITAMIN" | "MEDICINE" | "VACCINE" | "OTHER">("MEDICINE");
+  const [productName, setProductName] = useState("");
+  const [quantity, setQuantity] = useState("1");
   const [purpose, setPurpose] = useState("");
   const [dose, setDose] = useState("");
   const [allBirds, setAllBirds] = useState(true);
   const [count, setCount] = useState(String(population));
   const [details, setDetails] = useState("");
   const [date, setDate] = useState(todayIso());
+  const [showDetails, setShowDetails] = useState(false);
   const [formError, setFormError] = useState("");
-
+  const purposeRequired = productType !== "FEED" && productType !== "OTHER";
+  const [showDateOverride, setShowDateOverride] = useState(false);
   async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError("");
-    if (!date) { setFormError("Choose a date."); return; }
-    if (isFutureDate(date)) { setFormError("The date cannot be in the future."); return; }
-    if (!medicineName.trim()) { setFormError("Enter the medicine, vitamin, vaccine, or feed name."); return; }
-    if (!purpose) { setFormError("Choose what the product is for."); return; }
+    e.preventDefault(); setFormError("");
+    if (!date || isFutureDate(date)) { setFormError("Choose a valid date."); return; }
+    if (!productName.trim() || !productType) { setFormError("Enter the product name and choose its type."); return; }
+    if (!Number.isFinite(Number(quantity)) || Number(quantity) <= 0) { setFormError("Enter the quantity used."); return; }
+    if (purposeRequired && !purpose) { setFormError("Choose what the product is for."); return; }
     const treated = allBirds ? population : Number(count);
-    if (treated < 1) { setFormError("At least 1 bird must be treated."); return; }
-    if (treated > population) { setFormError(`Only ${population} bird${population === 1 ? "" : "s"} are currently alive.`); return; }
+    if (treated < 1 || treated > population) { setFormError(`Enter 1–${population} affected bird${population === 1 ? "" : "s"}.`); return; }
     try {
-      const productType = purpose === "Vaccination" ? "VACCINE" : purpose === "Vitamin supplement" ? "VITAMIN" : "MEDICINE";
       await createInput.mutateAsync({
         batchId: Number(batchId),
-        recordedAt: new Date(`${date}T12:00:00`).toISOString(),
+        ...(showDateOverride ? { recordedAt: new Date(`${date}T12:00:00`).toISOString() } : {}),
         productType,
-        brandName: medicineName.trim(),
-        purpose,
+        brandName: productName.trim(),
+        farmProductId,
+        quantity: Number(quantity),
+        unit: farmProducts?.find((item) => item.id === farmProductId)?.stockUnit ?? null,
+        affectedBirdCount: treated,
+        purpose: purpose || null,
         notes: [dose ? `Dose: ${dose}` : "", `Applied to ${treated} birds`, details].filter(Boolean).join(" · ") || null,
       });
-      toast.success("Product record saved");
-      onDone();
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again.");
-    }
+      toast.success(farmProductId ? "Product saved; stock deduction queued." : "Product record saved."); onDone();
+    } catch (err) { setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again."); }
   }
-
   return (
-    <form onSubmit={submit} className="space-y-5">
+    <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
-      <div className="space-y-2">
-        <Label className="font-semibold">Medicine or vaccine name</Label>
-        <Input required value={medicineName} onChange={(e) => setMedicineName(e.target.value)} placeholder="e.g. Newcastle vaccine, Tetracycline" className="h-12 rounded-xl" />
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">What is it for?</Label>
-        <div className="grid grid-cols-2 gap-2">
-          {MEDICINE_PURPOSES.map((p) => (
-            <button key={p} type="button" aria-pressed={purpose === p} onClick={() => setPurpose(p)}
-              className={cn("rounded-xl border px-3 py-2.5 text-sm font-medium text-left transition-all",
-                purpose === p ? "border-blue-500 bg-blue-50 dark:bg-blue-950/50" : "border-border hover:bg-muted")}>
-              {purpose === p ? "✓ " : ""}{p}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">Dose per bird <span className="font-normal text-muted-foreground">(optional)</span></Label>
-        <Input value={dose} onChange={(e) => setDose(e.target.value)} placeholder="e.g. 0.5 ml" className="h-11 rounded-xl" />
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">Treated birds</Label>
-        <div className="flex gap-2">
-          <button type="button" aria-pressed={allBirds} onClick={() => setAllBirds(true)} className={cn("flex-1 rounded-xl border py-2.5 text-sm font-semibold transition-all", allBirds ? "border-blue-500 bg-blue-50 dark:bg-blue-950/50" : "border-border hover:bg-muted")}>
-            All {population} birds
-          </button>
-          <button type="button" aria-pressed={!allBirds} onClick={() => setAllBirds(false)} className={cn("flex-1 rounded-xl border py-2.5 text-sm font-semibold transition-all", !allBirds ? "border-blue-500 bg-blue-50 dark:bg-blue-950/50" : "border-border hover:bg-muted")}>
-            Specific #
-          </button>
-        </div>
-        {!allBirds && (
-          <Input type="number" min={1} max={population} value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-xl" placeholder={`1 – ${population}`} />
-        )}
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label>
-        <Textarea rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Batch number, why you gave it…" className="rounded-xl resize-none" />
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">Date given</Label>
-        <Input type="date" required max={todayIso()} value={date} onChange={(e) => setDate(e.target.value)} className="h-12 rounded-xl" />
-      </div>
-      <InlineError message={formError} />
-      <Button type="submit" className="w-full h-12 rounded-xl text-base font-bold bg-blue-600 hover:bg-blue-700 text-white" disabled={createInput.isPending || population <= 0}>
-        {createInput.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save — Product record"}
-      </Button>
+      {farmProducts && farmProducts.length > 0 && <div className="space-y-1.5"><Label className="text-sm font-semibold">Product from farm stock</Label><NativeSelect value={farmProductId ?? ""} onChange={(e) => { const value = e.target.value ? Number(e.target.value) : null; const selected = farmProducts.find((item) => item.id === value); setFarmProductId(value); if (selected) { setProductName(selected.brandName); setProductType(selected.productType); } }}><option value="">Product not listed</option>{farmProducts.map((item) => <option key={item.id} value={item.id}>{item.brandName} · {item.stockOnHand} {item.stockUnit}{item.lowStock ? " · low stock" : ""}</option>)}</NativeSelect></div>}
+      <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-2.5"><div className="space-y-1.5"><Label className="text-sm font-semibold">Product / brand</Label><Input required value={productName} onChange={(e) => { setProductName(e.target.value); setFarmProductId(null); }} placeholder="e.g. Baby Stag Booster" className="h-11 rounded-lg" /></div><div className="space-y-1.5"><Label className="text-sm font-semibold">Used</Label><Input required type="number" min="0.001" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="h-11 rounded-lg" /></div></div>
+      <div className="space-y-1.5"><Label className="text-sm font-semibold">Product type</Label><div className="grid grid-cols-3 gap-2 sm:grid-cols-5">{[{ v: "FEED", label: "Feed" }, { v: "VITAMIN", label: "Vitamin" }, { v: "MEDICINE", label: "Medicine" }, { v: "VACCINE", label: "Vaccine" }, { v: "OTHER", label: "Other" }].map((item) => <button key={item.v} type="button" aria-pressed={productType === item.v} onClick={() => setProductType(item.v as typeof productType)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-xs font-semibold", productType === item.v ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{item.label}</button>)}</div></div>
+      {purposeRequired && <div className="space-y-1.5"><Label className="text-sm font-semibold">Purpose</Label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{MEDICINE_PURPOSES.map((item) => <button key={item} type="button" aria-pressed={purpose === item} onClick={() => setPurpose(item)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-left text-sm font-medium", purpose === item ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{purpose === item ? "✓ " : ""}{item}</button>)}</div></div>}
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id="product-event-date" date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label className="text-sm font-semibold">Applied to</Label><div className="flex h-11 gap-1.5"><button type="button" aria-pressed={allBirds} onClick={() => setAllBirds(true)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold", allBirds ? "border-success bg-success-muted text-success" : "border-border")}>All {population}</button><button type="button" aria-pressed={!allBirds} onClick={() => setAllBirds(false)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold", !allBirds ? "border-success bg-success-muted text-success" : "border-border")}>Some</button></div></div></div>
+      {!allBirds && <Input type="number" min={1} max={population} value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg" placeholder={`1 – ${population}`} />}
+      <details open={showDetails} onToggle={(e) => setShowDetails(e.currentTarget.open)} className="rounded-lg border px-3"><summary className="flex min-h-10 cursor-pointer items-center text-sm font-semibold">More details <span className="ml-1 font-normal text-muted-foreground">(optional)</span></summary><div className="space-y-2 pb-3"><Input value={dose} onChange={(e) => setDose(e.target.value)} placeholder="Dose / quantity, if known" className="h-10 rounded-lg" /><Textarea rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Notes" className="resize-none rounded-lg" /></div></details>
+      <InlineError message={formError} /><Button type="submit" className="sticky bottom-0 z-10 h-11 w-full rounded-lg text-base font-bold" disabled={createInput.isPending || population <= 0}>{createInput.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save product record"}</Button>
     </form>
   );
 }
@@ -466,57 +402,22 @@ function BehaviorForm({ batchId, population, onDone }: { batchId: string; popula
   const [details, setDetails] = useState("");
   const [date, setDate] = useState(todayIso());
   const [formError, setFormError] = useState("");
-  const toggle = (s: string) => setSigns((p) => p.includes(s) ? p.filter((x) => x !== s) : [...p, s]);
-
+  const [showDateOverride, setShowDateOverride] = useState(false);
+  const toggle = (value: string) => setSigns((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
   async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError("");
-    if (!date) { setFormError("Choose a date."); return; }
-    if (isFutureDate(date)) { setFormError("The date cannot be in the future."); return; }
-    if (signs.length === 0) { setFormError("Choose at least one behavior you noticed."); return; }
-    if (!concern) { setFormError("Choose how much attention this needs."); return; }
-    try {
-      await createEvent.mutateAsync({ eventDate: date, eventType: "BEHAVIOR_OBSERVATION", title: signs[0], severityLabel: concern, affectedCount: 0, details: details || null, tags: signs.join(",") });
-      toast.success("Behavior observation saved");
-      onDone();
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again.");
-    }
+    e.preventDefault(); setFormError("");
+    if (!date || isFutureDate(date)) { setFormError("Choose a valid date."); return; }
+    if (signs.length === 0 || !concern) { setFormError("Choose the signs and attention level."); return; }
+    try { await createEvent.mutateAsync({ eventDate: date, eventType: "BEHAVIOR_OBSERVATION", title: signs[0], severityLabel: concern, affectedCount: 0, details: details || null, tags: signs.join(",") }); toast.success("Behavior observation saved"); onDone(); }
+    catch (err) { setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again."); }
   }
-
   return (
-    <form onSubmit={submit} className="space-y-5">
+    <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
-      <div className="space-y-2">
-        <Label className="font-semibold">What behaviors did you notice?</Label>
-        <p className="text-xs text-muted-foreground">Tap all that you saw</p>
-        <div className="flex flex-wrap gap-2">
-          {BEHAVIOR_SIGNS.map((s) => <TagPill key={s} label={s} selected={signs.includes(s)} onToggle={() => toggle(s)} />)}
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">How worried are you?</Label>
-        <div className="grid grid-cols-3 gap-2">
-          {[{ v: "LOW", label: "Just watching", emoji: "🟢" }, { v: "MEDIUM", label: "Needs check", emoji: "🟡" }, { v: "HIGH", label: "Check now!", emoji: "🔴" }].map((c) => (
-            <button key={c.v} type="button" aria-pressed={concern === c.v} onClick={() => setConcern(c.v)}
-              className={cn("rounded-xl border py-3 text-sm font-semibold transition-all", concern === c.v ? "border-violet-500 bg-violet-50 dark:bg-violet-950/50" : "border-border hover:bg-muted")}>
-              <div className="text-xl mb-0.5">{c.emoji}</div>{c.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label>
-        <Textarea rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Which birds, which area, when you first saw it…" className="rounded-xl resize-none" />
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">Date</Label>
-        <Input type="date" required max={todayIso()} value={date} onChange={(e) => setDate(e.target.value)} className="h-12 rounded-xl" />
-      </div>
-      <InlineError message={formError} />
-      <Button type="submit" className="w-full h-12 rounded-xl text-base font-bold bg-violet-600 hover:bg-violet-700 text-white" disabled={createEvent.isPending || population <= 0}>
-        {createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save — Behavior Note"}
-      </Button>
+      <div className="space-y-1.5"><Label className="text-sm font-semibold">Signs noticed</Label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{BEHAVIOR_SIGNS.map((item) => <TagPill key={item} label={item} selected={signs.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
+      <div className="space-y-1.5"><Label className="text-sm font-semibold">Attention level</Label><div className="grid grid-cols-3 gap-2">{[{ v: "LOW", label: "Watch", emoji: "🟢" }, { v: "MEDIUM", label: "Check", emoji: "🟡" }, { v: "HIGH", label: "Now", emoji: "🔴" }].map((item) => <button key={item.v} type="button" aria-pressed={concern === item.v} onClick={() => setConcern(item.v)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold", concern === item.v ? "border-warning bg-warning-muted text-warning-ink" : "border-border hover:bg-muted")}>{item.emoji} {item.label}</button>)}</div></div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id="behavior-event-date" date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you see?" className="h-11 rounded-lg" /></div></div>
+      <InlineError message={formError} /><Button type="submit" className="sticky bottom-0 z-10 h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || population <= 0}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save behavior note"}</Button>
     </form>
   );
 }
@@ -525,70 +426,26 @@ function BehaviorForm({ batchId, population, onDone }: { batchId: string; popula
 
 function VitalsForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
   const createRecord = useCreateRecord(batchId);
-  const { data: events, isLoading: eventsLoading, isError: eventsError } = useBatchEvents(batchId, 100);
   const [form, setForm] = useState({ recordDate: todayIso(), temperatureC: "", feedIntakeG: "", waterIntakeMl: "", feedQuality: "MEASURED", waterQuality: "MEASURED", behaviorNotes: "" });
   const [formError, setFormError] = useState("");
-  const set = <K extends keyof typeof form>(key: K, value: string) => setForm((f) => ({ ...f, [key]: value }));
-  const deathsLogged = events
-    ?.filter((event) =>
-      event.eventType === "HEALTH_DEATH" &&
-      event.eventDate === form.recordDate
-    )
-    .reduce((total, event) => total + event.affectedCount, 0) ?? 0;
-
+  const [showDateOverride, setShowDateOverride] = useState(false);
+  const set = <K extends keyof typeof form>(key: K, value: string) => setForm((current) => ({ ...current, [key]: value }));
   async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError("");
-    if (!form.recordDate) { setFormError("Choose a date."); return; }
-    if (isFutureDate(form.recordDate)) { setFormError("The date cannot be in the future."); return; }
-    if (form.temperatureC === "") { setFormError("Enter temperature only when you have a measurement to record."); return; }
+    e.preventDefault(); setFormError("");
+    if (!form.recordDate || isFutureDate(form.recordDate)) { setFormError("Choose a valid date."); return; }
+    if (form.temperatureC === "" && form.feedIntakeG === "" && form.waterIntakeMl === "" && !form.behaviorNotes.trim()) { setFormError("Enter at least one measurement or note."); return; }
     try {
-      await createRecord.mutateAsync({ recordDate: form.recordDate, temperatureC: Number(form.temperatureC), feedIntakeG: form.feedIntakeG === "" ? null : Number(form.feedIntakeG), waterIntakeMl: form.waterIntakeMl === "" ? null : Number(form.waterIntakeMl), behaviorNotes: form.behaviorNotes || null, temperatureQuality: "MEASURED", feedQuality: form.feedIntakeG === "" ? "UNAVAILABLE" : form.feedQuality as "MEASURED" | "ESTIMATED" | "UNAVAILABLE", waterQuality: form.waterIntakeMl === "" ? "UNAVAILABLE" : form.waterQuality as "MEASURED" | "ESTIMATED" | "UNAVAILABLE" });
-      toast.success("Daily vitals saved!");
-      onDone();
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again.");
-    }
+      await createRecord.mutateAsync({ recordDate: form.recordDate, temperatureC: form.temperatureC === "" ? null : Number(form.temperatureC), feedIntakeG: form.feedIntakeG === "" ? null : Number(form.feedIntakeG), waterIntakeMl: form.waterIntakeMl === "" ? null : Number(form.waterIntakeMl), behaviorNotes: form.behaviorNotes || null, temperatureQuality: form.temperatureC === "" ? "UNAVAILABLE" : "MEASURED", feedQuality: form.feedIntakeG === "" ? "UNAVAILABLE" : form.feedQuality as "MEASURED" | "ESTIMATED" | "UNAVAILABLE", waterQuality: form.waterIntakeMl === "" ? "UNAVAILABLE" : form.waterQuality as "MEASURED" | "ESTIMATED" | "UNAVAILABLE" });
+      toast.success("Measurement record saved"); onDone();
+    } catch (err) { setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again."); }
   }
-
   return (
-    <form onSubmit={submit} className="space-y-5">
+    <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
-      <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 p-3 text-xs text-emerald-800 dark:text-emerald-300">
-        Optional measurements are stored only when the farm genuinely measures them. They do not need to be entered every day.
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">Date</Label>
-        <Input type="date" required max={todayIso()} value={form.recordDate} onChange={(e) => set("recordDate", e.target.value)} className="h-12 rounded-xl" />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label className="font-semibold">🌡️ Temperature (°C)</Label>
-          <Input type="number" step="0.1" min={0} max={60} required value={form.temperatureC} onChange={(e) => set("temperatureC", e.target.value)} className="h-12 rounded-xl text-center text-lg font-bold" placeholder="—" />
-        </div>
-        <div className="space-y-2">
-          <Label className="font-semibold">💀 Deaths logged for this date</Label>
-          <Input type="text" readOnly aria-readonly="true" value={eventsLoading ? "Loading…" : eventsError ? "Unavailable" : deathsLogged} className="h-12 rounded-xl bg-muted text-center text-lg font-bold" />
-        </div>
-        <div className="space-y-2">
-          <Label className="font-semibold">🍽️ Feed used (grams) <span className="font-normal text-muted-foreground">(optional)</span></Label>
-          <Input type="number" step="0.1" min={0} value={form.feedIntakeG} onChange={(e) => set("feedIntakeG", e.target.value)} className="h-12 rounded-xl text-center text-lg font-bold" placeholder="Leave blank if not measured" />
-          <select aria-label="Feed amount quality" className="h-11 w-full rounded-md border bg-background px-3 text-sm" value={form.feedQuality} onChange={(e) => set("feedQuality", e.target.value)}><option value="MEASURED">Measured</option><option value="ESTIMATED">Estimated</option><option value="UNAVAILABLE">Not measured</option></select>
-        </div>
-        <div className="space-y-2">
-          <Label className="font-semibold">💧 Water used (ml) <span className="font-normal text-muted-foreground">(optional)</span></Label>
-          <Input type="number" step="0.1" min={0} value={form.waterIntakeMl} onChange={(e) => set("waterIntakeMl", e.target.value)} className="h-12 rounded-xl text-center text-lg font-bold" placeholder="Leave blank if estimated" />
-          <select aria-label="Water amount quality" className="h-11 w-full rounded-md border bg-background px-3 text-sm" value={form.waterQuality} onChange={(e) => set("waterQuality", e.target.value)}><option value="MEASURED">Measured</option><option value="ESTIMATED">Estimated</option><option value="UNAVAILABLE">Not measured</option></select>
-        </div>
-      </div>
-      <div className="space-y-2">
-        <Label className="font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label>
-        <Textarea rows={2} value={form.behaviorNotes} onChange={(e) => set("behaviorNotes", e.target.value)} className="rounded-xl resize-none" />
-      </div>
-      <InlineError message={formError} />
-      <Button type="submit" className="w-full h-12 rounded-xl text-base font-bold" disabled={createRecord.isPending || population <= 0}>
-        {createRecord.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save — Measurement record"}
-      </Button>
+      <p className="rounded-lg border border-success-border bg-success-muted px-3 py-2 text-xs text-success">Optional lang: record only what the farm actually measures. Hindi kailangan araw-araw.</p>
+      <EventDateControl id="measurement-date" date={form.recordDate} onChange={(value) => set("recordDate", value)} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) set("recordDate", todayIso()); }} />
+      <div className="grid grid-cols-2 gap-2.5"><div className="space-y-1.5"><Label className="text-sm font-semibold">Temperature °C <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input type="number" step="0.1" min={0} max={60} value={form.temperatureC} onChange={(e) => set("temperatureC", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label className="text-sm font-semibold">Feed grams <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input type="number" step="0.1" min={0} value={form.feedIntakeG} onChange={(e) => set("feedIntakeG", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label className="text-sm font-semibold">Water ml <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input type="number" step="0.1" min={0} value={form.waterIntakeMl} onChange={(e) => set("waterIntakeMl", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label className="text-sm font-semibold">Note <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={form.behaviorNotes} onChange={(e) => set("behaviorNotes", e.target.value)} placeholder="e.g. cold / normal" className="h-11 rounded-lg" /></div></div>
+      <InlineError message={formError} /><Button type="submit" className="sticky bottom-0 z-10 h-11 w-full rounded-lg text-base font-bold" disabled={createRecord.isPending || population <= 0}>{createRecord.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save measurement"}</Button>
     </form>
   );
 }
@@ -639,7 +496,7 @@ export function EventTimeline({ events }: { events: BatchEvent[] }) {
           </p>
           <div className="space-y-2">
             {dayEvents.map((ev) => {
-              const tags = ev.tags ? ev.tags.split(",").filter(Boolean) : [];
+              const tags = ev.tags ? ev.tags.split(",").filter((tag) => Boolean(tag) && !tag.startsWith("SALE_PURPOSE:")) : [];
               return (
                 <div key={ev.id} className="flex gap-3 rounded-2xl border bg-card p-3.5">
                   <span className="text-2xl shrink-0 mt-0.5">{EVENT_EMOJI[ev.eventType]}</span>
@@ -648,6 +505,7 @@ export function EventTimeline({ events }: { events: BatchEvent[] }) {
                       <span className="text-sm font-bold">{ev.title}</span>
                       {ev.severityLabel && <Badge variant="outline" className="text-xs font-semibold">{ev.severityLabel}</Badge>}
                       {ev.affectedCount > 0 && <span className="text-xs text-muted-foreground">{ev.affectedCount} bird{ev.affectedCount !== 1 ? "s" : ""}</span>}
+                      {ev.eventType === "SALE" && ev.salePurpose === "BREEDING" && <Badge variant="secondary" className="text-xs">Sold as breeder</Badge>}
                     </div>
                     {tags.length > 0 && (
                       <div className="flex flex-wrap gap-1">
@@ -676,9 +534,13 @@ export function EventTimeline({ events }: { events: BatchEvent[] }) {
 export function BatchLogSection({
   batchId,
   population,
+  batchName,
+  stageName,
 }: {
   batchId: string;
   population: number;
+  batchName?: string;
+  stageName?: string;
 }) {
   const { t } = useLocale();
   const [activeDialog, setActiveDialog] = useState<DialogType | null>(null);
@@ -713,27 +575,30 @@ export function BatchLogSection({
         ))}
       </div>
 
-      <details className="group mt-2 rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/70 dark:border-emerald-800 dark:bg-emerald-950/30">
+      <details className="group mt-2 rounded-2xl border border-dashed border-success-border bg-success-muted/70">
         <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">
           <span className="flex items-center gap-3"><span className="text-2xl" aria-hidden="true">📊</span><span><span className="block text-sm font-bold">{t("record.optionalMeasurements")}</span><span className="block text-xs text-muted-foreground">{t("record.measurementHint")}</span></span></span>
           <span className="text-right"><VitalsStatus batchId={batchId} /><span className="mt-1 block text-xs font-semibold text-primary group-open:hidden">{t("record.open")}</span></span>
         </summary>
-        <div className="border-t border-emerald-200/70 px-4 pb-4 pt-3 dark:border-emerald-800/70"><button type="button" ref={(node) => { triggerRefs.current.DAILY_VITALS = node; }} onClick={() => setActiveDialog("DAILY_VITALS")} className="min-h-12 w-full rounded-xl border bg-background px-4 text-left text-sm font-semibold transition-colors hover:border-primary/50 hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">{t("record.addMeasurement")}</button></div>
+        <div className="border-t border-success-border/70 px-4 pb-4 pt-3"><button type="button" ref={(node) => { triggerRefs.current.DAILY_VITALS = node; }} onClick={() => setActiveDialog("DAILY_VITALS")} className="min-h-12 w-full rounded-xl border bg-background px-4 text-left text-sm font-semibold transition-colors hover:border-primary/50 hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">{t("record.addMeasurement")}</button></div>
       </details>
 
       {/* Dialogs */}
       <Dialog open={activeDialog !== null} onOpenChange={(o) => !o && close()}>
-        <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto">
+        <DialogContent className="w-[min(100%-1rem,50rem)] max-h-[calc(100dvh-2rem)] overflow-hidden p-0 sm:max-w-3xl">
           {meta && (
-            <DialogHeader>
+            <DialogHeader className="border-b px-5 py-4">
               <DialogTitle className="text-lg">{meta.title}</DialogTitle>
+              <p className="text-xs text-muted-foreground">{batchName ? `${batchName}${stageName ? ` · ${stageName.replace("-", " ")}` : ""}` : `Batch ${batchId}`} · Date defaults to now</p>
             </DialogHeader>
           )}
+          <div className="min-h-0 overflow-y-auto px-5 py-4">
           {activeDialog === "MORTALITY" && <MortalityForm batchId={batchId} population={population} onDone={close} />}
           {activeDialog === "HEALTH_CONCERN" && <HealthForm batchId={batchId} population={population} onDone={close} />}
           {activeDialog === "VACCINE_MEDICINE" && <TreatmentForm batchId={batchId} population={population} onDone={close} />}
           {activeDialog === "BEHAVIOR_OBSERVATION" && <BehaviorForm batchId={batchId} population={population} onDone={close} />}
           {activeDialog === "DAILY_VITALS" && <VitalsForm batchId={batchId} population={population} onDone={close} />}
+          </div>
         </DialogContent>
       </Dialog>
     </>

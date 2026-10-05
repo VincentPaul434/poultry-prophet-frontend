@@ -181,7 +181,7 @@ function AlertRow({
           <p className="text-sm leading-relaxed sm:text-base">{alert.message}</p>
 
           {alert.acknowledged ? (
-            <p className="flex items-center gap-1.5 pt-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+            <p className="flex items-center gap-1.5 pt-0.5 text-xs font-medium text-success">
               <Check className="size-3.5" />
               Acknowledged
             </p>

@@ -2,25 +2,22 @@
 
 import { WifiOff } from "lucide-react";
 import { useNetworkStatus } from "@/hooks/use-network-status";
+import { useLocale } from "@/components/locale-provider";
 
 export function NetworkStatusBanner() {
   const isOnline = useNetworkStatus();
+  const { t } = useLocale();
 
   if (isOnline) return null;
 
   return (
     <div
-      className="mb-6 flex items-start gap-3 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+      className="mb-4 flex items-center gap-2 rounded-xl border border-warning-border bg-warning-muted px-3 py-2 text-xs text-warning-ink"
       role="status"
       aria-live="polite"
     >
-      <WifiOff className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
-      <div>
-        <p className="font-semibold">No internet connection</p>
-        <p className="mt-1 text-xs opacity-80">
-          Keep this screen open. Wait until the connection returns before saving a new record.
-        </p>
-      </div>
+      <WifiOff className="size-4 shrink-0" aria-hidden="true" />
+      <span><strong>{t("status.offlineTitle")}</strong> {t("status.offlineHint")}</span>
     </div>
   );
 }

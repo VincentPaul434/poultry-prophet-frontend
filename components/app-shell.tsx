@@ -11,12 +11,13 @@ import { useFarmAlerts } from "@/hooks/use-analytics";
 import { useFarmRealtime } from "@/hooks/use-farm-realtime";
 import { useFarm } from "@/hooks/use-farm";
 import { useReleaseVersion } from "@/hooks/use-version";
+import { useTestLabStatus } from "@/hooks/use-test-lab";
 import { getFarmDisplayName } from "@/lib/farm-display";
 import { getLoggingHref, LOGGING_ORIGINS } from "@/lib/logging-navigation";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/locale-provider";
 import type { TranslationKey } from "@/lib/i18n";
-import { NetworkStatusBanner } from "@/components/network-status-banner";
+import { SyncStatusIndicator } from "@/components/sync-status-indicator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
@@ -78,14 +79,6 @@ function initials(name: string | undefined) {
     .toUpperCase();
 }
 
-function greeting(name: string | undefined) {
-  const hour = new Date().getHours();
-  const salutation =
-    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const first = name?.split(" ")[0] ?? "";
-  return first ? `${salutation}, ${first}!` : salutation;
-}
-
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
@@ -95,6 +88,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const previousAlerts = useRef<{ farmId: number | null; ids: Set<number> } | null>(null);
   const farm = useFarm(!!user && user.farmId != null);
   const release = useReleaseVersion(!!user);
+  const testLab = useTestLabStatus(user?.role === "MANAGER");
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const unread = activeAlerts?.length ?? 0;
 
@@ -161,13 +155,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </SidebarHeader>
 
         <SidebarContent>
-          <div className="px-4 pb-2 pt-5">
-            <p className="text-xs font-medium leading-snug text-sidebar-foreground/60">
-              {greeting(user?.fullName)}
-            </p>
-          </div>
-
-          <SidebarGroup className="p-3 pt-0">
+          <SidebarGroup className="p-3 pt-5">
             <SidebarGroupLabel>Navigation</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
@@ -256,42 +244,60 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </DialogContent>
       </Dialog>
 
+<<<<<<< HEAD
       <SidebarInset className="min-h-0 min-w-0">
         <header className="relative flex min-h-16 shrink-0 items-center justify-center border-b bg-card px-4 py-2 md:hidden">
+=======
+      <SidebarInset className="min-h-0">
+        <header className="relative flex min-h-16 shrink-0 items-center border-b bg-card px-4 py-2 md:hidden">
+>>>>>>> 02de1bb (checking)
           <SidebarTrigger className="absolute left-4 top-1/2 size-11 -translate-y-1/2" />
-          <div className="flex flex-col items-center text-center leading-none">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-primary/15">
+          <div className="flex min-w-0 items-center gap-3 pl-14 pr-16">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15">
               <Bird className="size-5 text-primary" />
             </div>
-            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Poultry Prophet
-            </p>
-            <p className="mt-1.5 max-w-[calc(100vw-5rem)] truncate text-base font-bold tracking-tight">
-              {farmName}
-            </p>
-            <p className="mt-1 text-xs uppercase tracking-widest text-muted-foreground">
-              {user?.role === "MANAGER" ? t("role.manager") : t("role.handler")}
-            </p>
+            <div className="min-w-0">
+              <p className="truncate text-base font-bold tracking-tight">{farmName}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {user?.role === "MANAGER" ? t("role.manager") : t("role.handler")}
+              </p>
+            </div>
+          </div>
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            <SyncStatusIndicator />
           </div>
         </header>
 
+<<<<<<< HEAD
         <main className="safe-pb min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10">
           <NetworkStatusBanner />
+=======
+        <main className="safe-pb min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10">
+          <div className="mb-4 hidden justify-end md:flex">
+            <SyncStatusIndicator />
+          </div>
+>>>>>>> 02de1bb (checking)
           {isValidation && (
             <div
-              className="mb-6 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+              className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-warning-border bg-warning-muted px-3 py-2 text-xs text-warning-ink dark:border-warning-border dark:bg-warning-muted dark:text-warning-ink"
               role="status"
             >
-              <p className="font-semibold">{t("status.validation")} — {t("status.synthetic")}</p>
-              <p className="mt-1 text-xs opacity-80">
-                This workspace is for controlled stakeholder validation. Do not enter production
-                records.
-              </p>
+              <span className="font-semibold">{t("status.validation")} — {t("status.synthetic")}</span>
+              {testLab.data?.enabled && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  render={<Link href="/test-lab" />}
+                  className="h-8 shrink-0 border-warning-border bg-background/70 text-xs text-warning-ink hover:bg-background"
+                >
+                  Test Lab
+                </Button>
+              )}
             </div>
           )}
           {compatibilityMismatch && (
             <div
-              className="mb-6 rounded-xl border border-red-300/70 bg-red-50 px-4 py-3 text-sm text-red-950 dark:border-red-800 dark:bg-red-950/30 dark:text-red-100"
+              className="mb-6 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
               role="alert"
             >
               Frontend/backend version mismatch. Frontend {frontendVersion}; backend expects
@@ -322,8 +328,13 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
   const pathname = usePathname();
   const { toggleSidebar } = useSidebar();
   const { t } = useLocale();
-  const { data: batches } = useBatches();
   const [recordOpen, setRecordOpen] = useState(false);
+  // Managers do not use the handler quick-log sheet. For handlers, fetch the
+  // batch list only when the sheet is open instead of polling it globally from
+  // every mounted application shell.
+  const { data: batches, isLoading: batchesLoading } = useBatches({
+    enabled: !isManager && recordOpen,
+  });
 
   const items: MobileNavItem[] = isManager
     ? [
@@ -344,8 +355,9 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
     <>
       <nav
         aria-label="Mobile navigation"
-        className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 shadow-[0_-8px_24px_rgba(42,36,32,0.12)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 shadow-[var(--shadow-mobile-dock)] backdrop-blur md:hidden"
       >
+<<<<<<< HEAD
         <div className="safe-nav-pb mx-auto grid max-w-lg grid-cols-5 items-center gap-1 px-2 pt-2">
           {items.slice(0, 2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
 
@@ -372,6 +384,30 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
             <MoreHorizontal className="size-5" aria-hidden="true" />
             <span className="text-xs font-semibold">{t("nav.more")}</span>
           </button>
+=======
+        <div className="safe-pb mx-auto grid max-w-lg grid-cols-5 items-center gap-1 px-2 pt-2">
+          {isManager ? (
+            <>
+              {items.map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
+              <MoreNavButton onClick={toggleSidebar} label={t("nav.more")} />
+            </>
+          ) : (
+            <>
+              {items.slice(0, 2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
+              <button
+                type="button"
+                onClick={() => setRecordOpen(true)}
+                className="-mt-6 flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-primary px-3 text-primary-foreground shadow-[var(--shadow-mobile-dock)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+                aria-label={t("record.title")}
+              >
+                <Plus className="size-6" aria-hidden="true" />
+                <span className="text-xs font-bold">{t("nav.record")}</span>
+              </button>
+              {items.slice(2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} />)}
+              <MoreNavButton onClick={toggleSidebar} label={t("nav.more")} />
+            </>
+          )}
+>>>>>>> 02de1bb (checking)
         </div>
       </nav>
 
@@ -382,8 +418,15 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
               <SheetTitle>{t("record.title")}</SheetTitle>
               <SheetDescription>{t("record.choose")}</SheetDescription>
             </SheetHeader>
-            <div className="safe-nav-pb space-y-3 overflow-y-auto p-5">
-              {activeBatches.length === 0 && (
+            
+            <div className="safe-pb space-y-3 overflow-y-auto p-5">
+              {batchesLoading && (
+                <p className="rounded-2xl border border-dashed p-5 text-center text-sm text-muted-foreground">
+                  Loading batches…
+                </p>
+              )}
+              {!batchesLoading && activeBatches.length === 0 && (
+
                 <p className="rounded-2xl border border-dashed p-5 text-center text-sm text-muted-foreground">
                   {t("common.noRecords")}
                 </p>
@@ -400,7 +443,7 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
                 >
                   <span className="min-w-0">
                     <span className="block truncate font-semibold">{batch.name}</span>
-                    <span className="mt-1 block text-sm text-muted-foreground">{batch.currentPopulation} of {batch.initialPopulation} birds alive · {batch.stageName.replaceAll("-", " ")}</span>
+                    <span className="mt-1 block text-sm text-muted-foreground">{batch.currentPopulation} / {batch.initialPopulation} {t("dashboard.birdsInBatch")} · {batch.stageName.replaceAll("-", " ")}</span>
                   </span>
                   <ClipboardList className="size-5 shrink-0 text-primary" aria-hidden="true" />
                 </SheetClose>
@@ -410,6 +453,20 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
         </Sheet>
       )}
     </>
+  );
+}
+
+function MoreNavButton({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+      aria-label="Open more navigation options"
+    >
+      <MoreHorizontal className="size-5" aria-hidden="true" />
+      <span className="text-xs font-semibold">{label}</span>
+    </button>
   );
 }
 

@@ -15,15 +15,23 @@ export const qk = {
   invitesPending: ["invites", "pending"] as const,
   incubation: ["incubation-cycles"] as const,
   inputs: ["farm-inputs"] as const,
+  inventory: ["inventory"] as const,
+  inventoryProducts: (includeInactive = false) => ["inventory", "products", { includeInactive }] as const,
+  inventoryMovements: (params?: Record<string, unknown>) => ["inventory", "movements", params ?? {}] as const,
+  inventoryPending: ["inventory", "pending-review"] as const,
   tasks: ["handler-tasks"] as const,
   finance: ["finance"] as const,
-  operationsAnalytics: ["analytics", "operations"] as const,
+  financeAnalytics: (batchId?: number, start?: string, end?: string) => ["finance", "analytics", { batchId, start, end }] as const,
+  operationsAnalytics: (params?: Record<string, unknown>) => ["analytics", "operations", params ?? {}] as const,
+  batchComparison: (params?: Record<string, unknown>) => ["analytics", "batch-comparison", params ?? {}] as const,
+  testLab: ["test-lab"] as const,
   // Farm-wide alert feed (notifications centre), distinct from per-batch alerts.
   alertsFarm: (activeOnly?: boolean) => ["alerts", "farm", { activeOnly }] as const,
 
   batches: {
     all: ["batches"] as const,
     lists: () => [...qk.batches.all, "list"] as const,
+    dashboard: () => [...qk.batches.all, "dashboard"] as const,
     detail: (batchId: number | string) =>
       [...qk.batches.all, String(batchId)] as const,
     overview: (batchId: number | string) =>
@@ -44,6 +52,8 @@ export const qk = {
       [...qk.batches.detail(batchId), "selection-review", "preview", { periodStart, periodEnd }] as const,
     selectionReviews: (batchId: number | string) =>
       [...qk.batches.detail(batchId), "selection-reviews"] as const,
+    selectionSessions: (batchId: number | string) =>
+      [...qk.batches.detail(batchId), "selection-sessions"] as const,
     ranging: (batchId: number | string, birdId: number | string) =>
       [...qk.batches.detail(batchId), "birds", String(birdId), "ranging"] as const,
     events: (batchId: number | string, limit?: number) =>
