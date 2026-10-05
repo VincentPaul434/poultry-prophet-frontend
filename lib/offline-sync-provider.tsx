@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ApiError, API_BASE_URL } from "./api-client";
+import { ApiError } from "./api-client";
 import { syncApi } from "./api";
 import { useAuth } from "./auth-context";
 import {
@@ -62,7 +62,7 @@ async function serverReachable() {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 8_000);
   try {
-    const response = await fetch(`${API_BASE_URL.replace(/\/$/, "")}/health`, {
+    const response = await fetch("/api/backend/health", {
       method: "GET",
       cache: "no-store",
       signal: controller.signal,
