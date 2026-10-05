@@ -17,6 +17,7 @@ import { getLoggingHref, LOGGING_ORIGINS } from "@/lib/logging-navigation";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/locale-provider";
 import type { TranslationKey } from "@/lib/i18n";
+import { NetworkStatusBanner } from "@/components/network-status-banner";
 import { SyncStatusIndicator } from "@/components/sync-status-indicator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -244,13 +245,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </DialogContent>
       </Dialog>
 
-<<<<<<< HEAD
       <SidebarInset className="min-h-0 min-w-0">
         <header className="relative flex min-h-16 shrink-0 items-center justify-center border-b bg-card px-4 py-2 md:hidden">
-=======
-      <SidebarInset className="min-h-0">
-        <header className="relative flex min-h-16 shrink-0 items-center border-b bg-card px-4 py-2 md:hidden">
->>>>>>> 02de1bb (checking)
           <SidebarTrigger className="absolute left-4 top-1/2 size-11 -translate-y-1/2" />
           <div className="flex min-w-0 items-center gap-3 pl-14 pr-16">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15">
@@ -268,15 +264,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-<<<<<<< HEAD
         <main className="safe-pb min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10">
           <NetworkStatusBanner />
-=======
-        <main className="safe-pb min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10">
           <div className="mb-4 hidden justify-end md:flex">
             <SyncStatusIndicator />
           </div>
->>>>>>> 02de1bb (checking)
           {isValidation && (
             <div
               className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-warning-border bg-warning-muted px-3 py-2 text-xs text-warning-ink dark:border-warning-border dark:bg-warning-muted dark:text-warning-ink"
@@ -357,7 +349,6 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
         aria-label="Mobile navigation"
         className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 shadow-[var(--shadow-mobile-dock)] backdrop-blur md:hidden"
       >
-<<<<<<< HEAD
         <div className="safe-nav-pb mx-auto grid max-w-lg grid-cols-5 items-center gap-1 px-2 pt-2">
           {items.slice(0, 2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
 
@@ -384,30 +375,6 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
             <MoreHorizontal className="size-5" aria-hidden="true" />
             <span className="text-xs font-semibold">{t("nav.more")}</span>
           </button>
-=======
-        <div className="safe-pb mx-auto grid max-w-lg grid-cols-5 items-center gap-1 px-2 pt-2">
-          {isManager ? (
-            <>
-              {items.map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
-              <MoreNavButton onClick={toggleSidebar} label={t("nav.more")} />
-            </>
-          ) : (
-            <>
-              {items.slice(0, 2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
-              <button
-                type="button"
-                onClick={() => setRecordOpen(true)}
-                className="-mt-6 flex min-h-14 flex-col items-center justify-center gap-1 rounded-2xl bg-primary px-3 text-primary-foreground shadow-[var(--shadow-mobile-dock)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
-                aria-label={t("record.title")}
-              >
-                <Plus className="size-6" aria-hidden="true" />
-                <span className="text-xs font-bold">{t("nav.record")}</span>
-              </button>
-              {items.slice(2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} />)}
-              <MoreNavButton onClick={toggleSidebar} label={t("nav.more")} />
-            </>
-          )}
->>>>>>> 02de1bb (checking)
         </div>
       </nav>
 
@@ -453,20 +420,6 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
         </Sheet>
       )}
     </>
-  );
-}
-
-function MoreNavButton({ onClick, label }: { onClick: () => void; label: string }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
-      aria-label="Open more navigation options"
-    >
-      <MoreHorizontal className="size-5" aria-hidden="true" />
-      <span className="text-xs font-semibold">{label}</span>
-    </button>
   );
 }
 
