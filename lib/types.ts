@@ -715,6 +715,7 @@ export interface SelectionSession {
   createdAt: string;
   updatedAt: string;
   finalizedAt: string | null;
+  offlineSyncStatus?: "PENDING" | "SYNCING" | "RETRY_WAIT" | "AUTH_REQUIRED" | "CONFLICT" | "REJECTED";
 }
 
 export interface SelectionReviewInstructions {
@@ -819,6 +820,7 @@ export interface BatchEvent {
   populationAfter?: number | null;
   remainingPopulation?: number | null;
   salePurpose?: "BREEDING" | "OTHER" | "NOT_SPECIFIED" | null;
+  syncStatus?: "PENDING" | "SYNCING" | "RETRY_WAIT" | "AUTH_REQUIRED" | "CONFLICT" | "REJECTED";
 }
 
 export interface CreateBatchEventRequest {
@@ -833,7 +835,7 @@ export interface CreateBatchEventRequest {
   tags?: string | null;
 }
 
-export type SyncEntityType = "BATCH_EVENT" | "FARM_INPUT";
+export type SyncEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE";
 export type SyncResultStatus = "APPLIED" | "ALREADY_APPLIED" | "CONFLICT" | "REJECTED" | "RETRYABLE" | "AUTH_REQUIRED";
 export interface SyncOperationRequest {
   operationId: string;

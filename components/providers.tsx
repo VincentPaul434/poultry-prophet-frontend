@@ -23,8 +23,8 @@ export function Providers({ children }: { children: ReactNode }) {
           <AuthProvider>
             <OfflineSyncProvider>{children}</OfflineSyncProvider>
           </AuthProvider>
+          <ServiceWorkerRegistration />
         </LocaleProvider>
-        <ServiceWorkerRegistration />
         <Toaster richColors position="top-right" />
       </ThemeProvider>
       {process.env.NODE_ENV === "development" && <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />}

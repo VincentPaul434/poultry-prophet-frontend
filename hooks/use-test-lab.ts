@@ -7,7 +7,7 @@ import type { GenerateTestBatchRequest } from "@/lib/types";
 
 export function useTestLabStatus(enabled = true) {
   return useQuery({
-    queryKey: [...qk.testLab, "status"],
+    queryKey: qk.testLabStatus,
     queryFn: testLabApi.status,
     enabled,
     staleTime: 60_000,

@@ -22,7 +22,7 @@ export function useCreateRecord(batchId: number | string) {
       // mortality compatibility imports can change the population.
       queryClient.invalidateQueries({ queryKey: qk.batches.all });
       queryClient.invalidateQueries({ queryKey: qk.batches.detail(batchId) });
-      queryClient.invalidateQueries({ queryKey: ["alerts", "farm"] });
+      queryClient.invalidateQueries({ queryKey: qk.alertsFarmRoot });
     },
   });
 }

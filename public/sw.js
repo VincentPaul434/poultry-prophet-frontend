@@ -1,8 +1,47 @@
-const CACHE_NAME = "poultry-prophet-shell-v2";
+const CACHE_NAME = "poultry-prophet-shell-v3";
 const OFFLINE_URL = "/offline";
 
+async function cacheSuccessfulResponse(request, response) {
+  if (response.status !== 200 || response.type === "opaque") return;
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.put(request, response.clone());
+  } catch {
+    // A quota or cache error should not turn a successful network response into a failure.
+  }
+}
+
+async function precacheDashboard(cache) {
+  try {
+    const dashboardUrl = new URL("/dashboard", self.location.origin);
+    const response = await fetch(dashboardUrl, { cache: "reload" });
+    if (response.status !== 200) return;
+
+    await cache.put(dashboardUrl, response.clone());
+    const html = await response.text();
+    const assetUrls = [...html.matchAll(/(?:src|href)=["']([^"']*\/_next\/static\/[^"']+)["']/g)]
+      .map((match) => new URL(match[1], self.location.origin))
+      .filter((url) => url.origin === self.location.origin);
+
+    await Promise.all(assetUrls.map(async (url) => {
+      try {
+        const assetResponse = await fetch(url, { cache: "reload" });
+        if (assetResponse.status === 200) await cache.put(url, assetResponse);
+      } catch {
+        // Keep the cached offline route even when an optional asset is unavailable.
+      }
+    }));
+  } catch {
+    // The offline page remains available even if dashboard precaching fails.
+  }
+}
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll([OFFLINE_URL, "/icon.svg"])).then(() => self.skipWaiting()));
+  event.waitUntil(caches.open(CACHE_NAME).then(async (cache) => {
+    await cache.addAll([OFFLINE_URL, "/icon.svg"]);
+    await precacheDashboard(cache);
+    await self.skipWaiting();
+  }));
 });
 
 self.addEventListener("activate", (event) => {
@@ -21,17 +60,23 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).then((response) => {
-      const copy = response.clone();
-      void caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-      return response;
-    }).catch(() => caches.match(request).then((cached) => cached || caches.match(OFFLINE_URL))));
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
+        await cacheSuccessfulResponse(request, response);
+        return response;
+      } catch {
+        return (await caches.match(request)) || (await caches.match(OFFLINE_URL));
+      }
+    })());
     return;
   }
 
-  event.respondWith(caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-    const copy = response.clone();
-    void caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+  event.respondWith((async () => {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    const response = await fetch(request);
+    await cacheSuccessfulResponse(request, response);
     return response;
-  })));
+  })());
 });

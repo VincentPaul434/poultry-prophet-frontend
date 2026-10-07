@@ -15,33 +15,40 @@ import { cn } from "@/lib/utils";
  */
 export function SyncStatusIndicator() {
   const { snapshot, syncNow } = useOfflineSync();
-  const { language } = useLocale();
+  const { language, t } = useLocale();
   const taglish = language === "taglish";
   const [announcement, setAnnouncement] = useState("");
   const hasIssues = snapshot.issueCount > 0;
+  const storageUnavailable = !snapshot.storageAvailable;
   const isBusy = snapshot.connection === "CHECKING" || snapshot.connection === "SYNCING";
   const pending = snapshot.pendingCount;
-  const canAct = (pending > 0 && snapshot.connection !== "OFFLINE") || hasIssues || snapshot.connection === "AUTH_REQUIRED";
+  const canAct = !storageUnavailable && ((pending > 0 && snapshot.connection !== "OFFLINE") || hasIssues || snapshot.connection === "AUTH_REQUIRED");
 
-  const label = hasIssues
-    ? snapshot.issueCount + (taglish ? " kailangang ayusin" : " needs help")
-    : snapshot.connection === "AUTH_REQUIRED"
+  const label = storageUnavailable
+    ? t("status.offlineStorageUnavailable")
+    : hasIssues
+      ? snapshot.issueCount + (taglish ? " kailangang ayusin" : " needs help")
+      : snapshot.connection === "AUTH_REQUIRED"
       ? (taglish ? "Mag-sign in para maipadala ang " : "Sign in to send ") + pending
       : snapshot.connection === "SYNCING"
         ? (taglish ? "Ipinapadala…" : "Sending…")
-        : snapshot.connection === "CHECKING" || snapshot.connection === "SERVER_UNREACHABLE"
+        : snapshot.connection === "CHECKING"
           ? (taglish ? "Kumokonekta…" : "Connecting…")
-          : snapshot.connection === "OFFLINE"
+          : snapshot.connection === "SERVER_UNREACHABLE"
             ? pending > 0
-              ? pending + (taglish ? " naka-save sa phone" : " saved on phone")
-              : "Offline"
-            : pending > 0
-              ? (taglish ? "I-sync " : "Sync ") + pending
-              : "Online";
+              ? pending + (taglish ? " naka-save; walang server" : " saved; server unavailable")
+              : t("status.serverUnavailable")
+            : snapshot.connection === "OFFLINE"
+              ? pending > 0
+                ? pending + (taglish ? " naka-save sa phone" : " saved on phone")
+                : "Offline"
+              : pending > 0
+                ? (taglish ? "I-sync " : "Sync ") + pending
+                : "Online";
 
-  const Icon = hasIssues
+  const Icon = storageUnavailable || hasIssues
     ? AlertCircle
-    : snapshot.connection === "OFFLINE"
+    : snapshot.connection === "OFFLINE" || snapshot.connection === "SERVER_UNREACHABLE"
       ? CloudOff
       : snapshot.connection === "AUTH_REQUIRED"
         ? LockKeyhole
@@ -52,9 +59,9 @@ export function SyncStatusIndicator() {
             : snapshot.connection === "ONLINE"
               ? CheckCircle2
               : Wifi;
-  const color = hasIssues
+  const color = storageUnavailable || hasIssues
     ? "text-destructive"
-    : snapshot.connection === "OFFLINE" || pending > 0 || snapshot.connection === "AUTH_REQUIRED"
+    : snapshot.connection === "OFFLINE" || snapshot.connection === "SERVER_UNREACHABLE" || pending > 0 || snapshot.connection === "AUTH_REQUIRED"
       ? "text-warning-ink"
       : "text-success";
 

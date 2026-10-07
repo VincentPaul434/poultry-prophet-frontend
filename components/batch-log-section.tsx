@@ -471,6 +471,7 @@ export const EVENT_EMOJI: Record<EventType, string> = {
 };
 
 export function EventTimeline({ events }: { events: BatchEvent[] }) {
+  const { t } = useLocale();
   if (events.length === 0) {
     return (
       <div className="py-10 text-center space-y-2">
@@ -504,6 +505,15 @@ export function EventTimeline({ events }: { events: BatchEvent[] }) {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-bold">{ev.title}</span>
                       {ev.severityLabel && <Badge variant="outline" className="text-xs font-semibold">{ev.severityLabel}</Badge>}
+                      {ev.syncStatus && (
+                        <Badge variant={ev.syncStatus === "CONFLICT" || ev.syncStatus === "REJECTED" || ev.syncStatus === "AUTH_REQUIRED" ? "warning" : "secondary"} className="text-xs">
+                          {ev.syncStatus === "CONFLICT" || ev.syncStatus === "REJECTED"
+                            ? t("status.needsReview")
+                            : ev.syncStatus === "AUTH_REQUIRED"
+                              ? t("status.signInToSync")
+                              : t("status.pendingSync")}
+                        </Badge>
+                      )}
                       {ev.affectedCount > 0 && <span className="text-xs text-muted-foreground">{ev.affectedCount} bird{ev.affectedCount !== 1 ? "s" : ""}</span>}
                       {ev.eventType === "SALE" && ev.salePurpose === "BREEDING" && <Badge variant="secondary" className="text-xs">Sold as breeder</Badge>}
                     </div>

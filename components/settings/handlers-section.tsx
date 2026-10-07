@@ -5,15 +5,12 @@
 
 import { useState } from "react";
 import { Loader2, UserPlus } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { useHandlers } from "@/hooks/use-reference";
+import { useCreateHandler, useHandlers } from "@/hooks/use-reference";
 import { useFarm } from "@/hooks/use-farm";
 import { useAuth } from "@/lib/auth-context";
-import { handlerApi } from "@/lib/api";
 import { ApiError } from "@/lib/api-client";
 import { getHandlerFarmDisplayName } from "@/lib/farm-display";
-import { qk } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,29 +93,24 @@ export function HandlersSection() {
 // ─── Add handler dialog (direct creation) ────────────────────────────────────
 
 function AddHandlerDialog() {
-  const queryClient = useQueryClient();
+  const createHandler = useCreateHandler();
   const [open, setOpen] = useState(false);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const submitting = createHandler.isPending;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setSubmitting(true);
     try {
-      await handlerApi.create({ email, password, fullName });
+      await createHandler.mutateAsync({ email, password, fullName });
       toast.success(`${fullName} added as handler!`);
       setOpen(false);
       setFullName("");
       setEmail("");
       setPassword("");
-      // Refresh the roster from cache instead of a full page reload.
-      queryClient.invalidateQueries({ queryKey: qk.handlers });
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Could not add handler");
-    } finally {
-      setSubmitting(false);
     }
   }
 
