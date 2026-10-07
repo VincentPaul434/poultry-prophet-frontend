@@ -22,7 +22,7 @@ export default function EventHistoryPage({
   const { isManager } = useAuth();
   const { t } = useLocale();
   const { data: batch } = useBatch(batchId);
-  const { data: events, isLoading } = useBatchEvents(batchId, 100);
+  const { data: events, isLoading, isError } = useBatchEvents(batchId, 100);
 
   const population = batch?.currentPopulation ?? 0;
   const origin = parseLoggingOrigin(from);
@@ -97,6 +97,8 @@ export default function EventHistoryPage({
             <div className="space-y-3">
               {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
             </div>
+          ) : isError && !events ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Event history could not be loaded. Reconnect and try again.</p>
           ) : (
             <EventTimeline events={events ?? []} />
           )}

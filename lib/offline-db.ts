@@ -1,8 +1,8 @@
 "use client";
 
-import type { Batch, FarmProduct } from "./types";
+import type { Batch, BatchDashboardItem, BatchEvent, BatchOverview, FarmProduct, SelectionSession } from "./types";
 
-export type OfflineEntityType = "BATCH_EVENT" | "FARM_INPUT";
+export type OfflineEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE";
 export type OutboxStatus =
   | "PENDING"
   | "SYNCING"
@@ -46,11 +46,50 @@ export interface StoredFarmProductSnapshot {
   savedAt: string;
 }
 
+export interface StoredDashboardSnapshot {
+  key: string;
+  userId: number;
+  farmId: number;
+  items: BatchDashboardItem[];
+  savedAt: string;
+}
+
+export interface StoredBatchOverviewSnapshot {
+  key: string;
+  userId: number;
+  farmId: number;
+  batchId: number;
+  overview: BatchOverview;
+  savedAt: string;
+}
+
+export interface StoredBatchEventSnapshot {
+  key: string;
+  userId: number;
+  farmId: number;
+  batchId: number;
+  events: BatchEvent[];
+  savedAt: string;
+}
+
+export interface StoredSelectionSessionSnapshot {
+  key: string;
+  userId: number;
+  farmId: number;
+  batchId: number;
+  sessions: SelectionSession[];
+  savedAt: string;
+}
+
 const DB_NAME = "poultry-prophet-offline-v1";
-const DB_VERSION = 2;
+const DB_VERSION = 4;
 const OUTBOX_STORE = "outbox";
 const SNAPSHOT_STORE = "batchSnapshots";
 const PRODUCT_STORE = "productSnapshots";
+const DASHBOARD_STORE = "dashboardSnapshots";
+const OVERVIEW_STORE = "batchOverviewSnapshots";
+const EVENT_STORE = "batchEventSnapshots";
+const SELECTION_SESSION_STORE = "selectionSessionSnapshots";
 const META_STORE = "syncMeta";
 const OUTBOX_CHANGED = "pp-offline-outbox-changed";
 
@@ -105,6 +144,10 @@ function openDatabase() {
         snapshots.createIndex("byUserFarm", ["userId", "farmId"]);
       }
       if (!db.objectStoreNames.contains(PRODUCT_STORE)) db.createObjectStore(PRODUCT_STORE, { keyPath: "key" });
+      if (!db.objectStoreNames.contains(DASHBOARD_STORE)) db.createObjectStore(DASHBOARD_STORE, { keyPath: "key" });
+      if (!db.objectStoreNames.contains(OVERVIEW_STORE)) db.createObjectStore(OVERVIEW_STORE, { keyPath: "key" });
+      if (!db.objectStoreNames.contains(EVENT_STORE)) db.createObjectStore(EVENT_STORE, { keyPath: "key" });
+      if (!db.objectStoreNames.contains(SELECTION_SESSION_STORE)) db.createObjectStore(SELECTION_SESSION_STORE, { keyPath: "key" });
       if (!db.objectStoreNames.contains(META_STORE)) db.createObjectStore(META_STORE, { keyPath: "key" });
     };
     request.onsuccess = () => resolve(request.result);
@@ -153,6 +196,38 @@ export async function listOutbox(userId: number, farmId: number) {
   await transactionDone(tx);
   return all.filter((item) => item.userId === userId && item.farmId === farmId)
     .sort((a, b) => a.sequence - b.sequence);
+}
+
+export async function getQueuedPopulationDelta(userId: number, farmId: number, batchId: number) {
+  const operations = await listOutbox(userId, farmId);
+  const signs: Record<string, number> = {
+    MORTALITY: -1,
+    HEALTH_DEATH: -1,
+    ACCIDENTAL_DEATH: -1,
+    SUSPECTED_PREDATION: -1,
+    CONFIRMED_PREDATION: -1,
+    MISSING: -1,
+    FOUND_RETURNED: 1,
+    TRANSFER_OUT: -1,
+    TRANSFER_IN: 1,
+    SALE: -1,
+    CULLING: -1,
+  };
+  return operations
+    .filter((operation) => operation.batchId === batchId
+      && operation.entityType === "BATCH_EVENT"
+      && operation.status !== "CONFLICT"
+      && operation.status !== "REJECTED")
+    .reduce((total, operation) => {
+      const eventType = operation.payload.eventType;
+      if (eventType === "COUNT_CORRECTION") {
+        const correction = operation.payload.populationDelta;
+        return total + (typeof correction === "number" ? correction : 0);
+      }
+      const sign = typeof eventType === "string" ? signs[eventType] : undefined;
+      const count = operation.payload.affectedCount;
+      return total + (sign && typeof count === "number" ? sign * count : 0);
+    }, 0);
 }
 
 export async function updateOutboxOperation(operationId: string, patch: Partial<OutboxOperation>) {
@@ -213,6 +288,183 @@ export async function getFarmProductSnapshots(userId: number, farmId: number) {
   const result = await requestResult(tx.objectStore(PRODUCT_STORE).get(`${userId}:${farmId}`)) as StoredFarmProductSnapshot | undefined;
   await transactionDone(tx);
   return result?.products ?? [];
+}
+
+export async function saveDashboardSnapshot(userId: number, farmId: number, items: BatchDashboardItem[]) {
+  const db = await openDatabase();
+  const tx = db.transaction([DASHBOARD_STORE], "readwrite");
+  tx.objectStore(DASHBOARD_STORE).put({
+    key: `${userId}:${farmId}`,
+    userId,
+    farmId,
+    items,
+    savedAt: new Date().toISOString(),
+  } satisfies StoredDashboardSnapshot);
+  await transactionDone(tx);
+}
+
+export async function getDashboardSnapshot(userId: number, farmId: number) {
+  const db = await openDatabase();
+  const tx = db.transaction([DASHBOARD_STORE], "readonly");
+  const result = await requestResult(tx.objectStore(DASHBOARD_STORE).get(`${userId}:${farmId}`)) as StoredDashboardSnapshot | undefined;
+  await transactionDone(tx);
+  return result?.items ?? null;
+}
+
+export async function saveBatchOverviewSnapshot(userId: number, farmId: number, overview: BatchOverview) {
+  const db = await openDatabase();
+  const tx = db.transaction([OVERVIEW_STORE], "readwrite");
+  tx.objectStore(OVERVIEW_STORE).put({
+    key: `${userId}:${farmId}:${overview.batch.id}`,
+    userId,
+    farmId,
+    batchId: overview.batch.id,
+    overview,
+    savedAt: new Date().toISOString(),
+  } satisfies StoredBatchOverviewSnapshot);
+  await transactionDone(tx);
+}
+
+export async function getBatchOverviewSnapshot(userId: number, farmId: number, batchId: number) {
+  const db = await openDatabase();
+  const tx = db.transaction([OVERVIEW_STORE], "readonly");
+  const result = await requestResult(tx.objectStore(OVERVIEW_STORE).get(`${userId}:${farmId}:${batchId}`)) as StoredBatchOverviewSnapshot | undefined;
+  await transactionDone(tx);
+  return result?.overview ?? null;
+}
+
+export async function saveBatchEventSnapshot(userId: number, farmId: number, batchId: number, events: BatchEvent[]) {
+  const db = await openDatabase();
+  const tx = db.transaction([EVENT_STORE], "readwrite");
+  const store = tx.objectStore(EVENT_STORE);
+  const key = `${userId}:${farmId}:${batchId}`;
+  const existing = await requestResult(store.get(key)) as StoredBatchEventSnapshot | undefined;
+  const merged = new Map<number, BatchEvent>();
+  for (const event of [...(existing?.events ?? []), ...events]) merged.set(event.id, event);
+  const combined = [...merged.values()]
+    .sort((a, b) => b.eventDate.localeCompare(a.eventDate) || b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 200);
+  store.put({
+    key,
+    userId,
+    farmId,
+    batchId,
+    events: combined,
+    savedAt: new Date().toISOString(),
+  } satisfies StoredBatchEventSnapshot);
+  await transactionDone(tx);
+}
+
+export async function getBatchEventSnapshot(userId: number, farmId: number, batchId: number) {
+  const db = await openDatabase();
+  const tx = db.transaction([EVENT_STORE], "readonly");
+  const result = await requestResult(tx.objectStore(EVENT_STORE).get(`${userId}:${farmId}:${batchId}`)) as StoredBatchEventSnapshot | undefined;
+  await transactionDone(tx);
+  return result?.events ?? null;
+}
+
+export async function saveSelectionSessionSnapshot(userId: number, farmId: number, batchId: number, sessions: SelectionSession[]) {
+  const db = await openDatabase();
+  const tx = db.transaction([SELECTION_SESSION_STORE], "readwrite");
+  tx.objectStore(SELECTION_SESSION_STORE).put({
+    key: `${userId}:${farmId}:${batchId}`,
+    userId,
+    farmId,
+    batchId,
+    sessions,
+    savedAt: new Date().toISOString(),
+  } satisfies StoredSelectionSessionSnapshot);
+  await transactionDone(tx);
+}
+
+export async function getSelectionSessionSnapshot(userId: number, farmId: number, batchId: number) {
+  const db = await openDatabase();
+  const tx = db.transaction([SELECTION_SESSION_STORE], "readonly");
+  const result = await requestResult(tx.objectStore(SELECTION_SESSION_STORE).get(`${userId}:${farmId}:${batchId}`)) as StoredSelectionSessionSnapshot | undefined;
+  await transactionDone(tx);
+  return result?.sessions ?? null;
+}
+
+export async function upsertSelectionSessionSnapshot(userId: number, farmId: number, batchId: number, session: SelectionSession) {
+  const db = await openDatabase();
+  const tx = db.transaction([SELECTION_SESSION_STORE], "readwrite");
+  const store = tx.objectStore(SELECTION_SESSION_STORE);
+  const key = `${userId}:${farmId}:${batchId}`;
+  const existing = await requestResult(store.get(key)) as StoredSelectionSessionSnapshot | undefined;
+  const sessions = new Map((existing?.sessions ?? []).map((item) => [item.id, item]));
+  sessions.set(session.id, session);
+  store.put({
+    key,
+    userId,
+    farmId,
+    batchId,
+    sessions: [...sessions.values()].sort((a, b) => b.selectionDate.localeCompare(a.selectionDate) || b.createdAt.localeCompare(a.createdAt)).slice(0, 100),
+    savedAt: new Date().toISOString(),
+  } satisfies StoredSelectionSessionSnapshot);
+  await transactionDone(tx);
+}
+
+export async function commitSyncedSelectionSession(operation: OutboxOperation, serverId: number, serverTime: string) {
+  if (operation.entityType !== "SELECTION_SESSION" && operation.entityType !== "SELECTION_SESSION_UPDATE") return;
+  const userId = operation.userId;
+  const farmId = operation.farmId;
+  const batchId = operation.batchId;
+  const payload = operation.payload;
+  const sessions = await getSelectionSessionSnapshot(userId, farmId, batchId) ?? [];
+
+  if (operation.entityType === "SELECTION_SESSION") {
+    const evaluatedCount = typeof payload.evaluatedCount === "number" ? payload.evaluatedCount : 1;
+    const acceptedCount = typeof payload.acceptedCount === "number" ? payload.acceptedCount : 0;
+    const session: SelectionSession = {
+      id: serverId,
+      farmId,
+      batchId,
+      selectionDate: typeof payload.selectionDate === "string" ? payload.selectionDate : operation.occurredAt.slice(0, 10),
+      reviewerId: userId,
+      evaluatedCount,
+      acceptedCount,
+      continueObservationCount: typeof payload.continueObservationCount === "number" ? payload.continueObservationCount : 0,
+      notAcceptedCount: typeof payload.notAcceptedCount === "number" ? payload.notAcceptedCount : 0,
+      otherCount: typeof payload.otherCount === "number" ? payload.otherCount : 0,
+      selectionRatePercent: evaluatedCount > 0 ? Math.round((acceptedCount / evaluatedCount) * 10000) / 100 : null,
+      selectionRateNumerator: acceptedCount,
+      selectionRateDenominator: evaluatedCount,
+      status: "DRAFT",
+      criterionCodes: Array.isArray(payload.criterionCodes) ? payload.criterionCodes.filter((item): item is string => typeof item === "string") : [],
+      criteriaNotes: typeof payload.criteriaNotes === "string" ? payload.criteriaNotes : null,
+      sessionNotes: typeof payload.sessionNotes === "string" ? payload.sessionNotes : null,
+      operationId: operation.operationId,
+      supersedesSessionId: null,
+      createdAt: serverTime,
+      updatedAt: serverTime,
+      finalizedAt: null,
+    };
+    await upsertSelectionSessionSnapshot(userId, farmId, batchId, session);
+    return;
+  }
+
+  const sessionId = typeof payload.sessionId === "number" ? payload.sessionId : serverId;
+  const existing = sessions.find((session) => session.id === sessionId);
+  if (!existing) return;
+  const evaluatedCount = typeof payload.evaluatedCount === "number" ? payload.evaluatedCount : existing.evaluatedCount;
+  const acceptedCount = typeof payload.acceptedCount === "number" ? payload.acceptedCount : existing.acceptedCount;
+  const updated: SelectionSession = {
+    ...existing,
+    selectionDate: typeof payload.selectionDate === "string" ? payload.selectionDate : existing.selectionDate,
+    evaluatedCount,
+    acceptedCount,
+    continueObservationCount: typeof payload.continueObservationCount === "number" ? payload.continueObservationCount : existing.continueObservationCount,
+    notAcceptedCount: typeof payload.notAcceptedCount === "number" ? payload.notAcceptedCount : existing.notAcceptedCount,
+    otherCount: typeof payload.otherCount === "number" ? payload.otherCount : existing.otherCount,
+    selectionRatePercent: evaluatedCount > 0 ? Math.round((acceptedCount / evaluatedCount) * 10000) / 100 : null,
+    selectionRateNumerator: acceptedCount,
+    selectionRateDenominator: evaluatedCount,
+    criterionCodes: Array.isArray(payload.criterionCodes) ? payload.criterionCodes.filter((item): item is string => typeof item === "string") : existing.criterionCodes,
+    criteriaNotes: typeof payload.criteriaNotes === "string" ? payload.criteriaNotes : null,
+    sessionNotes: typeof payload.sessionNotes === "string" ? payload.sessionNotes : null,
+    updatedAt: serverTime,
+  };
+  await upsertSelectionSessionSnapshot(userId, farmId, batchId, updated);
 }
 
 export async function setLastSuccessfulSync(value: string) {

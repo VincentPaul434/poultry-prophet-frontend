@@ -42,11 +42,9 @@ export function useAcknowledgeAlert(batchId: number | string) {
     onSuccess: () => {
       // Acknowledgement changes alert lists and the overview's active-alert set.
       queryClient.invalidateQueries({ queryKey: qk.batches.overview(batchId) });
-      queryClient.invalidateQueries({
-        queryKey: [...qk.batches.detail(batchId), "alerts"],
-      });
+      queryClient.invalidateQueries({ queryKey: qk.batches.alertsRoot(batchId) });
       // Also refresh the farm-wide notifications feed.
-      queryClient.invalidateQueries({ queryKey: ["alerts", "farm"] });
+      queryClient.invalidateQueries({ queryKey: qk.alertsFarmRoot });
     },
   });
 }
@@ -74,7 +72,7 @@ export function useAcknowledgeFarmAlert() {
     onSuccess: () => {
       // Acknowledging from the centre affects the farm feed, every per-batch
       // alert list, and batch overviews' active-alert sets.
-      queryClient.invalidateQueries({ queryKey: ["alerts", "farm"] });
+      queryClient.invalidateQueries({ queryKey: qk.alertsFarmRoot });
       queryClient.invalidateQueries({ queryKey: qk.batches.all });
     },
   });

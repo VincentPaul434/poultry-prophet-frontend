@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { financeApi, incubationApi, inputApi, inventoryApi, operationsAnalyticsApi, taskApi } from "@/lib/api";
 import { useOfflineSync } from "@/lib/offline-sync-provider";
+import { shouldUseOfflineSnapshot } from "@/lib/api-client";
 import { getFarmProductSnapshots, saveFarmProductSnapshots } from "@/lib/offline-db";
 import { useAuth } from "@/lib/auth-context";
 import { qk } from "@/lib/query-keys";
@@ -12,7 +13,7 @@ export function useIncubationCycles(enabled = true) { return useQuery({ queryKey
 export function useCreateIncubationCycle() { const qc = useQueryClient(); return useMutation({ mutationFn: (body: CreateIncubationCycleRequest) => incubationApi.create(body), onSuccess: () => qc.invalidateQueries({ queryKey: qk.incubation }) }); }
 export function useCompleteIncubation() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, body }: { id: number; body: CompleteIncubationRequest }) => incubationApi.complete(id, body), onSuccess: () => qc.invalidateQueries({ queryKey: qk.incubation }) }); }
 export function useCreateIncubationBatch() { const qc = useQueryClient(); return useMutation({ mutationFn: (id: number) => incubationApi.createBatch(id), onSuccess: () => qc.invalidateQueries({ queryKey: qk.batches.all }) }); }
-export function useFarmInputs(batchId?: number, cycleId?: number, enabled = true) { return useQuery({ queryKey: [...qk.inputs, batchId, cycleId], queryFn: () => inputApi.list(batchId, cycleId), enabled }); }
+export function useFarmInputs(batchId?: number, cycleId?: number, enabled = true) { return useQuery({ queryKey: qk.farmInputs(batchId, cycleId), queryFn: () => inputApi.list(batchId, cycleId), enabled }); }
 export function useCreateFarmInput() {
   const qc = useQueryClient();
   const { enqueue } = useOfflineSync();
@@ -36,23 +37,36 @@ export function useFarmProducts(includeInactive = false, enabled = true) {
   return useQuery({ queryKey: qk.inventoryProducts(includeInactive), queryFn: async () => {
     try {
       const products = await inventoryApi.products(includeInactive);
-      if (user?.farmId) await saveFarmProductSnapshots(user.userId, user.farmId, products);
+      if (user?.farmId) {
+        try { await saveFarmProductSnapshots(user.userId, user.farmId, products); } catch { /* Keep online reads available if local storage is full. */ }
+      }
       return products;
     } catch (error) {
+      if (!shouldUseOfflineSnapshot(error)) throw error;
       if (user?.farmId) {
-        const cached = await getFarmProductSnapshots(user.userId, user.farmId);
-        if (cached.length > 0) return includeInactive ? cached : cached.filter((item) => item.active);
+        try {
+          const cached = await getFarmProductSnapshots(user.userId, user.farmId);
+          if (cached.length > 0) return includeInactive ? cached : cached.filter((item) => item.active);
+        } catch { /* Preserve the API error if local storage is unavailable. */ }
       }
       throw error;
     }
   }, enabled: enabled && Boolean(user?.farmId), staleTime: 30_000 });
+}
+export function useInventoryMovements(params: { productId?: number; batchId?: number } = {}, enabled = true) {
+  return useQuery({
+    queryKey: qk.inventoryMovements(params),
+    queryFn: () => inventoryApi.movements(params),
+    enabled,
+    staleTime: 15_000,
+  });
 }
 export function useCreateFarmProduct() { const qc = useQueryClient(); return useMutation({ mutationFn: (body: CreateFarmProductRequest) => inventoryApi.createProduct(body), onSuccess: () => qc.invalidateQueries({ queryKey: qk.inventory }) }); }
 export function useStockInProduct() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ productId, body }: { productId: number; body: StockInRequest }) => inventoryApi.stockIn(productId, body), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.inventory }); qc.invalidateQueries({ queryKey: qk.finance }); } }); }
 export function useAdjustInventory() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ productId, body }: { productId: number; body: InventoryAdjustmentRequest }) => inventoryApi.adjust(productId, body), onSuccess: () => qc.invalidateQueries({ queryKey: qk.inventory }) }); }
 export function usePendingInventoryReview(enabled = true) { return useQuery({ queryKey: qk.inventoryPending, queryFn: inventoryApi.pendingReview, enabled, staleTime: 15_000 }); }
 export function useRetryPendingInventory() { const qc = useQueryClient(); return useMutation({ mutationFn: (inputId: number) => inventoryApi.retryPending(inputId), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.inventory }); qc.invalidateQueries({ queryKey: qk.inventoryPending }); qc.invalidateQueries({ queryKey: qk.inputs }); } }); }
-export function useTasks(mine = false) { return useQuery({ queryKey: [...qk.tasks, { mine }], queryFn: () => taskApi.list(mine) }); }
+export function useTasks(mine = false) { return useQuery({ queryKey: qk.taskList(mine), queryFn: () => taskApi.list(mine) }); }
 export function useCreateTask() { const qc = useQueryClient(); return useMutation({ mutationFn: (body: CreateTaskRequest) => taskApi.create(body), onSuccess: () => qc.invalidateQueries({ queryKey: qk.tasks }) }); }
 export function useUpdateTaskStatus() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, body }: { id: number; body: UpdateTaskStatusRequest }) => taskApi.updateStatus(id, body), onSuccess: () => qc.invalidateQueries({ queryKey: qk.tasks }) }); }
 export function useFinanceTransactions(enabled = true) { return useQuery({ queryKey: qk.finance, queryFn: financeApi.list, enabled }); }

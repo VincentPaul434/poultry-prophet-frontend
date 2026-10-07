@@ -32,6 +32,12 @@ export class ApiError extends Error {
   }
 }
 
+/** Use cached data only when a request could not reach a healthy API. A 4xx
+ * response still carries important auth, permission, or validation state. */
+export function shouldUseOfflineSnapshot(error: unknown) {
+  return error instanceof ApiError && (error.status === 0 || error.status >= 500);
+}
+
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_PROXY_BASE_URL,
   headers: { "Content-Type": "application/json" },

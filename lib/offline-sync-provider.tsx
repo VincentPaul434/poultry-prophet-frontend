@@ -4,9 +4,11 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "./api-client";
 import { syncApi } from "./api";
+import { qk } from "./query-keys";
 import { useAuth } from "./auth-context";
 import {
   deleteOutboxOperation,
+  commitSyncedSelectionSession,
   getDeviceId,
   getLastSuccessfulSync,
   listOutbox,
@@ -170,10 +172,13 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
             const item = selected.find((candidate) => candidate.operationId === result.operationId);
             if (!item) continue;
             if (result.status === "APPLIED" || result.status === "ALREADY_APPLIED") {
+              if (result.serverId != null) {
+                try { await commitSyncedSelectionSession(item, result.serverId, result.serverTime); } catch { /* A server acknowledgement must not be retried because local snapshots are full. */ }
+              }
               await deleteOutboxOperation(item.operationId);
-              queryClient.invalidateQueries({ queryKey: ["batches"] });
-              queryClient.invalidateQueries({ queryKey: ["farm-inputs"] });
-              queryClient.invalidateQueries({ queryKey: ["alerts", "farm"] });
+              queryClient.invalidateQueries({ queryKey: qk.batches.all });
+              queryClient.invalidateQueries({ queryKey: qk.inputs });
+              queryClient.invalidateQueries({ queryKey: qk.alertsFarmRoot });
             } else if (result.status === "AUTH_REQUIRED") {
               await updateOutboxOperation(item.operationId, { status: "AUTH_REQUIRED", lastErrorMessage: result.message ?? "Sign in to sync this record." });
               blockedBatches.add(item.batchId);

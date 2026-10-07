@@ -6,7 +6,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { handlerApi, inviteApi, lifecycleApi, thresholdApi } from "@/lib/api";
 import { qk } from "@/lib/query-keys";
-import type { CreateInviteRequest, UpdateThresholdRequest } from "@/lib/types";
+import type { CreateHandlerRequest, CreateInviteRequest, UpdateThresholdRequest } from "@/lib/types";
 
 export function useLifecycleStages() {
   return useQuery({
@@ -23,6 +23,14 @@ export function useHandlers(enabled = true) {
     queryFn: handlerApi.list,
     staleTime: 5 * 60_000,
     enabled,
+  });
+}
+
+export function useCreateHandler() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateHandlerRequest) => handlerApi.create(body),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: qk.handlers }),
   });
 }
 

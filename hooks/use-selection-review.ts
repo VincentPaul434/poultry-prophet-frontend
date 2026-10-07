@@ -15,7 +15,7 @@ export function useSelectionReviewPreview(
   enabled = true,
 ) {
   return useQuery<SelectionReviewPayload>({
-    queryKey: qk.batches.selectionReviewPreview(batchId, params?.periodStart, params?.periodEnd),
+    queryKey: qk.batches.selectionReviewPreview(batchId, params),
     queryFn: () => selectionReviewApi.preview(batchId, params),
     enabled: enabled && batchId != null && batchId !== "",
     staleTime: 30_000,

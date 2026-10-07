@@ -68,6 +68,8 @@ export function SelectionSessionDialog({ batchId, batchName, currentPopulation }
   const finalize = useFinalizeSelectionSession(batchId);
   const latest = sessions.data?.[0];
   const activeDraft = sessions.data?.find((session) => session.status === "DRAFT");
+  const activeDraftNeedsReview = activeDraft?.offlineSyncStatus != null
+    && ["AUTH_REQUIRED", "CONFLICT", "REJECTED"].includes(activeDraft.offlineSyncStatus);
   const parsedEvaluated = parseWholeCount(evaluated);
   const parsedAccepted = optionalWholeCount(accepted);
   const parsedContinued = optionalWholeCount(continued);
@@ -140,15 +142,26 @@ export function SelectionSessionDialog({ batchId, batchName, currentPopulation }
     if (validation) { setError(validation); return; }
     setError("");
     try {
-      const requestOperationId = operationId || newOperationId();
+      const requestOperationId = editingDraftId != null && editingDraftId > 0
+        ? newOperationId()
+        : operationId || newOperationId();
       if (!operationId) setOperationId(requestOperationId);
       const request = buildRequest(requestOperationId);
       const saved = editingDraftId == null
         ? await create.mutateAsync(request)
         : await update.mutateAsync({ sessionId: editingDraftId, body: request });
       if (editingDraftId == null) setEditingDraftId(saved.id);
-      if (finalizing) await finalize.mutateAsync(saved.id);
-      toast.success(finalizing ? "Selection session finalized." : editingDraftId == null ? "Selection session saved as draft." : "Selection draft updated.");
+      const needsOnlineFinalization = finalizing && (saved.id < 0 || saved.offlineSyncStatus != null || !navigator.onLine);
+      if (finalizing && !needsOnlineFinalization) await finalize.mutateAsync(saved.id);
+      toast.success(needsOnlineFinalization
+        ? "Draft saved on this device. Reconnect to finalize it."
+        : finalizing
+          ? "Selection session finalized."
+          : editingDraftId == null
+            ? "Selection session saved as draft."
+            : saved.offlineSyncStatus
+              ? "Draft saved on this device and will sync when online."
+              : "Selection draft updated.");
       reset(); setOpen(false);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not save the selection session.");
@@ -158,7 +171,8 @@ export function SelectionSessionDialog({ batchId, batchName, currentPopulation }
   const latestText = useMemo(() => {
     if (activeDraft) {
       const assigned = activeDraft.acceptedCount + activeDraft.continueObservationCount + activeDraft.notAcceptedCount + activeDraft.otherCount;
-      return `Draft · ${formatDate(activeDraft.selectionDate)} · ${assigned}/${activeDraft.evaluatedCount} assigned`;
+      const draftLabel = activeDraft.id < 0 || activeDraft.offlineSyncStatus ? "Saved on this device" : "Draft";
+      return `${draftLabel} · ${formatDate(activeDraft.selectionDate)} · ${assigned}/${activeDraft.evaluatedCount} assigned`;
     }
     if (!latest) return "No selection session recorded";
     return `${latest.status === "FINALIZED" ? "Finalized" : "Draft"} · ${formatDate(latest.selectionDate)} · ${latest.acceptedCount}/${latest.evaluatedCount} accepted`;
@@ -180,13 +194,13 @@ export function SelectionSessionDialog({ batchId, batchName, currentPopulation }
     <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0"><p className="text-sm font-bold">Selection review</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{latestText}</p></div>
-        {activeDraft ? <Badge variant="secondary">Draft</Badge> : latest?.selectionRatePercent != null && <Badge variant="secondary">{latest.selectionRatePercent}% accepted</Badge>}
+        {activeDraft ? <Badge variant={activeDraftNeedsReview ? "destructive" : activeDraft.offlineSyncStatus ? "outline" : "secondary"}>{activeDraftNeedsReview ? "Needs review" : activeDraft.offlineSyncStatus ? "Waiting to sync" : "Draft"}</Badge> : latest?.selectionRatePercent != null && <Badge variant="secondary">{latest.selectionRatePercent}% accepted</Badge>}
       </div>
       <Button type="button" className="mt-3 h-12 w-full rounded-xl font-bold" onClick={beginSession}><ClipboardCheck className="size-4" /> {activeDraft ? "Continue selection draft" : "Record selection session"}</Button>
     </div>
     <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) reset(); }}>
       <DialogContent className="w-[calc(100%-1rem)] max-w-xl">
-        <DialogHeader><DialogTitle>Record selection session</DialogTitle><DialogDescription>{batchName} · Batch selected · This records the manager&apos;s review; it does not change the population automatically.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Record selection session</DialogTitle><DialogDescription>{batchName} · This records the manager&apos;s review and does not change population automatically. Drafts can be saved offline; finalization requires a connection.</DialogDescription></DialogHeader>
         <div className="max-h-[70vh] space-y-4 overflow-y-auto py-1 pr-1">
           <div className="grid gap-3 sm:grid-cols-2"><label htmlFor="selection-date" className="grid gap-1.5 text-sm font-semibold"><span>Selection date</span><Input id="selection-date" type="date" max={today} value={selectionDate} onChange={(event) => { setSelectionDate(event.target.value); setError(""); }} className="h-12 rounded-xl" /></label><div className="rounded-xl border bg-muted/30 px-3 py-2.5"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Population today</p><p className="mt-1 text-lg font-bold">{currentPopulation.toLocaleString()} birds</p></div></div>
           <div className="rounded-2xl border p-3">

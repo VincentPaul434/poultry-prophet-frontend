@@ -1,10 +1,26 @@
 "use client";
 
 import { useEffect } from "react";
+import { toast } from "sonner";
+import { useLocale } from "@/components/locale-provider";
 
 export function ServiceWorkerRegistration() {
+  const { t } = useLocale();
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
+    let failureReported = false;
+    const reportFailure = (error?: unknown) => {
+      if (failureReported) return;
+      failureReported = true;
+      console.error("Poultry Prophet offline app setup failed.", error);
+      toast.error(t("status.offlineSetupFailed"), {
+        description: t("status.offlineSetupHint"),
+      });
+    };
+
+    if (!("serviceWorker" in navigator)) {
+      reportFailure(new Error("Service workers are not supported in this browser."));
+      return;
+    }
 
     // Never let a worker from an older production run mask the current local
     // development bundle. This is especially important for UI work because
@@ -24,7 +40,19 @@ export function ServiceWorkerRegistration() {
       return;
     }
 
-    void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
-  }, []);
+    void navigator.serviceWorker.register("/sw.js", { scope: "/" }).then((registration) => {
+      const watchInstall = () => {
+        const worker = registration.installing;
+        if (!worker) return;
+        worker.addEventListener("statechange", () => {
+          if (worker.state === "redundant" && !registration.active) {
+            reportFailure(new Error("The offline app shell could not be cached."));
+          }
+        });
+      };
+      watchInstall();
+      registration.addEventListener("updatefound", watchInstall);
+    }).catch(reportFailure);
+  }, [t]);
   return null;
 }
