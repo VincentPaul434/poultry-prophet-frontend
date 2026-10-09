@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
 import { useLocale } from "@/components/locale-provider";
+import { VaccinationTaskAction } from "@/components/vaccination-plan-card";
 
 function isToday(value: string | null) { return value ? new Date(value).toISOString().slice(0, 10) === todayIso() : false; }
 
@@ -70,5 +71,5 @@ function TaskGroup({ title, tasks, tone, batchNames, onDone, updatePending, coll
 
 function TaskCard({ task, batchName, onDone, updatePending, compact }: { task: HandlerTask; batchName: string; onDone: (id: number) => void; updatePending: boolean; compact?: boolean }) {
   const due = task.dueAt ? new Date(task.dueAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "No due date";
-  return <article className={`rounded-xl border p-3 ${compact ? "bg-muted/20" : "bg-card"}`}><div className="flex items-start justify-between gap-3"><div className="min-w-0 space-y-1"><div className="flex flex-wrap items-center gap-2"><h4 className="font-semibold">{task.title}</h4><Badge variant={task.priority === "URGENT" || task.priority === "HIGH" ? "destructive" : "secondary"}>{task.priority}</Badge></div>{task.instructions && <p className="text-sm text-muted-foreground">{task.instructions}</p>}<div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>{batchName}</span><span className="inline-flex items-center gap-1"><Clock3 className="size-3.5" aria-hidden="true" />{due}</span></div></div>{task.status !== "COMPLETED" && task.status !== "CANCELLED" && <Button size="lg" disabled={updatePending} onClick={() => onDone(task.id)} aria-label={`Mark task done: ${task.title}`}><CheckCircle2 className="size-4" aria-hidden="true" />Done</Button>}</div></article>;
+  return <article className={`rounded-xl border p-3 ${compact ? "bg-muted/20" : "bg-card"}`}><div className="flex items-start justify-between gap-3"><div className="min-w-0 space-y-1"><div className="flex flex-wrap items-center gap-2"><h4 className="font-semibold">{task.title}</h4><Badge variant={task.priority === "URGENT" || task.priority === "HIGH" ? "destructive" : "secondary"}>{task.priority}</Badge></div>{task.instructions && <p className="text-sm text-muted-foreground">{task.instructions}</p>}<div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>{batchName}</span><span className="inline-flex items-center gap-1"><Clock3 className="size-3.5" aria-hidden="true" />{due}</span></div></div>{task.status !== "COMPLETED" && task.status !== "CANCELLED" && (task.sourceType === "VACCINATION_PLAN" ? <VaccinationTaskAction task={task} /> : <Button size="lg" disabled={updatePending} onClick={() => onDone(task.id)} aria-label={`Mark task done: ${task.title}`}><CheckCircle2 className="size-4" aria-hidden="true" />Done</Button>)}</div></article>;
 }

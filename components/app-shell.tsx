@@ -106,13 +106,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     for (const alert of activeAlerts) {
       if (
         previous.ids.has(alert.id) ||
-        (alert.indicatorType !== "HEALTH_DEATH" && alert.indicatorType !== "MORTALITY")
+        (alert.indicatorType !== "HEALTH_DEATH" && alert.indicatorType !== "ACCIDENTAL_DEATH" && alert.indicatorType !== "MORTALITY")
       ) {
         continue;
       }
 
       const count = alert.deathCount ?? 0;
-      const label = `${count} bird${count === 1 ? "" : "s"} died`;
+      const label = alert.indicatorType === "ACCIDENTAL_DEATH"
+        ? `${count} accidental death${count === 1 ? "" : "s"}`
+        : `${count} bird${count === 1 ? "" : "s"} died`;
       const description = [alert.batchName, alert.handlerName, alert.cause]
         .filter(Boolean)
         .join(" · ");
@@ -410,7 +412,7 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
                 >
                   <span className="min-w-0">
                     <span className="block truncate font-semibold">{batch.name}</span>
-                    <span className="mt-1 block text-sm text-muted-foreground">{batch.currentPopulation} / {batch.initialPopulation} {t("dashboard.birdsInBatch")} · {batch.stageName.replaceAll("-", " ")}</span>
+                    <span className="mt-1 block text-sm text-muted-foreground">{batch.populationStatus === "RECONCILIATION_REQUIRED" || batch.currentPopulation < 0 ? `Needs review · ${batch.initialPopulation} initial` : `${batch.currentPopulation} / ${batch.initialPopulation} ${t("dashboard.birdsInBatch")}`} · {batch.stageName.replaceAll("-", " ")}</span>
                   </span>
                   <ClipboardList className="size-5 shrink-0 text-primary" aria-hidden="true" />
                 </SheetClose>

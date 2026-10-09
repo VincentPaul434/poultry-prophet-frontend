@@ -12,6 +12,9 @@ import type {
   BatchDashboardItem,
   BatchEvent,
   BatchOverview,
+  BatchRetirementImpact,
+  ArchiveBatchRequest,
+  DeleteBatchRequest,
   Bird,
   CreateBatchEventRequest,
   CreateBatchRequest,
@@ -60,6 +63,14 @@ import type {
   TestLabStatus,
   SyncOperationsRequest,
   SyncOperationsResponse,
+  SexComposition,
+  CreateSexCompositionRequest,
+  VaccinationProgram,
+  CreateVaccinationProgramRequest,
+  VaccinationPlanItem,
+  AssignVaccinationProgramRequest,
+  ReplaceVaccinationPlanRequest,
+  RecordVaccinationRequest,
   FarmProduct,
   CreateFarmProductRequest,
   StockInRequest,
@@ -104,6 +115,7 @@ export const accountApi = {
 // ---- Batches & lifecycle ----
 export const batchApi = {
   list: () => apiClient.get<Batch[]>("/batches").then((r) => r.data),
+  listArchived: () => apiClient.get<Batch[]>("/batches", { params: { archived: true } }).then((r) => r.data),
   dashboard: () => apiClient.get<BatchDashboardItem[]>("/batches/dashboard").then((r) => r.data),
   get: (batchId: Id) =>
     apiClient.get<Batch>(`/batches/${batchId}`).then((r) => r.data),
@@ -111,6 +123,20 @@ export const batchApi = {
     apiClient.post<Batch>("/batches", body).then((r) => r.data),
   overview: (batchId: Id) =>
     apiClient.get<BatchOverview>(`/batches/${batchId}/overview`).then((r) => r.data),
+  retirementImpact: (batchId: Id) =>
+    apiClient.get<BatchRetirementImpact>(`/batches/${batchId}/retirement-impact`).then((r) => r.data),
+  archive: (batchId: Id, body: ArchiveBatchRequest = {}) =>
+    apiClient.patch<Batch>(`/batches/${batchId}/archive`, body).then((r) => r.data),
+  reconcilePopulation: (batchId: Id) =>
+    apiClient.patch<Batch>(`/batches/${batchId}/population/reconcile`).then((r) => r.data),
+  restore: (batchId: Id) =>
+    apiClient.patch<Batch>(`/batches/${batchId}/restore`).then((r) => r.data),
+  delete: (batchId: Id, body: DeleteBatchRequest) =>
+    apiClient.delete<void>(`/batches/${batchId}`, { data: body }).then((r) => r.data),
+  confirmHatchDate: (batchId: Id, hatchDate: string) => apiClient.patch<Batch>(`/batches/${batchId}/hatch-date`, { hatchDate }).then((r) => r.data),
+  sexComposition: (batchId: Id) => apiClient.get<SexComposition | null>(`/batches/${batchId}/sex-composition`).then((r) => r.data),
+  sexHistory: (batchId: Id) => apiClient.get<SexComposition[]>(`/batches/${batchId}/sex-composition/history`).then((r) => r.data),
+  recordSexComposition: (batchId: Id, body: CreateSexCompositionRequest) => apiClient.post<SexComposition>(`/batches/${batchId}/sex-composition`, body).then((r) => r.data),
 };
 
 export const lifecycleApi = {
@@ -302,6 +328,15 @@ export const taskApi = {
   list: (mine = false) => apiClient.get<HandlerTask[]>("/tasks", { params: { mine } }).then((r) => r.data),
   create: (body: CreateTaskRequest) => apiClient.post<HandlerTask>("/tasks", body).then((r) => r.data),
   updateStatus: (id: number, body: UpdateTaskStatusRequest) => apiClient.post<HandlerTask>(`/tasks/${id}/status`, body).then((r) => r.data),
+};
+export const vaccinationApi = {
+  programs: () => apiClient.get<VaccinationProgram[]>("/vaccination-programs").then((r) => r.data),
+  createProgram: (body: CreateVaccinationProgramRequest) => apiClient.post<VaccinationProgram>("/vaccination-programs", body).then((r) => r.data),
+  plan: (batchId: number) => apiClient.get<VaccinationPlanItem[]>(`/batches/${batchId}/vaccination-plan`).then((r) => r.data),
+  assign: (batchId: number, body: AssignVaccinationProgramRequest) => apiClient.post<VaccinationPlanItem[]>(`/batches/${batchId}/vaccination-plan`, body).then((r) => r.data),
+  replace: (batchId: number, body: ReplaceVaccinationPlanRequest) => apiClient.put<VaccinationPlanItem[]>(`/batches/${batchId}/vaccination-plan`, body).then((r) => r.data),
+  record: (id: number, body: RecordVaccinationRequest) => apiClient.post<VaccinationPlanItem>(`/vaccination-plan-items/${id}/record`, body).then((r) => r.data),
+  skip: (id: number, reason: string) => apiClient.post<VaccinationPlanItem>(`/vaccination-plan-items/${id}/skip`, { reason }).then((r) => r.data),
 };
 export const financeApi = {
   list: () => apiClient.get<FinancialTransaction[]>("/financial-transactions").then((r) => r.data),

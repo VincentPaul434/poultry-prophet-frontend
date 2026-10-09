@@ -4,9 +4,10 @@ import { use } from "react";
 import Link from "next/link";
 import { AlertTriangle, ClipboardList, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useBatchOverview } from "@/hooks/use-batches";
+import { useBatchOverview, useReconcileBatchPopulation } from "@/hooks/use-batches";
 import { useAcknowledgeAlert } from "@/hooks/use-analytics";
 import { useBatchEvents } from "@/hooks/use-events";
+import { useFarmInputs } from "@/hooks/use-operations";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -16,19 +17,22 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageBackLink } from "@/components/page-back-link";
-import { BatchLogSection, EVENT_EMOJI } from "@/components/batch-log-section";
+import { BatchLogSection } from "@/components/batch-log-section";
 import { getLoggingHref, LOGGING_ORIGINS } from "@/lib/logging-navigation";
 import { SelectionReviewSummary } from "@/components/selection-review-summary";
 import { SelectionSessionDialog } from "@/components/selection-session-dialog";
+import { BatchLifecycleActions } from "@/components/batch-lifecycle-actions";
+import { SexCompositionCard } from "@/components/sex-composition-card";
+import { VaccinationPlanCard } from "@/components/vaccination-plan-card";
 
 function daysElapsed(startDate: string) {
   return Math.max(1, Math.round((Date.now() - new Date(startDate).getTime()) / 86_400_000));
 }
 
-const severityConfig: Record<Severity, { label: string; cls: string; icon: string }> = {
-  INFO: { label: "Info", cls: "border-border bg-muted/40", icon: "ℹ️" },
-  WARNING: { label: "Warning", cls: "border-warning-border bg-warning-muted text-warning-ink", icon: "⚠️" },
-  CRITICAL: { label: "Critical", cls: "border-destructive/30 bg-destructive/5 text-destructive", icon: "🚨" },
+const severityConfig: Record<Severity, { label: string; cls: string }> = {
+  INFO: { label: "Info", cls: "border-border bg-muted/40" },
+  WARNING: { label: "Warning", cls: "border-warning-border bg-warning-muted text-warning-ink" },
+  CRITICAL: { label: "Critical", cls: "border-destructive/30 bg-destructive/5 text-destructive" },
 };
 
 function AlertItem({ batchId, alert, canAck }: { batchId: number; alert: Alert; canAck: boolean }) {
@@ -37,7 +41,7 @@ function AlertItem({ batchId, alert, canAck }: { batchId: number; alert: Alert; 
   return (
     <div className={cn("rounded-xl border p-3", cfg.cls)}>
       <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 shrink-0 text-lg">{cfg.icon}</span>
+        <span className="mt-2 size-2 shrink-0 rounded-full bg-current" aria-hidden="true" />
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center justify-between gap-2">
             <span className="text-[11px] font-bold uppercase tracking-wide">{cfg.label}</span>
@@ -61,7 +65,9 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
   const { batchId } = use(params);
   const { isManager } = useAuth();
   const { data, isLoading, isError, error } = useBatchOverview(batchId);
+  const reconcilePopulation = useReconcileBatchPopulation();
   const { data: recentEvents } = useBatchEvents(batchId, 3);
+  const { data: recentInputs } = useFarmInputs(Number(batchId), undefined, true);
 
   if (isLoading) {
     return (
@@ -96,29 +102,59 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
     <div className="mx-auto w-full max-w-6xl space-y-4">
       <PageBackLink destination="dashboard" />
 
-      <header className="rounded-2xl border bg-card px-4 py-4 sm:px-5">
+      <header className="rounded-2xl border bg-card px-4 py-3 sm:px-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="truncate text-2xl font-bold tracking-tight">{batch.name}</h1>
+              <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">{batch.name}</h1>
               <Badge variant={batch.status === "ACTIVE" ? "default" : "secondary"}>{batch.status}</Badge>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {batch.currentPopulation} / {batch.initialPopulation} birds · Day {days}
+              {batch.populationStatus === "RECONCILIATION_REQUIRED" ? `Population needs review · ${batch.initialPopulation} initial` : `${batch.currentPopulation} / ${batch.initialPopulation} birds`} · Day {days}
               {batch.bloodline ? ` · ${batch.bloodline}` : ""}
             </p>
+            {batch.populationStatus === "RECONCILIATION_REQUIRED" && batch.populationWarning && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <p className="max-w-2xl text-xs font-medium text-warning-ink">{batch.populationWarning}</p>
+                {isManager && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-lg border-warning-border px-2.5 text-xs"
+                    disabled={reconcilePopulation.isPending}
+                    onClick={() => reconcilePopulation.mutate(batch.id, {
+                      onSuccess: () => toast.success("Population count reconciled from the event history."),
+                      onError: (reconcileError) => toast.error(reconcileError instanceof ApiError ? reconcileError.message : "Could not reconcile the population count."),
+                    })}
+                  >
+                    {reconcilePopulation.isPending && <Loader2 className="size-3.5 animate-spin" />}
+                    Reconcile count
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
-          <div className="flex shrink-0 items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 sm:min-w-44 sm:justify-between">
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {isManager && <BatchLifecycleActions batch={batch} />}
+            <div className="flex shrink-0 items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 sm:min-w-44 sm:justify-between">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Current stage</p>
               <p className="text-sm font-bold capitalize text-primary">{batch.stageName.replace("-", " ")}</p>
             </div>
             <span className="text-xs font-medium text-muted-foreground">Day {days}</span>
+            </div>
           </div>
         </div>
       </header>
 
-      {!isManager && (
+      {batch.status === "ARCHIVED" && <div role="status" className="flex items-start gap-2 rounded-2xl border border-warning-border bg-warning-muted px-4 py-3 text-sm text-warning-ink"><span className="mt-2 size-2 shrink-0 rounded-full bg-current" aria-hidden="true" /><p><strong>Archived batch.</strong> Records are read-only. Restore the batch before adding new logs, expenses, products, tasks, or selection sessions.</p></div>}
+
+      {/* Keep the schedule beside the batch identity. Managers can set it immediately;
+          handlers can see the next dated step before recording work. */}
+      {batch.status !== "ARCHIVED" && <VaccinationPlanCard batch={batch} canEditSchedule />}
+
+      {batch.status !== "ARCHIVED" && !isManager && (
         <section className="rounded-2xl border bg-card p-4 sm:p-5">
           <div className="mb-3 flex items-start justify-between gap-3">
             <div>
@@ -132,57 +168,54 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
       )}
 
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <main className="min-w-0 space-y-4">
-          {isManager && <SelectionSessionDialog batchId={batch.id} batchName={batch.name} currentPopulation={batch.currentPopulation} />}
-          <SelectionReviewSummary batchId={batch.id} />
+      <SelectionReviewSummary batchId={batch.id} />
 
-          {recentEvents && recentEvents.length > 0 && (
-            <section className="space-y-2">
-              <div className="flex items-center justify-between px-0.5">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Recent events</h2>
-                <Link href={getLoggingHref(batch.id, LOGGING_ORIGINS.batch)} className="text-xs font-semibold text-primary hover:underline underline-offset-4">
-                  See all
-                </Link>
-              </div>
-              <div className="overflow-hidden rounded-2xl border bg-card">
+      {batch.status !== "ARCHIVED" && (
+        <div className="grid gap-3 md:grid-cols-2">
+          {isManager && <SelectionSessionDialog batchId={batch.id} batchName={batch.name} currentPopulation={batch.currentPopulation} />}
+          <SexCompositionCard batch={batch} />
+        </div>
+      )}
+
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]">
+        <main className="min-w-0 space-y-4">
+          <section className="space-y-2">
+            <div className="flex items-center justify-between gap-3 px-0.5">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Recent events</h2>
+              <Link href={getLoggingHref(batch.id, LOGGING_ORIGINS.batch)} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-primary hover:bg-primary/10 hover:underline underline-offset-4">
+                <ClipboardList className="size-3.5" />Event log
+              </Link>
+            </div>
+            {recentEvents && recentEvents.length > 0 ? (
+              <div className="overflow-hidden rounded-xl border bg-card">
                 {recentEvents.slice(0, 3).map((ev, idx) => (
-                  <div key={ev.id} className={cn("flex items-start gap-3 px-4 py-3", idx !== 0 && "border-t")}>
-                    <span className="mt-0.5 shrink-0 text-lg">{EVENT_EMOJI[ev.eventType]}</span>
+                  <div key={ev.id} className={cn("flex items-start gap-3 px-3 py-2.5", idx !== 0 && "border-t")}>
+                    <span className="mt-2 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-sm font-semibold">{ev.title}</p>
-                        {ev.affectedCount > 0 && <span className="shrink-0 text-xs text-muted-foreground">{ev.affectedCount} bird{ev.affectedCount !== 1 ? "s" : ""}</span>}
-                      </div>
+                      <div className="flex items-center justify-between gap-2"><p className="truncate text-sm font-semibold">{ev.title}</p>{ev.affectedCount > 0 && <span className="shrink-0 text-xs text-muted-foreground">{ev.affectedCount} bird{ev.affectedCount !== 1 ? "s" : ""}</span>}</div>
                       <p className="mt-0.5 text-xs text-muted-foreground">{ev.handlerName} · {formatDate(ev.eventDate)}</p>
                     </div>
                   </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed px-3 py-3 text-xs text-muted-foreground">No events recorded yet.</div>
+            )}
+          </section>
+
+          {recentInputs && recentInputs.length > 0 && (
+            <section className="space-y-2">
+              <div className="flex items-center justify-between px-0.5"><h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Recent products</h2><span className="text-xs text-muted-foreground">{recentInputs.length} recorded</span></div>
+              <div className="overflow-hidden rounded-xl border bg-card">
+                {recentInputs.slice(0, 4).map((input, index) => (
+                  <div key={input.id} className={cn("flex items-center justify-between gap-3 px-3 py-2.5", index !== 0 && "border-t")}><div className="min-w-0"><p className="truncate text-sm font-semibold">{input.brandName}</p><p className="text-xs text-muted-foreground">{input.productType.toLowerCase()} · {formatDateTime(input.recordedAt)}</p></div><span className="shrink-0 text-right text-xs font-medium text-muted-foreground">{input.quantity == null ? "Amount not recorded" : `${input.quantity} ${input.unit ?? "unit"}`}{input.calculatedCost != null ? ` · ₱${Number(input.calculatedCost).toLocaleString()}` : input.farmProductId ? " · Cost unavailable" : ""}</span></div>
                 ))}
               </div>
             </section>
           )}
         </main>
 
-        <aside className="min-w-0 space-y-4">
-          {isManager && (
-            <Link href={getLoggingHref(batch.id, LOGGING_ORIGINS.batch)} className="flex min-h-14 items-center justify-between rounded-2xl border bg-card px-4 py-3 text-sm font-semibold transition-colors hover:bg-muted">
-              <span className="flex items-center gap-2.5"><ClipboardList className="size-4 text-muted-foreground" />Event log</span>
-              <span className="text-xs text-muted-foreground">View logs →</span>
-            </Link>
-          )}
-
-          {activeAlerts.length > 0 && (
-            <section className="space-y-2">
-              <h2 className="flex items-center gap-2 px-0.5 text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                <AlertTriangle className="size-4 text-warning" />
-                {activeAlerts.length} active alert{activeAlerts.length !== 1 ? "s" : ""}
-              </h2>
-              <div className="space-y-2">
-                {activeAlerts.map((alert) => <AlertItem key={alert.id} batchId={batch.id} alert={alert} canAck={isManager} />)}
-              </div>
-            </section>
-          )}
-        </aside>
+        {activeAlerts.length > 0 && <aside className="min-w-0 space-y-2"><h2 className="flex items-center gap-2 px-0.5 text-sm font-bold uppercase tracking-wider text-muted-foreground"><AlertTriangle className="size-4 text-warning" />{activeAlerts.length} active alert{activeAlerts.length !== 1 ? "s" : ""}</h2><div className="space-y-2">{activeAlerts.map((alert) => <AlertItem key={alert.id} batchId={batch.id} alert={alert} canAck={isManager} />)}</div></aside>}
       </div>
     </div>
   );

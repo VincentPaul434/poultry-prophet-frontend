@@ -23,6 +23,7 @@ export const qk = {
   inventoryPending: ["inventory", "pending-review"] as const,
   tasks: ["handler-tasks"] as const,
   taskList: (mine = false) => ["handler-tasks", { mine }] as const,
+  vaccinationPrograms: ["vaccination-programs"] as const,
   finance: ["finance"] as const,
   financeAnalytics: (batchId?: number, start?: string, end?: string) => ["finance", "analytics", { batchId, start, end }] as const,
   operationsAnalytics: (params?: Record<string, unknown>) => ["analytics", "operations", params ?? {}] as const,
@@ -69,5 +70,7 @@ export const qk = {
       [...qk.batches.detail(batchId), "birds", String(birdId), "ranging"] as const,
     events: (batchId: number | string, limit?: number) =>
       [...qk.batches.detail(batchId), "events", { limit }] as const,
+    sexComposition: (batchId: number | string) => [...qk.batches.detail(batchId), "sex-composition"] as const,
+    vaccinationPlan: (batchId: number | string) => [...qk.batches.detail(batchId), "vaccination-plan"] as const,
   },
 } as const;

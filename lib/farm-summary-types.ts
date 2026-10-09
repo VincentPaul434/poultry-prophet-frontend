@@ -87,7 +87,10 @@ export interface BatchComparison {
     windowStart: string;
     windowEnd: string;
     initialPopulation: number;
-    populationAtWindowEnd: number;
+    populationAtWindowEnd: number | null;
+    populationStatus: "VALID" | "RECONCILIATION_REQUIRED";
+    populationWarning: string | null;
+    firstInvalidEventDate: string | null;
     healthRelatedDeaths: number;
     healthRelatedLossRatePercent: number | null;
     healthConcerns: number;

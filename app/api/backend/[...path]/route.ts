@@ -18,7 +18,8 @@ const HOP_BY_HOP_HEADERS = [
 ];
 
 async function proxy(request: NextRequest, { params }: RouteContext) {
-  const backendApiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const backendApiUrl =
+    process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
 
   if (!backendApiUrl) {
     return Response.json(

@@ -63,21 +63,52 @@ export interface Batch {
   name: string;
   initialPopulation: number;
   currentPopulation: number;
+  populationStatus: "VALID" | "RECONCILIATION_REQUIRED";
+  populationWarning: string | null;
   startDate: string; // ISO date
   bloodline: string | null;
   source: string | null;
+  hatchDateConfirmedAt: string | null;
+  hatchDateConfirmedByUserId: number | null;
   stageId: number;
   stageName: string;
   stageAuto: boolean;
   status: BatchStatus;
   handlerUserIds: number[];
   createdAt: string; // ISO instant
+  archivedAt: string | null;
+  archivedByUserId: number | null;
+  archiveReason: string | null;
+  preArchiveStatus: BatchStatus | null;
+}
+
+export interface BatchRetirementImpact {
+  batchId: number;
+  batchName: string;
+  status: BatchStatus;
+  canArchive: boolean;
+  canDelete: boolean;
+  openTaskCount: number;
+  activeAlertCount: number;
+  recordCounts: Record<string, number>;
+  deleteBlockers: string[];
+}
+
+export interface ArchiveBatchRequest {
+  reason?: string | null;
+}
+
+export interface DeleteBatchRequest {
+  confirmationName: string;
+  reason?: string | null;
 }
 
 /** Farm-scoped dashboard projection. Keep this separate from Batch so the
  * card can show processed facts without making one request per batch. */
 export interface BatchDashboardSummary {
   healthRelatedDeaths: number;
+  accidentalDeaths: number;
+  totalDeaths: number;
   otherPopulationChanges: number;
   recordedHealthEvents: number;
   activeAlertCount: number;
@@ -98,6 +129,38 @@ export interface CreateBatchRequest {
   source?: string | null;
   handlerUserIds?: number[];
 }
+
+export interface SexComposition {
+  id: number;
+  farmId: number;
+  batchId: number;
+  observedOn: string;
+  populationAsOfObservation: number;
+  maleCount: number;
+  femaleCount: number;
+  unclassifiedCount: number;
+  recordedBy: number;
+  revisionReason: string | null;
+  notes: string | null;
+  operationId: string;
+  supersedesRecordId: number | null;
+  status: "CURRENT" | "SUPERSEDED";
+  createdAt: string;
+  baselineEventId?: number | null;
+  projectedAsOf?: string | null;
+  projectionStatus?: "VALID" | "NO_BASELINE" | "MISSING_ALLOCATION" | "NEGATIVE_CATEGORY" | string | null;
+  projectionMessage?: string | null;
+  /** Client-only marker for a record waiting for offline synchronization. */
+  pendingSync?: boolean;
+}
+export interface CreateSexCompositionRequest { observedOn: string; maleCount: number; femaleCount: number; unclassifiedCount: number; revisionReason?: string | null; notes?: string | null; operationId?: string; }
+export interface VaccinationProgramItem { id: number; sequenceNumber: number; vaccineName: string; farmProductId: number | null; ageOffsetValue: number; ageOffsetUnit: "DAY" | "WEEK"; normalizedOffsetDays: number; reminderLeadDays: number; route: string | null; doseGuidance: string | null; instructions: string | null; }
+export interface VaccinationProgram { id: number; farmId: number; seriesId: string; name: string; description: string | null; versionNumber: number; defaultForNewBatches: boolean; createdAt: string; items: VaccinationProgramItem[]; }
+export interface CreateVaccinationProgramRequest { name: string; description?: string | null; defaultForNewBatches?: boolean; seriesId?: string; supersedesProgramId?: number | null; items: Array<{ vaccineName: string; farmProductId?: number | null; ageOffsetValue: number; ageOffsetUnit: "DAY" | "WEEK"; reminderLeadDays?: number; route?: string | null; doseGuidance?: string | null; instructions?: string | null; }>; }
+export interface VaccinationPlanItem { id: number; batchId: number; programId: number; vaccineName: string; farmProductId: number | null; hatchDate: string; ageDay: number; stageName: string; dueDate: string; remindOn: string; status: "SCHEDULED" | "COMPLETED" | "SKIPPED" | "CANCELLED"; displayState: "SCHEDULED" | "UPCOMING" | "DUE_TODAY" | "OVERDUE" | "COMPLETED" | "SKIPPED" | "CANCELLED"; taskId: number | null; completedInputLogId: number | null; completedBy: number | null; completedAt: string | null; completionOperationId: string | null; skippedReason: string | null; }
+export interface AssignVaccinationProgramRequest { programId: number; }
+export interface ReplaceVaccinationPlanRequest { programId: number; }
+export interface RecordVaccinationRequest { recordedAt?: string | null; quantity?: number | null; unit?: string | null; notes?: string | null; operationId?: string; }
 
 export interface LifecycleStage {
   id: number;
@@ -210,6 +273,9 @@ export interface FarmInputLog {
   operationId?: string | null;
   farmProductId?: number | null;
   inventoryMovementId?: number | null;
+  unitCostSnapshot?: number | null;
+  calculatedCost?: number | null;
+  costStatus?: "VALUED" | "UNVALUED" | "FREE" | null;
   inventoryStatus?: "DEDUCTED" | "PENDING_STOCK_REVIEW" | "UNTRACKED" | "NOT_APPLICABLE" | "LEGACY" | null;
   affectedBirdCount?: number | null;
 }
@@ -241,6 +307,10 @@ export interface FarmProduct {
   stockUnit: string;
   stockOnHand: string | number;
   reorderLevel: string | number | null;
+  averageUnitCost: string | number | null;
+  inventoryValue: string | number | null;
+  currency: string;
+  valuationStatus: "VALUED" | "UNVALUED" | "FREE" | null;
   lowStock: boolean;
   allowFractionalQuantity: boolean;
   active: boolean;
@@ -252,18 +322,23 @@ export interface CreateFarmProductRequest {
   packageDescription?: string | null;
   stockUnit: string;
   openingQuantity?: number;
+  openingUnitCost?: number | null;
   reorderLevel?: number | null;
   allowFractionalQuantity?: boolean;
 }
 export interface StockInRequest {
   quantity: number;
   stockDate?: string | null;
-  totalCost?: number | null;
+  purchaseUnitCost?: number | null;
   batchId?: number | null;
   supplier?: string | null;
+  /** @deprecated Compatibility for older deployed clients. */
   recordExpense?: boolean;
+  freeOfCharge?: boolean;
   notes?: string | null;
   operationId?: string;
+  /** @deprecated Compatibility for older deployed clients. */
+  totalCost?: number | null;
 }
 export interface InventoryAdjustmentRequest {
   quantityDelta: number;
@@ -277,6 +352,10 @@ export interface InventoryMovement {
   movementType: string;
   quantityDelta: string | number;
   balanceAfter: string | number;
+  unitCostSnapshot: string | number | null;
+  inventoryValueDelta: string | number | null;
+  costStatus: "VALUED" | "UNVALUED" | "FREE" | null;
+  costedAt: string | null;
   occurredAt: string;
   batchId: number | null;
   farmInputLogId: number | null;
@@ -285,6 +364,9 @@ export interface InventoryMovement {
   reason: string | null;
   recordedBy: number;
   operationId: string | null;
+  calculatedTotal?: string | number | null;
+  averageUnitCostAfter?: string | number | null;
+  inventoryValueAfter?: string | number | null;
 }
 
 export type TaskPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
@@ -306,6 +388,11 @@ export interface HandlerTask {
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  assignmentScope: "HANDLER" | "BATCH_TEAM" | "FARM_TEAM";
+  visibleFrom: string | null;
+  sourceType: string | null;
+  sourceId: number | null;
+  completedBy: number | null;
 }
 export interface CreateTaskRequest {
   title: string;
@@ -331,6 +418,8 @@ export interface FinancialTransaction {
   currency: string;
   counterparty: string | null;
   description: string | null;
+  sourceType: string | null;
+  sourceOperationId: string | null;
   status: "POSTED" | "VOIDED";
   enteredBy: number;
   voidReason: string | null;
@@ -367,6 +456,10 @@ export interface FinanceAnalytics {
     recordedIncome: string;
     recordedExpense: string;
     recordedNetCashFlow: string;
+    productsConsumedCost: string;
+    totalRecordedBatchCost: string;
+    recordedContribution: string;
+    productCostComplete: boolean;
     postedTransactionCount: number;
     voidedTransactionCount: number;
   };
@@ -563,6 +656,7 @@ export interface SelectionReviewPayload {
   finance: SelectionReviewFinance | null;
   dataAvailability: SelectionReviewDataAvailability[];
   selectionSummary: SelectionReviewSelectionSummary | null;
+  sexComposition: SelectionReviewSexComposition | null;
   reviewInstructions: SelectionReviewInstructions;
 }
 
@@ -588,6 +682,7 @@ export interface SelectionReviewPopulation {
   reconciliationMessage: string | null;
   healthRelatedDeaths: number;
   healthRelatedLossPercentage: number | null;
+  totalDeaths: number;
   accidentalDeaths: number;
   predation: number;
   missing: number;
@@ -622,6 +717,9 @@ export interface SelectionReviewProductUse {
   productName: string | null;
   quantity: number | null;
   unit: string | null;
+  unitCost: number | null;
+  calculatedCost: number | null;
+  costStatus: "VALUED" | "UNVALUED" | "FREE" | null;
   purpose: string | null;
   notes: string | null;
   recordedBy: number;
@@ -648,6 +746,9 @@ export interface SelectionReviewFinance {
   recordedIncome: number;
   recordedExpense: number;
   recordedNetCashFlow: number;
+  productsConsumedCost: number;
+  totalRecordedBatchCost: number;
+  recordedContribution: number;
   postedTransactionCount: number;
   recordsMayBeIncomplete: boolean;
   limitation: string;
@@ -674,6 +775,18 @@ export interface SelectionReviewSelectionSummary {
   criterionCodes: string[];
   reviewerId: number;
   criteriaNotes: string | null;
+  notes: string | null;
+}
+
+export interface SelectionReviewSexComposition {
+  recordId: number;
+  observedOn: string;
+  populationAsOfObservation: number;
+  maleCount: number;
+  femaleCount: number;
+  unclassifiedCount: number;
+  recordedBy: number;
+  revisionReason: string | null;
   notes: string | null;
 }
 
@@ -821,6 +934,9 @@ export interface BatchEvent {
   remainingPopulation?: number | null;
   salePurpose?: "BREEDING" | "OTHER" | "NOT_SPECIFIED" | null;
   syncStatus?: "PENDING" | "SYNCING" | "RETRY_WAIT" | "AUTH_REQUIRED" | "CONFLICT" | "REJECTED";
+  maleDelta?: number | null;
+  femaleDelta?: number | null;
+  unclassifiedDelta?: number | null;
 }
 
 export interface CreateBatchEventRequest {
@@ -831,11 +947,16 @@ export interface CreateBatchEventRequest {
   affectedCount?: number;
   operationId?: string;
   populationDelta?: number | null;
+  sexAllocation?: {
+    maleDelta: number;
+    femaleDelta: number;
+    unclassifiedDelta: number;
+  } | null;
   details?: string | null;
   tags?: string | null;
 }
 
-export type SyncEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE";
+export type SyncEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE" | "SEX_COMPOSITION" | "VACCINATION_PLAN";
 export type SyncResultStatus = "APPLIED" | "ALREADY_APPLIED" | "CONFLICT" | "REJECTED" | "RETRYABLE" | "AUTH_REQUIRED";
 export interface SyncOperationRequest {
   operationId: string;

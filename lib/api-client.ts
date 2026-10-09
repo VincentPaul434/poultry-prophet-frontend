@@ -11,6 +11,7 @@ import { clearSession, getToken } from "./auth-storage";
 // them to the server-side API URL, keeping the upstream host out of the client
 // bundle and browser network requests.
 const API_PROXY_BASE_URL = "/api/backend";
+export const API_BASE_URL = API_PROXY_BASE_URL;
 
 // Shape Spring's GlobalExceptionHandler returns.
 interface SpringApiError {

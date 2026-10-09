@@ -2,7 +2,7 @@
 
 import type { Batch, BatchDashboardItem, BatchEvent, BatchOverview, FarmProduct, SelectionSession } from "./types";
 
-export type OfflineEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE";
+export type OfflineEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE" | "SEX_COMPOSITION" | "VACCINATION_PLAN";
 export type OutboxStatus =
   | "PENDING"
   | "SYNCING"

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   AlertCircle,
+  ArchiveRestore,
   CheckCircle2,
   ClipboardList,
   Clock3,
@@ -12,12 +13,12 @@ import {
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useCreateBatch, useDashboardBatches } from "@/hooks/use-batches";
+import { useArchivedBatches, useCreateBatch, useDashboardBatches, useRestoreBatch } from "@/hooks/use-batches";
 import { useTasks } from "@/hooks/use-operations";
 import { useFarm } from "@/hooks/use-farm";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
-import { isFutureDate, todayIso } from "@/lib/format";
+import { formatDate, isFutureDate, todayIso } from "@/lib/format";
 import type { BatchDashboardItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -82,6 +83,7 @@ export default function DashboardPage() {
   const { isManager, user } = useAuth();
   const { t } = useLocale();
   const { data: dashboardItems, isLoading, isError, error } = useDashboardBatches();
+  const { data: archivedBatches } = useArchivedBatches(isManager);
   const { data: tasks } = useTasks(!isManager);
   const farm = useFarm(!!user && user.farmId != null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
@@ -276,8 +278,18 @@ export default function DashboardPage() {
           )}
         </div>
       )}
+
+      {isManager && archivedBatches && archivedBatches.length > 0 && <ArchivedBatches batches={archivedBatches} />}
     </div>
   );
+}
+
+function ArchivedBatches({ batches }: { batches: import("@/lib/types").Batch[] }) {
+  const restore = useRestoreBatch();
+  return <section className="space-y-3 border-t pt-5">
+    <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Archived batches</h2><p className="mt-0.5 text-xs text-muted-foreground">History is kept and read-only until restored.</p></div><Badge variant="secondary">{batches.length}</Badge></div>
+    <div className="space-y-2">{batches.map((batch) => <div key={batch.id} className="flex flex-col gap-3 rounded-2xl border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"><Link href={`/batches/${batch.id}`} className="min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"><p className="truncate text-sm font-semibold">{batch.name}</p><p className="mt-1 text-xs text-muted-foreground">Archived {batch.archivedAt ? formatDate(batch.archivedAt) : "date unavailable"}{batch.archiveReason ? ` · ${batch.archiveReason}` : ""}</p></Link><div className="flex gap-2"><Link href={`/batches/${batch.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "min-h-11 rounded-xl")}>View records</Link><Button type="button" size="sm" className="min-h-11 rounded-xl" disabled={restore.isPending} onClick={() => restore.mutateAsync(batch.id).then(() => toast.success("Batch restored.")).catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not restore this batch."))}><ArchiveRestore className="size-4" />Restore</Button></div></div>)}</div>
+  </section>;
 }
 
 function BatchCard({
@@ -325,11 +337,13 @@ function BatchCard({
       <CardContent className="grid grid-cols-2 gap-2 px-4 pb-4 pt-2">
         <div className="rounded-xl bg-muted/40 px-3 py-2.5">
           <p className="text-[11px] font-medium text-muted-foreground">{t("dashboard.currentCount")}</p>
-          <p className="mt-0.5 text-lg font-bold tabular-nums">{batch.currentPopulation} / {batch.initialPopulation}</p>
+          <p className="mt-0.5 text-lg font-bold tabular-nums">{batch.populationStatus === "RECONCILIATION_REQUIRED" ? "Needs review" : `${batch.currentPopulation} / ${batch.initialPopulation}`}</p>
+          {batch.populationStatus === "RECONCILIATION_REQUIRED" && <p className="mt-1 text-[11px] font-medium text-warning-ink">Initial: {batch.initialPopulation}</p>}
         </div>
         <div className="rounded-xl bg-muted/40 px-3 py-2.5">
-          <p className="text-[11px] font-medium text-muted-foreground">Health deaths</p>
-          <p className="mt-0.5 text-lg font-bold tabular-nums">{summary.healthRelatedDeaths}</p>
+          <p className="text-[11px] font-medium text-muted-foreground">Total deaths</p>
+          <p className="mt-0.5 text-lg font-bold tabular-nums">{summary.totalDeaths}</p>
+          <p className="mt-1 truncate text-[11px] text-muted-foreground">{summary.healthRelatedDeaths} health · {summary.accidentalDeaths} accidental</p>
         </div>
         <div className="rounded-xl bg-muted/40 px-3 py-2.5">
           <p className="text-[11px] font-medium text-muted-foreground">Other changes</p>

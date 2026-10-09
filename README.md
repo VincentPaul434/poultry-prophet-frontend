@@ -24,21 +24,21 @@ npm run dev
 Configure the backend API URL in `.env.local`:
 
 ```
-NEXT_PUBLIC_API_BASE_URL=http://localhost:8080/api
+BACKEND_API_URL=http://localhost:8080/api
 ```
 
 The server-side `/api/backend` route reads this setting and forwards browser
 requests to the backend. The client only calls the same-origin proxy, so the
-backend host is not included in the client bundle. Although the `NEXT_PUBLIC_`
-prefix can expose a variable when client code references it, this setting is
-only read by the server route. Keep it out of client-side modules and set it in
-the deployment build environment.
+backend host is not included in the client bundle. `BACKEND_API_URL` is
+server-only and must be configured in the deployment environment.
+`NEXT_PUBLIC_API_BASE_URL` remains supported as a compatibility fallback for
+existing deployments and should be replaced with `BACKEND_API_URL`.
 
 ## Architecture
 
 ```
 app/
-  api/backend/[...path]/route.ts  Server-side proxy to NEXT_PUBLIC_API_BASE_URL
+  api/backend/[...path]/route.ts  Server-side proxy to BACKEND_API_URL
   layout.tsx            Root layout → wraps everything in <Providers>
   page.tsx              Redirects to /dashboard or /login
   login, register/      Public auth screens
@@ -79,7 +79,7 @@ lib/
   selection mutations patch the cached list in place, then revalidate.
 - On logout the entire query cache is cleared so no data leaks between users.
 
-For controlled stakeholder validation, point `NEXT_PUBLIC_API_BASE_URL` at the isolated validation API,
+For controlled stakeholder validation, point `BACKEND_API_URL` at the isolated validation API,
 set the version/environment variables from `.env.validation.example`, and confirm the in-app
 validation banner before entering synthetic data. The primary MVP flow excludes individual
 selection, offline capability claims, report UI, and advanced charts.

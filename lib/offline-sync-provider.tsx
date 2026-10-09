@@ -179,6 +179,24 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
               queryClient.invalidateQueries({ queryKey: qk.batches.all });
               queryClient.invalidateQueries({ queryKey: qk.inputs });
               queryClient.invalidateQueries({ queryKey: qk.alertsFarmRoot });
+              if (item.entityType === "SEX_COMPOSITION") {
+                queryClient.invalidateQueries({ queryKey: qk.batches.sexComposition(item.batchId) });
+                queryClient.invalidateQueries({ queryKey: qk.batches.detail(item.batchId) });
+                queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviewPreview(item.batchId) });
+                queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviews(item.batchId) });
+              }
+              if (item.entityType === "FARM_INPUT" || item.entityType === "VACCINATION_PLAN") {
+                queryClient.invalidateQueries({ queryKey: qk.inventory });
+                queryClient.invalidateQueries({ queryKey: qk.inventoryPending });
+                queryClient.invalidateQueries({ queryKey: qk.finance });
+                queryClient.invalidateQueries({ queryKey: qk.operationsAnalytics() });
+                queryClient.invalidateQueries({ queryKey: qk.batches.detail(item.batchId) });
+                queryClient.invalidateQueries({ queryKey: qk.batches.dashboard() });
+                queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviewPreview(item.batchId) });
+                queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviews(item.batchId) });
+              }
+              queryClient.invalidateQueries({ queryKey: qk.tasks });
+              queryClient.invalidateQueries({ queryKey: qk.vaccinationPrograms });
             } else if (result.status === "AUTH_REQUIRED") {
               await updateOutboxOperation(item.operationId, { status: "AUTH_REQUIRED", lastErrorMessage: result.message ?? "Sign in to sync this record." });
               blockedBatches.add(item.batchId);

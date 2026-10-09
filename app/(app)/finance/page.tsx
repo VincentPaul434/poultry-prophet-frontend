@@ -268,10 +268,12 @@ function FinanceAnalyticsCard({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid grid-cols-3 gap-2">
+        <div className={`grid gap-2 ${analytics.scope === "BATCH" ? "grid-cols-2 sm:grid-cols-5" : "grid-cols-3"}`}>
           <AnalyticsStat label="Income" value={formatPeso(analytics.totals.recordedIncome)} tone="positive" />
-          <AnalyticsStat label="Expenses" value={formatPeso(analytics.totals.recordedExpense)} tone="negative" />
-          <AnalyticsStat label="Net" value={formatPeso(analytics.totals.recordedNetCashFlow)} tone="neutral" />
+          <AnalyticsStat label={analytics.scope === "BATCH" ? "Cash expense" : "Expenses"} value={formatPeso(analytics.totals.recordedExpense)} tone="negative" />
+          {analytics.scope === "BATCH" && <AnalyticsStat label="Products used" value={formatPeso(analytics.totals.productsConsumedCost)} tone="negative" />}
+          {analytics.scope === "BATCH" && <AnalyticsStat label="Batch cost" value={formatPeso(analytics.totals.totalRecordedBatchCost)} tone="negative" />}
+          <AnalyticsStat label={analytics.scope === "BATCH" ? "Contribution" : "Net"} value={formatPeso(analytics.scope === "BATCH" ? analytics.totals.recordedContribution : analytics.totals.recordedNetCashFlow)} tone="neutral" />
         </div>
 
         {series.length > 0 ? (

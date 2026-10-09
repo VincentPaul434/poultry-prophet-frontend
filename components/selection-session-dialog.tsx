@@ -45,7 +45,7 @@ function optionalWholeCount(value: string) {
 
 function NumberField({ id, label, value, onChange, max, disabled = false }: { id: string; label: string; value: string; onChange: (value: string) => void; max?: number; disabled?: boolean }) {
   const invalid = value.trim() !== "" && parseWholeCount(value) === null;
-  return <label htmlFor={id} className="grid gap-1.5 text-sm font-semibold"><span>{label}</span><Input id={id} type="number" inputMode="numeric" min={0} max={max} step={1} value={value} disabled={disabled} aria-invalid={invalid} onChange={(event) => onChange(event.target.value)} className="h-12 rounded-xl text-center text-lg font-bold" /></label>;
+  return <label htmlFor={id} className="grid gap-1.5 text-sm font-semibold"><span>{label}</span><Input id={id} type="number" inputMode="numeric" min={0} max={max} step={1} value={value} disabled={disabled} aria-invalid={invalid} onChange={(event) => onChange(event.target.value)} className="h-10 rounded-lg text-center text-base font-bold" /></label>;
 }
 
 export function SelectionSessionDialog({ batchId, batchName, currentPopulation }: { batchId: number | string; batchName: string; currentPopulation: number }) {
@@ -191,36 +191,35 @@ export function SelectionSessionDialog({ batchId, batchName, currentPopulation }
             : { tone: "error", text: `Remove ${Math.abs(remaining ?? 0)} from the outcome counts.` };
 
   return <>
-    <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0"><p className="text-sm font-bold">Selection review</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{latestText}</p></div>
-        {activeDraft ? <Badge variant={activeDraftNeedsReview ? "destructive" : activeDraft.offlineSyncStatus ? "outline" : "secondary"}>{activeDraftNeedsReview ? "Needs review" : activeDraft.offlineSyncStatus ? "Waiting to sync" : "Draft"}</Badge> : latest?.selectionRatePercent != null && <Badge variant="secondary">{latest.selectionRatePercent}% accepted</Badge>}
+        <div className="flex shrink-0 items-center gap-2">
+          {activeDraft ? <Badge variant={activeDraftNeedsReview ? "destructive" : activeDraft.offlineSyncStatus ? "outline" : "secondary"}>{activeDraftNeedsReview ? "Needs review" : activeDraft.offlineSyncStatus ? "Waiting to sync" : "Draft"}</Badge> : latest?.selectionRatePercent != null && <Badge variant="secondary">{latest.selectionRatePercent}% accepted</Badge>}
+          <Button type="button" className="h-9 rounded-lg px-3 text-xs font-bold" onClick={beginSession}><ClipboardCheck className="size-3.5" /> {activeDraft ? "Continue" : "Record"}</Button>
+        </div>
       </div>
-      <Button type="button" className="mt-3 h-12 w-full rounded-xl font-bold" onClick={beginSession}><ClipboardCheck className="size-4" /> {activeDraft ? "Continue selection draft" : "Record selection session"}</Button>
     </div>
     <Dialog open={open} onOpenChange={(value) => { setOpen(value); if (!value) reset(); }}>
-      <DialogContent className="w-[calc(100%-1rem)] max-w-xl">
-        <DialogHeader><DialogTitle>Record selection session</DialogTitle><DialogDescription>{batchName} · This records the manager&apos;s review and does not change population automatically. Drafts can be saved offline; finalization requires a connection.</DialogDescription></DialogHeader>
-        <div className="max-h-[70vh] space-y-4 overflow-y-auto py-1 pr-1">
-          <div className="grid gap-3 sm:grid-cols-2"><label htmlFor="selection-date" className="grid gap-1.5 text-sm font-semibold"><span>Selection date</span><Input id="selection-date" type="date" max={today} value={selectionDate} onChange={(event) => { setSelectionDate(event.target.value); setError(""); }} className="h-12 rounded-xl" /></label><div className="rounded-xl border bg-muted/30 px-3 py-2.5"><p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Population today</p><p className="mt-1 text-lg font-bold">{currentPopulation.toLocaleString()} birds</p></div></div>
-          <div className="rounded-2xl border p-3">
-            <div className="mb-3"><p className="text-sm font-bold">Selection outcome</p><p className="text-xs text-muted-foreground">Record each evaluated bird in one outcome.</p></div>
-            <div className="grid gap-3 sm:grid-cols-[9rem_1fr] sm:items-end">
-              <NumberField id="evaluated" label="Evaluated" value={evaluated} max={selectionDate === today ? currentPopulation : MAX_COUNT} onChange={(value) => { setEvaluated(value); setError(""); }} />
-              <div role="status" aria-live="polite" className={cn("flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2", outcomeStatus.tone === "success" ? "border-success-border bg-success-muted text-success" : outcomeStatus.tone === "error" ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-warning-border bg-warning-muted text-warning-ink")}>{outcomeStatus.tone === "success" ? <CircleCheck className="size-4 shrink-0" aria-hidden="true" /> : <CircleAlert className="size-4 shrink-0" aria-hidden="true" />}<div><p className="text-sm font-semibold">{outcomeStatus.text}</p>{evaluatedReady && outcomesValid && <p className="text-[11px] opacity-80">{outcomeTotal} of {evaluatedCount} assigned</p>}</div></div>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <DialogContent className="grid max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b px-4 py-3 pr-12 sm:px-5"><DialogTitle>Record selection session</DialogTitle><DialogDescription>{batchName} · Batch selected · Manager review only; population is not changed automatically.</DialogDescription></DialogHeader>
+        <div className="min-h-0 space-y-3 overflow-y-auto px-4 py-3 sm:px-5">
+          <div className="grid gap-2 sm:grid-cols-2"><label htmlFor="selection-date" className="grid gap-1 text-sm font-semibold"><span>Selection date</span><Input id="selection-date" type="date" max={today} value={selectionDate} onChange={(event) => { setSelectionDate(event.target.value); setError(""); }} className="h-9 rounded-lg" /></label><div className="rounded-lg border bg-muted/30 px-3 py-2"><p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Population today</p><p className="mt-0.5 text-base font-bold">{currentPopulation.toLocaleString()} birds</p></div></div>
+          <div className="rounded-xl border p-3">
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2"><div><p className="text-sm font-bold">Selection outcome</p><p className="text-xs text-muted-foreground">Assign every evaluated bird once.</p></div><div className="w-28"><NumberField id="evaluated" label="Evaluated" value={evaluated} max={selectionDate === today ? currentPopulation : MAX_COUNT} onChange={(value) => { setEvaluated(value); setError(""); }} /></div></div>
+            <div role="status" aria-live="polite" className={cn("flex min-h-9 items-center gap-2 rounded-lg border px-2.5 py-1.5", outcomeStatus.tone === "success" ? "border-success-border bg-success-muted text-success" : outcomeStatus.tone === "error" ? "border-destructive/30 bg-destructive/5 text-destructive" : "border-warning-border bg-warning-muted text-warning-ink")}>{outcomeStatus.tone === "success" ? <CircleCheck className="size-4 shrink-0" aria-hidden="true" /> : <CircleAlert className="size-4 shrink-0" aria-hidden="true" />}<div className="min-w-0"><p className="text-xs font-semibold">{outcomeStatus.text}</p>{evaluatedReady && outcomesValid && <p className="text-[10px] opacity-80">{outcomeTotal} of {evaluatedCount} assigned</p>}</div></div>
+            <div className="mt-2 grid grid-cols-2 gap-2">
               <NumberField id="accepted" label="Accepted" value={accepted} max={evaluatedCount} disabled={!evaluatedReady} onChange={(value) => { setAccepted(value); setError(""); }} />
               <NumberField id="continued" label="Continue observation" value={continued} max={evaluatedCount} disabled={!evaluatedReady} onChange={(value) => { setContinued(value); setError(""); }} />
               <NumberField id="not-accepted" label="Not accepted" value={notAccepted} max={evaluatedCount} disabled={!evaluatedReady} onChange={(value) => { setNotAccepted(value); setError(""); }} />
               <NumberField id="other" label="Other" value={other} max={evaluatedCount} disabled={!evaluatedReady} onChange={(value) => { setOther(value); setError(""); }} />
             </div>
           </div>
-          <div className="space-y-2"><p className="text-sm font-bold">Criteria considered <span className="font-normal text-muted-foreground">(optional)</span></p><div className="flex flex-wrap gap-2">{CRITERIA.map(([code, label]) => <button key={code} type="button" aria-pressed={criteria.includes(code)} onClick={() => toggleCriterion(code)} className={cn("min-h-10 rounded-full border px-3 text-sm font-semibold", criteria.includes(code) ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted")}>{criteria.includes(code) ? "✓ " : ""}{label}</button>)}</div><Input value={criteriaNotes} maxLength={1000} onChange={(event) => setCriteriaNotes(event.target.value)} placeholder="Optional detail about what was considered" className="h-11 rounded-xl" /></div>
-          <div className="space-y-1.5"><Label htmlFor="selection-notes">Notes <span className="font-normal text-muted-foreground">(required if Other is used)</span></Label><Textarea id="selection-notes" rows={3} value={notes} maxLength={2000} onChange={(event) => { setNotes(event.target.value); setError(""); }} placeholder="What did the manager observe or decide?" className="resize-none rounded-xl" /></div>
-          {error && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm font-semibold text-destructive">{error}</p>}
+          <div className="space-y-1.5"><p className="text-sm font-bold">Criteria considered <span className="font-normal text-muted-foreground">(optional)</span></p><div className="flex flex-wrap gap-1.5">{CRITERIA.map(([code, label]) => <button key={code} type="button" aria-pressed={criteria.includes(code)} onClick={() => toggleCriterion(code)} className={cn("min-h-8 rounded-full border px-2.5 text-xs font-semibold", criteria.includes(code) ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted")}>{criteria.includes(code) ? "✓ " : ""}{label}</button>)}</div><Input value={criteriaNotes} maxLength={1000} onChange={(event) => setCriteriaNotes(event.target.value)} placeholder="Optional detail about what was considered" className="h-9 rounded-lg text-sm" /></div>
+          <div className="space-y-1"><Label htmlFor="selection-notes">Notes <span className="font-normal text-muted-foreground">(required if Other is used)</span></Label><Textarea id="selection-notes" rows={2} value={notes} maxLength={2000} onChange={(event) => { setNotes(event.target.value); setError(""); }} placeholder="What did the manager observe or decide?" className="resize-none rounded-lg" /></div>
+          {error && <p role="alert" aria-live="assertive" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm font-semibold text-destructive">{error}</p>}
         </div>
-        <DialogFooter className="flex-col gap-2 sm:flex-row"><Button type="button" variant="outline" className="h-12 w-full rounded-xl sm:w-auto" onClick={() => save(false)} disabled={busy}>Save draft</Button><Button type="button" className="h-12 w-full rounded-xl font-bold sm:w-auto" onClick={() => save(true)} disabled={busy}>{busy && <Loader2 className="size-4 animate-spin" />}Finalize session</Button></DialogFooter>
+        <DialogFooter className="flex-col gap-2 border-t sm:flex-row"><Button type="button" variant="outline" className="h-9 w-full rounded-lg sm:w-auto" onClick={() => save(false)} disabled={busy}>Save draft</Button><Button type="button" className="h-9 w-full rounded-lg font-bold sm:w-auto" onClick={() => save(true)} disabled={busy}>{busy && <Loader2 className="size-4 animate-spin" />}Finalize session</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </>;
