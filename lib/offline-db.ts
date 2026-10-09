@@ -230,6 +230,19 @@ export async function getQueuedPopulationDelta(userId: number, farmId: number, b
     }, 0);
 }
 
+export async function retryOutboxIssues(userId: number, farmId: number) {
+  const items = await listOutbox(userId, farmId);
+  const issues = items.filter((item) => item.status === "CONFLICT" || item.status === "REJECTED");
+  await Promise.all(issues.map((item) => updateOutboxOperation(item.operationId, {
+    status: "PENDING",
+    attemptCount: 0,
+    nextAttemptAt: undefined,
+    lastErrorCode: undefined,
+    lastErrorMessage: undefined,
+  })));
+  return issues.length;
+}
+
 export async function updateOutboxOperation(operationId: string, patch: Partial<OutboxOperation>) {
   const db = await openDatabase();
   const tx = db.transaction([OUTBOX_STORE], "readwrite");

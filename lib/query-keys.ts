@@ -37,11 +37,14 @@ export const qk = {
   batches: {
     all: ["batches"] as const,
     lists: () => [...qk.batches.all, "list"] as const,
+    archived: () => [...qk.batches.all, "archived"] as const,
     dashboard: () => [...qk.batches.all, "dashboard"] as const,
     detail: (batchId: number | string) =>
       [...qk.batches.all, String(batchId)] as const,
     overview: (batchId: number | string) =>
       [...qk.batches.detail(batchId), "overview"] as const,
+    retirementImpact: (batchId: number | string) =>
+      [...qk.batches.detail(batchId), "retirement-impact"] as const,
     birds: (batchId: number | string) =>
       [...qk.batches.detail(batchId), "birds"] as const,
     records: (batchId: number | string, limit?: number) =>

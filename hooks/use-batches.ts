@@ -5,8 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { batchApi } from "@/lib/api";
 import { shouldUseOfflineSnapshot } from "@/lib/api-client";
 import { qk } from "@/lib/query-keys";
-import type { Batch, CreateBatchRequest } from "@/lib/types";
+import type { ArchiveBatchRequest, Batch, CreateBatchRequest, DeleteBatchRequest } from "@/lib/types";
 import { useAuth } from "@/lib/auth-context";
+import { useOfflineSync } from "@/lib/offline-sync-provider";
 import type { StoredUser } from "@/lib/auth-storage";
 import {
   getBatchOverviewSnapshot,
@@ -87,6 +88,77 @@ export function useBatch(batchId: number | string, enabled = true) {
       }
     },
     enabled: enabled && batchId != null && batchId !== "",
+  });
+}
+
+export function useArchivedBatches(enabled = true) {
+  return useQuery({
+    queryKey: qk.batches.archived(),
+    queryFn: batchApi.listArchived,
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
+export function useBatchRetirementImpact(batchId: number | string, enabled = true) {
+  return useQuery({
+    queryKey: qk.batches.retirementImpact(batchId),
+    queryFn: () => batchApi.retirementImpact(batchId),
+    enabled: enabled && batchId != null && batchId !== "",
+    staleTime: 10_000,
+  });
+}
+
+function invalidateBatchLifecycle(queryClient: ReturnType<typeof useQueryClient>, batchId?: number) {
+  queryClient.invalidateQueries({ queryKey: qk.batches.lists() });
+  queryClient.invalidateQueries({ queryKey: qk.batches.archived() });
+  queryClient.invalidateQueries({ queryKey: qk.batches.dashboard() });
+  queryClient.invalidateQueries({ queryKey: qk.farm });
+  queryClient.invalidateQueries({ queryKey: qk.tasks });
+  queryClient.invalidateQueries({ queryKey: qk.alertsFarm() });
+  if (batchId != null) {
+    queryClient.invalidateQueries({ queryKey: qk.batches.detail(batchId) });
+    queryClient.invalidateQueries({ queryKey: qk.batches.retirementImpact(batchId) });
+  }
+}
+
+export function useArchiveBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ batchId, body }: { batchId: number | string; body?: ArchiveBatchRequest }) => batchApi.archive(batchId, body),
+    onSuccess: (batch) => invalidateBatchLifecycle(queryClient, batch.id),
+  });
+}
+
+export function useReconcileBatchPopulation() {
+  const queryClient = useQueryClient();
+  const { retryIssues } = useOfflineSync();
+  return useMutation({
+    mutationFn: (batchId: number | string) => batchApi.reconcilePopulation(batchId),
+    onSuccess: async (batch) => {
+      invalidateBatchLifecycle(queryClient, batch.id);
+      await retryIssues();
+    },
+  });
+}
+
+export function useRestoreBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (batchId: number | string) => batchApi.restore(batchId),
+    onSuccess: (batch) => invalidateBatchLifecycle(queryClient, batch.id),
+  });
+}
+
+export function useDeleteBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ batchId, body }: { batchId: number | string; body: DeleteBatchRequest }) => batchApi.delete(batchId, body),
+    onSuccess: (_, variables) => {
+      const id = Number(variables.batchId);
+      queryClient.removeQueries({ queryKey: qk.batches.detail(id) });
+      invalidateBatchLifecycle(queryClient, id);
+    },
   });
 }
 

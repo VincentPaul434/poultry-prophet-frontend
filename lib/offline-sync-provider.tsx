@@ -14,6 +14,7 @@ import {
   listOutbox,
   onOfflineOutboxChanged,
   putOutboxOperation,
+  retryOutboxIssues,
   setLastSuccessfulSync,
   updateOutboxOperation,
   type OfflineEntityType,
@@ -45,6 +46,7 @@ interface OfflineSyncContextValue {
   snapshot: SyncSnapshot;
   enqueue: (input: EnqueueInput) => Promise<{ operationId: string }>;
   syncNow: () => Promise<void>;
+  retryIssues: () => Promise<void>;
 }
 
 const OfflineSyncContext = createContext<OfflineSyncContextValue | null>(null);
@@ -238,6 +240,13 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
     retryTimer.current = window.setTimeout(() => { void syncNow(); }, delay);
   }, [syncNow]);
 
+  const retryIssues = useCallback(async () => {
+    if (!user?.farmId || !isAuthenticated) return;
+    await retryOutboxIssues(user.userId, user.farmId);
+    await refresh();
+    await syncNow();
+  }, [isAuthenticated, refresh, syncNow, user]);
+
   const enqueue = useCallback(async ({ entityType, batchId, payload, occurredAt }: EnqueueInput) => {
     if (!user?.farmId || !isAuthenticated) throw new Error("Sign in before saving a farm record.");
     const operationId = typeof payload.operationId === "string" ? payload.operationId : uuid();
@@ -277,7 +286,7 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
     };
   }, [isLoading, refresh, scheduleSync, syncNow]);
 
-  const value = useMemo(() => ({ snapshot, enqueue, syncNow }), [enqueue, snapshot, syncNow]);
+  const value = useMemo(() => ({ snapshot, enqueue, syncNow, retryIssues }), [enqueue, retryIssues, snapshot, syncNow]);
   return <OfflineSyncContext.Provider value={value}>{children}</OfflineSyncContext.Provider>;
 }
 
