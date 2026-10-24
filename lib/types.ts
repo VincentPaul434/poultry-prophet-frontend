@@ -19,6 +19,8 @@ export interface AuthResponse {
   fullName: string;
   role: Role;
   farmId: number | null;
+  refreshToken: string;
+  refreshTokenExpiresAt: string;
 }
 
 export interface LoginRequest {
