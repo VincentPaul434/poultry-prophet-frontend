@@ -17,9 +17,11 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { accountApi, authApi, inviteApi } from "./api";
+import { ApiError } from "./api-client";
 import {
   clearSession,
   getStoredUser,
+  getRefreshToken,
   getToken,
   saveSession,
   type StoredUser,
@@ -35,7 +37,7 @@ interface AuthContextValue {
   register: (body: RegisterRequest) => Promise<StoredUser>;
   acceptInvite: (token: string) => Promise<StoredUser>;
   updateProfile: (body: UpdateProfileRequest) => Promise<StoredUser>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -46,15 +48,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  // Hydrate from localStorage once on mount (avoids SSR/client mismatch).
+  // Hydrate from localStorage once on mount (avoids SSR/client mismatch). If a
+  // refresh token exists, rotate it before exposing the authenticated app so a
+  // PWA opened after the access JWT expires can restore the session silently.
   useEffect(() => {
-    const storedUser = getStoredUser();
-    const timer = window.setTimeout(() => {
-      setUser(storedUser);
-      setIsLoading(false);
-    }, 0);
+    let active = true;
 
-    return () => window.clearTimeout(timer);
+    const hydrate = async () => {
+      const storedUser = getStoredUser();
+      const refreshToken = getRefreshToken();
+
+      if (!refreshToken) {
+        if (active) {
+          setUser(storedUser);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const auth = await authApi.refresh(refreshToken);
+        if (active) setUser(saveSession(auth));
+      } catch (error) {
+        // Keep the cached profile for an offline/transient startup failure;
+        // the API client can retry once the backend is reachable again. A
+        // rejected 4xx refresh credential means the session really ended.
+        const transient = error instanceof ApiError && (error.status === 0 || error.status >= 500);
+        if (active) {
+          if (transient) {
+            setUser(storedUser);
+          } else {
+            clearSession();
+            setUser(null);
+          }
+        }
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+
+    void hydrate();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const login = useCallback(async (body: LoginRequest) => {
@@ -101,7 +137,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return stored;
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      // The endpoint can revoke one device session when given the refresh
+      // token. If an older session has no refresh token, it still clears the
+      // local state below without blocking sign-out.
+      await authApi.logout(getRefreshToken() ?? undefined);
+    } catch {
+      // Sign-out is local-first: a failed network request must not leave the
+      // user appearing logged in on this device.
+    }
     clearSession();
     setUser(null);
     queryClient.clear();

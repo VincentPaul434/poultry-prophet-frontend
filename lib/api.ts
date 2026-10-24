@@ -86,6 +86,12 @@ export const authApi = {
     apiClient.post<AuthResponse>("/auth/login", body).then((r) => r.data),
   register: (body: RegisterRequest) =>
     apiClient.post<AuthResponse>("/auth/register", body).then((r) => r.data),
+  refresh: (refreshToken: string) =>
+    apiClient.post<AuthResponse>("/auth/refresh", { refreshToken }).then((r) => r.data),
+  logout: (refreshToken?: string) =>
+    apiClient
+      .post<void>("/auth/logout", refreshToken ? { refreshToken } : undefined)
+      .then((r) => r.data),
 };
 
 export const syncApi = {
