@@ -6,9 +6,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bell, Check, ChevronRight, Loader2 } from "lucide-react";
+import { Bell, Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useFarmAlerts, useAcknowledgeFarmAlert } from "@/hooks/use-analytics";
+import { useFarmAlertPage, useFarmAlertSummary, useAcknowledgeFarmAlert } from "@/hooks/use-analytics";
 import { useBatches } from "@/hooks/use-batches";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
@@ -28,25 +28,26 @@ const severityConfig: Record<Severity, { label: string; cls: string; icon: strin
   CRITICAL: { label: "Critical", cls: "border-destructive/25 bg-destructive/5", icon: "🚨" },
 };
 
-const SEVERITY_RANK: Record<Severity, number> = { CRITICAL: 0, WARNING: 1, INFO: 2 };
-
 export default function AlertsPage() {
   const { isManager } = useAuth();
   const [showAll, setShowAll] = useState(false);
-  const alerts = useFarmAlerts(!showAll);
+  const [page, setPage] = useState(0);
+  const [severity, setSeverity] = useState<Severity | "ALL">("ALL");
+  const [sort, setSort] = useState("priority");
+  const alerts = useFarmAlertPage({ activeOnly: !showAll, page, size: 20, severity: severity === "ALL" ? undefined : severity, sort });
+  const summary = useFarmAlertSummary();
   const { data: batches } = useBatches();
 
   const batchName = (batchId: number) =>
     batches?.find((b) => b.id === batchId)?.name ?? `Batch #${batchId}`;
 
-  // Most severe first, then most recent.
-  const sorted = [...(alerts.data ?? [])].sort((a, b) => {
-    const r = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
-    return r !== 0 ? r : new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
+  const items = alerts.data?.items ?? [];
+  const alertErrorMessage = alerts.error instanceof ApiError
+    ? alerts.error.message
+    : "The alert service could not be reached. Check the backend connection and try again.";
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-8">
+    <div className="mx-auto flex h-full min-h-[calc(100dvh-8rem)] w-full max-w-5xl min-w-0 flex-col gap-5">
       <PageBackLink destination="dashboard" />
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
@@ -58,10 +59,11 @@ export default function AlertsPage() {
           </p>
         </div>
         {/* Active / All toggle */}
-        <div className="flex self-start rounded-xl border bg-card p-1 text-xs font-semibold sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+        <div className="flex rounded-xl border bg-card p-1 text-xs font-semibold">
           <button
             type="button"
-            onClick={() => setShowAll(false)}
+            onClick={() => { setShowAll(false); setPage(0); }}
             aria-pressed={!showAll}
             className={cn(
               "min-h-11 rounded-lg px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
@@ -72,7 +74,7 @@ export default function AlertsPage() {
           </button>
           <button
             type="button"
-            onClick={() => setShowAll(true)}
+            onClick={() => { setShowAll(true); setPage(0); }}
             aria-pressed={showAll}
             className={cn(
               "min-h-11 rounded-lg px-4 py-2 transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
@@ -82,6 +84,20 @@ export default function AlertsPage() {
             All
           </button>
         </div>
+        <select aria-label="Alert severity" className="min-h-11 rounded-xl border bg-card px-3 text-sm" value={severity} onChange={(event) => { setSeverity(event.target.value as Severity | "ALL"); setPage(0); }}>
+          <option value="ALL">All severities</option><option value="CRITICAL">Critical</option><option value="WARNING">Warning</option><option value="INFO">Info</option>
+        </select>
+        <select aria-label="Alert sort" className="min-h-11 rounded-xl border bg-card px-3 text-sm" value={sort} onChange={(event) => { setSort(event.target.value); setPage(0); }}>
+          <option value="priority">Priority</option><option value="newest">Newest</option>
+        </select>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+        <Badge variant="outline">Active: {summary.data?.activeTotal ?? "—"}</Badge>
+        <Badge variant="outline">Critical: {summary.data?.critical ?? "—"}</Badge>
+        <Badge variant="outline">Warning: {summary.data?.warning ?? "—"}</Badge>
+        <Badge variant="outline">Info: {summary.data?.info ?? "—"}</Badge>
       </div>
 
       {alerts.isLoading && (
@@ -95,15 +111,16 @@ export default function AlertsPage() {
           <Bell />
           <AlertTitle>Failed to load alerts</AlertTitle>
           <AlertDescription className="flex flex-wrap items-center gap-3">
-            <span>Please try again in a moment.</span>
-            <Button type="button" variant="outline" size="sm" onClick={() => alerts.refetch()}>
+            <span>{alertErrorMessage}</span>
+            <Button type="button" variant="outline" size="sm" disabled={alerts.isFetching} onClick={() => alerts.refetch()}>
+              {alerts.isFetching && <Loader2 className="size-3 animate-spin" />}
               Try again
             </Button>
           </AlertDescription>
         </Alert>
       )}
 
-      {alerts.data && sorted.length === 0 && (
+      {alerts.data && items.length === 0 && (
         <Card className="border-dashed shadow-none">
           <CardContent className="flex flex-col items-center gap-3 p-10 text-center sm:p-16">
           <div className="flex justify-center">
@@ -123,16 +140,25 @@ export default function AlertsPage() {
         </Card>
       )}
 
-      {sorted.length > 0 && (
-        <div className="space-y-4">
-          {sorted.map((a) => (
+      {items.length > 0 && (
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+          {items.map((a) => (
             <AlertRow
               key={a.id}
               alert={a}
               batchName={batchName(a.batchId)}
               canAck={isManager}
+              onAcknowledged={() => {
+                if (!showAll && items.length === 1 && page > 0) setPage((value) => Math.max(0, value - 1));
+              }}
             />
           ))}
+        </div>
+      )}
+      {alerts.data && alerts.data.totalPages > 0 && (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm text-muted-foreground">
+          <span>{alerts.data.totalItems} eligible alert{alerts.data.totalItems === 1 ? "" : "s"}</span>
+          <div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!alerts.data.hasPrevious} onClick={() => setPage((value) => Math.max(0, value - 1))}><ChevronLeft className="size-4" />Previous</Button><span>Page {alerts.data.page + 1} of {alerts.data.totalPages}</span><Button type="button" variant="outline" size="sm" disabled={!alerts.data.hasNext} onClick={() => setPage((value) => value + 1)}>Next<ChevronRight className="size-4" /></Button></div>
         </div>
       )}
     </div>
@@ -143,10 +169,12 @@ function AlertRow({
   alert,
   batchName,
   canAck,
+  onAcknowledged,
 }: {
   alert: AlertRecord;
   batchName: string;
   canAck: boolean;
+  onAcknowledged: () => void;
 }) {
   const acknowledge = useAcknowledgeFarmAlert();
   const cfg = severityConfig[alert.severity];
@@ -154,7 +182,10 @@ function AlertRow({
   function ack() {
     acknowledge
       .mutateAsync({ id: alert.id })
-      .then(() => toast.success("Alert acknowledged"))
+      .then(() => {
+        onAcknowledged();
+        toast.success("Alert acknowledged");
+      })
       .catch((err) => toast.error(err instanceof ApiError ? err.message : "Failed to acknowledge"));
   }
 

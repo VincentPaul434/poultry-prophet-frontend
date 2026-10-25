@@ -1,8 +1,8 @@
 "use client";
 
-import type { Batch, BatchDashboardItem, BatchEvent, BatchOverview, FarmProduct, SelectionSession } from "./types";
+import type { Batch, BatchDashboardItem, BatchEvent, BatchOverview, FarmProduct, OfflineBootstrap, SelectionSession } from "./types";
 
-export type OfflineEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE" | "SEX_COMPOSITION" | "VACCINATION_PLAN";
+export type OfflineEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE" | "SEX_COMPOSITION" | "VACCINATION_PLAN" | "TASK_STATUS" | "VACCINATION_SCHEDULE";
 export type OutboxStatus =
   | "PENDING"
   | "SYNCING"
@@ -81,8 +81,16 @@ export interface StoredSelectionSessionSnapshot {
   savedAt: string;
 }
 
+export interface StoredOfflineBootstrap {
+  key: string;
+  userId: number;
+  farmId: number;
+  data: OfflineBootstrap;
+  savedAt: string;
+}
+
 const DB_NAME = "poultry-prophet-offline-v1";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const OUTBOX_STORE = "outbox";
 const SNAPSHOT_STORE = "batchSnapshots";
 const PRODUCT_STORE = "productSnapshots";
@@ -91,6 +99,7 @@ const OVERVIEW_STORE = "batchOverviewSnapshots";
 const EVENT_STORE = "batchEventSnapshots";
 const SELECTION_SESSION_STORE = "selectionSessionSnapshots";
 const META_STORE = "syncMeta";
+const FIELD_STORE = "fieldBootstrapSnapshots";
 const OUTBOX_CHANGED = "pp-offline-outbox-changed";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -149,6 +158,7 @@ function openDatabase() {
       if (!db.objectStoreNames.contains(EVENT_STORE)) db.createObjectStore(EVENT_STORE, { keyPath: "key" });
       if (!db.objectStoreNames.contains(SELECTION_SESSION_STORE)) db.createObjectStore(SELECTION_SESSION_STORE, { keyPath: "key" });
       if (!db.objectStoreNames.contains(META_STORE)) db.createObjectStore(META_STORE, { keyPath: "key" });
+      if (!db.objectStoreNames.contains(FIELD_STORE)) db.createObjectStore(FIELD_STORE, { keyPath: "key" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("Could not open offline storage."));
@@ -230,9 +240,24 @@ export async function getQueuedPopulationDelta(userId: number, farmId: number, b
     }, 0);
 }
 
+export async function getQueuedInventoryDelta(userId: number, farmId: number, farmProductId: number) {
+  const operations = await listOutbox(userId, farmId);
+  return operations
+    .filter((operation) => operation.entityType === "FARM_INPUT"
+      && operation.status !== "CONFLICT"
+      && operation.status !== "REJECTED"
+      && Number(operation.payload.farmProductId) === farmProductId)
+    .reduce((total, operation) => {
+      const quantity = Number(operation.payload.quantity);
+      return Number.isFinite(quantity) ? total - quantity : total;
+    }, 0);
+}
+
 export async function retryOutboxIssues(userId: number, farmId: number) {
   const items = await listOutbox(userId, farmId);
-  const issues = items.filter((item) => item.status === "CONFLICT" || item.status === "REJECTED");
+  // A conflict or rejection is a manager-review state, not an automatic retry.
+  // Only an expired authentication state is safe to retry without changing data.
+  const issues = items.filter((item) => item.status === "AUTH_REQUIRED");
   await Promise.all(issues.map((item) => updateOutboxOperation(item.operationId, {
     status: "PENDING",
     attemptCount: 0,
@@ -241,6 +266,27 @@ export async function retryOutboxIssues(userId: number, farmId: number) {
     lastErrorMessage: undefined,
   })));
   return issues.length;
+}
+
+export async function saveOfflineBootstrap(userId: number, farmId: number, data: OfflineBootstrap) {
+  const db = await openDatabase();
+  const tx = db.transaction([FIELD_STORE], "readwrite");
+  tx.objectStore(FIELD_STORE).put({
+    key: `${userId}:${farmId}`,
+    userId,
+    farmId,
+    data,
+    savedAt: new Date().toISOString(),
+  } satisfies StoredOfflineBootstrap);
+  await transactionDone(tx);
+}
+
+export async function getOfflineBootstrap(userId: number, farmId: number) {
+  const db = await openDatabase();
+  const tx = db.transaction([FIELD_STORE], "readonly");
+  const result = await requestResult(tx.objectStore(FIELD_STORE).get(`${userId}:${farmId}`)) as StoredOfflineBootstrap | undefined;
+  await transactionDone(tx);
+  return result?.data ?? null;
 }
 
 export async function updateOutboxOperation(operationId: string, patch: Partial<OutboxOperation>) {

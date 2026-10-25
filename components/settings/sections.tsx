@@ -62,7 +62,7 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     description: "Legacy score thresholds retained for audit; not used by the active workflow.",
     icon: Sliders,
     emoji: "🔔",
-    managerOnly: false,
+    managerOnly: true,
   },
 ];
 

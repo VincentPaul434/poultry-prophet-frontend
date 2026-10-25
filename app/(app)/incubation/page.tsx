@@ -57,6 +57,7 @@ export default function IncubationPage() {
   const [form, setForm] = useState<LoadForm>(EMPTY_FORM);
   const [showDetails, setShowDetails] = useState(false);
   const [hatch, setHatch] = useState<Record<number, HatchValue>>({});
+  const [farmEntryDates, setFarmEntryDates] = useState<Record<number, string>>({});
 
   const fail = (error: unknown) =>
     toast.error(error instanceof ApiError ? error.message : "Could not save the record");
@@ -131,75 +132,79 @@ export default function IncubationPage() {
           </div>
           <div>
             <h1 className="text-3xl font-bold tracking-tight">{t("incubation.title")}</h1>
-            <p className="text-sm text-muted-foreground">{t("incubation.loadEggs")}</p>
+            <p className="text-sm text-muted-foreground">
+              {isManager ? "Review egg loads and finalize hatch results." : t("incubation.loadEggs")}
+            </p>
           </div>
         </div>
       </header>
 
-      <Card className="overflow-hidden border-primary/20 shadow-none">
-        <div className="h-1.5 bg-primary" />
-        <CardHeader className="gap-1 pb-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <CardTitle className="text-xl">{t("incubation.loadEggs")}</CardTitle>
-              <CardDescription className="mt-1">Record this when the eggs go into the incubator.</CardDescription>
-            </div>
+      {!isManager && (
+        <Card className="overflow-hidden border-primary/20 shadow-none">
+          <div className="h-1.5 bg-primary" />
+          <CardHeader className="gap-1 pb-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-xl">{t("incubation.loadEggs")}</CardTitle>
+                <CardDescription className="mt-1">Record this when the eggs go into the incubator.</CardDescription>
+              </div>
               <Badge variant="secondary" className="gap-1.5 rounded-full px-3 py-1">
-              <Hash className="size-3.5" /> {t("incubation.requiredFields")}: 4
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={submit} className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="cycle-name">{t("incubation.loadReference")}</Label>
-                <Input id="cycle-name" required value={form.cycleName} onChange={(event) => updateForm("cycleName", event.target.value)} placeholder="Example: September Load 1" />
-                <p className="text-xs text-muted-foreground">A short name the farm can recognize.</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="incubator-code">{t("incubation.incubator")}</Label>
-                <Input id="incubator-code" required value={form.incubatorCode} onChange={(event) => updateForm("incubatorCode", event.target.value)} placeholder="Example: Incubator 1" />
-                <p className="text-xs text-muted-foreground">Use the farm’s existing name or number.</p>
-              </div>
+                <Hash className="size-3.5" /> {t("incubation.requiredFields")}: 4
+              </Badge>
             </div>
-
-            <div className="grid gap-4 rounded-2xl bg-muted/40 p-4 sm:grid-cols-[1fr_1fr_1.2fr]">
-              <div className="space-y-2">
-                <Label htmlFor="loaded-date">{t("incubation.dateLoaded")}</Label>
-                <div className="relative">
-                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input id="loaded-date" required type="date" max={todayIso()} value={form.loadedDate} onChange={(event) => updateForm("loadedDate", event.target.value)} className="pl-9" />
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={submit} className="space-y-6">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="cycle-name">{t("incubation.loadReference")}</Label>
+                  <Input id="cycle-name" required value={form.cycleName} onChange={(event) => updateForm("cycleName", event.target.value)} placeholder="Example: September Load 1" />
+                  <p className="text-xs text-muted-foreground">A short name the farm can recognize.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="incubator-code">{t("incubation.incubator")}</Label>
+                  <Input id="incubator-code" required value={form.incubatorCode} onChange={(event) => updateForm("incubatorCode", event.target.value)} placeholder="Example: Incubator 1" />
+                  <p className="text-xs text-muted-foreground">Use the farm’s existing name or number.</p>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="eggs-loaded">{t("incubation.eggsLoaded")}</Label>
-                <Input id="eggs-loaded" required autoFocus type="number" min="1" step="1" inputMode="numeric" value={form.eggsLoaded} onChange={(event) => updateForm("eggsLoaded", event.target.value)} className="h-12 text-lg font-semibold" placeholder="0" />
-              </div>
-              <div className="flex items-end">
-                <Button disabled={create.isPending} type="submit" className="h-12 w-full sm:w-auto">
-                  {create.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
-                  {t("common.save")} egg load
-                </Button>
-              </div>
-            </div>
 
-            <details open={showDetails} onToggle={(event) => setShowDetails(event.currentTarget.open)} className="rounded-2xl border px-4">
-              <summary className="cursor-pointer list-none py-4 text-sm font-semibold">
-                <span className="flex items-center justify-between gap-3">
-                  {t("incubation.optionalDetails")}
-                  <span className="text-xs font-normal text-muted-foreground">Add later if known</span>
-                </span>
-              </summary>
-              <div className="grid gap-4 border-t py-4 sm:grid-cols-3">
-                <div className="space-y-2"><Label htmlFor="expected-hatch-date">{t("incubation.expectedDate")}</Label><Input id="expected-hatch-date" type="date" value={form.expectedHatchDate} onChange={(event) => updateForm("expectedHatchDate", event.target.value)} /></div>
-                <div className="space-y-2"><Label htmlFor="egg-source">{t("incubation.eggSource")}</Label><Input id="egg-source" value={form.eggSource} onChange={(event) => updateForm("eggSource", event.target.value)} placeholder="Farm or source" /></div>
-                <div className="space-y-2"><Label htmlFor="bloodline">{t("incubation.bloodline")}</Label><Input id="bloodline" value={form.bloodline} onChange={(event) => updateForm("bloodline", event.target.value)} placeholder="If known" /></div>
+              <div className="grid gap-4 rounded-2xl bg-muted/40 p-4 sm:grid-cols-[1fr_1fr_1.2fr]">
+                <div className="space-y-2">
+                  <Label htmlFor="loaded-date">{t("incubation.dateLoaded")}</Label>
+                  <div className="relative">
+                    <CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input id="loaded-date" required type="date" max={todayIso()} value={form.loadedDate} onChange={(event) => updateForm("loadedDate", event.target.value)} className="pl-9" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="eggs-loaded">{t("incubation.eggsLoaded")}</Label>
+                  <Input id="eggs-loaded" required autoFocus type="number" min="1" step="1" inputMode="numeric" value={form.eggsLoaded} onChange={(event) => updateForm("eggsLoaded", event.target.value)} className="h-12 text-lg font-semibold" placeholder="0" />
+                </div>
+                <div className="flex items-end">
+                  <Button disabled={create.isPending} type="submit" className="h-12 w-full sm:w-auto">
+                    {create.isPending ? <Loader2 className="animate-spin" /> : <Plus />}
+                    {t("common.save")} egg load
+                  </Button>
+                </div>
               </div>
-            </details>
-          </form>
-        </CardContent>
-      </Card>
+
+              <details open={showDetails} onToggle={(event) => setShowDetails(event.currentTarget.open)} className="rounded-2xl border px-4">
+                <summary className="cursor-pointer list-none py-4 text-sm font-semibold">
+                  <span className="flex items-center justify-between gap-3">
+                    {t("incubation.optionalDetails")}
+                    <span className="text-xs font-normal text-muted-foreground">Add later if known</span>
+                  </span>
+                </summary>
+                <div className="grid gap-4 border-t py-4 sm:grid-cols-3">
+                  <div className="space-y-2"><Label htmlFor="expected-hatch-date">{t("incubation.expectedDate")}</Label><Input id="expected-hatch-date" type="date" value={form.expectedHatchDate} onChange={(event) => updateForm("expectedHatchDate", event.target.value)} /></div>
+                  <div className="space-y-2"><Label htmlFor="egg-source">{t("incubation.eggSource")}</Label><Input id="egg-source" value={form.eggSource} onChange={(event) => updateForm("eggSource", event.target.value)} placeholder="Farm or source" /></div>
+                  <div className="space-y-2"><Label htmlFor="bloodline">{t("incubation.bloodline")}</Label><Input id="bloodline" value={form.bloodline} onChange={(event) => updateForm("bloodline", event.target.value)} placeholder="If known" /></div>
+                </div>
+              </details>
+            </form>
+          </CardContent>
+        </Card>
+      )}
 
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-3">
@@ -228,10 +233,15 @@ export default function IncubationPage() {
               isManager={isManager}
               hatch={hatch[cycle.id]}
               setHatch={(value) => setHatch((current) => ({ ...current, [cycle.id]: value }))}
+              farmEntryDate={farmEntryDates[cycle.id] ?? cycle.actualHatchDate ?? todayIso()}
+              setFarmEntryDate={(value) => setFarmEntryDates((current) => ({ ...current, [cycle.id]: value }))}
               onComplete={() => completeCycle(cycle.id)}
               onCreateBatch={async () => {
                 try {
-                  await createBatch.mutateAsync(cycle.id);
+                  await createBatch.mutateAsync({
+                    id: cycle.id,
+                    body: { farmEntryDate: farmEntryDates[cycle.id] ?? cycle.actualHatchDate ?? todayIso() },
+                  });
                   toast.success("Batch created from hatch results");
                 } catch (error) {
                   fail(error);
@@ -259,6 +269,8 @@ function CycleCard({
   isManager,
   hatch,
   setHatch,
+  farmEntryDate,
+  setFarmEntryDate,
   onComplete,
   onCreateBatch,
   completePending,
@@ -268,6 +280,8 @@ function CycleCard({
   isManager: boolean;
   hatch?: HatchValue;
   setHatch: (value: HatchValue) => void;
+  farmEntryDate: string;
+  setFarmEntryDate: (value: string) => void;
   onComplete: () => void;
   onCreateBatch: () => void;
   completePending: boolean;
@@ -281,6 +295,13 @@ function CycleCard({
   const resultTotal = [hatchValue.hatchedCount, hatchValue.unhatchedCount, hatchValue.removedDamagedCount].reduce((total, value) => total + (value === "" ? 0 : Number(value)), 0);
   const hasAllResults = hatchValue.hatchedCount !== "" && hatchValue.unhatchedCount !== "" && hatchValue.removedDamagedCount !== "";
   const resultsReconcile = hasAllResults && resultTotal === cycle.eggsLoaded;
+  const hatchedPreview = hatchValue.hatchedCount === "" ? null : Number(hatchValue.hatchedCount);
+  const liveHatchRate = Number.isInteger(hatchedPreview) && (hatchedPreview ?? -1) >= 0
+    ? Math.round((hatchedPreview ?? 0) * 1000 / cycle.eggsLoaded) / 10
+    : null;
+  const displayedRate = cycle.hatchRatePercent == null
+    ? cycle.status === "CANCELLED" ? "—" : "Pending"
+    : `${cycle.hatchRatePercent}%`;
 
   return (
     <Card className="overflow-hidden shadow-none">
@@ -292,11 +313,13 @@ function CycleCard({
           </div>
           <Badge className={cn("shrink-0 rounded-full border-0", statusTone(cycle.status))}>{cycle.status}</Badge>
         </div>
-        <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
           <div className="rounded-xl bg-muted/50 p-2"><p className="text-lg font-bold tabular-nums">{cycle.eggsLoaded}</p><p className="text-xs text-muted-foreground">{t("incubation.eggs")}</p></div>
           <div className="rounded-xl bg-muted/50 p-2"><p className="text-lg font-bold tabular-nums">{cycle.hatchedCount ?? "—"}</p><p className="text-xs text-muted-foreground">{t("incubation.hatched")}</p></div>
-          <div className="rounded-xl bg-muted/50 p-2"><p className="text-lg font-bold tabular-nums">{cycle.hatchedCount == null ? "—" : `${cycle.hatchRatePercent}%`}</p><p className="text-xs text-muted-foreground">{t("incubation.hatchRate")}</p></div>
+          <div className="rounded-xl bg-muted/50 p-2"><p className="text-lg font-bold tabular-nums">{displayedRate}</p><p className="text-xs text-muted-foreground">{t("incubation.hatchRate")}</p></div>
+          <div className="rounded-xl bg-muted/50 p-2"><p className="text-lg font-bold tabular-nums">{cycle.durationDays == null ? "—" : `${cycle.durationDays}d`}</p><p className="text-xs text-muted-foreground">Incubation days</p></div>
         </div>
+        <p className="text-xs text-muted-foreground">Hatch rate = hatched eggs ÷ eggs loaded; it is not a fertility diagnosis.</p>
       </CardHeader>
       {isManager && isOpen && (
         <details open={showHatchForm} onToggle={(event) => setShowHatchForm(event.currentTarget.open)} className="border-t">
@@ -311,6 +334,10 @@ function CycleCard({
               <div className="space-y-1.5"><Label htmlFor={`unhatched-${cycle.id}`}>{t("incubation.unhatched")}</Label><Input id={`unhatched-${cycle.id}`} type="number" min="0" step="1" value={hatchValue.unhatchedCount} onChange={(event) => setValue("unhatchedCount", event.target.value)} placeholder="0" /></div>
               <div className="space-y-1.5 sm:col-span-2"><Label htmlFor={`removed-${cycle.id}`}>{t("incubation.removed")}</Label><Input id={`removed-${cycle.id}`} type="number" min="0" step="1" value={hatchValue.removedDamagedCount} onChange={(event) => setValue("removedDamagedCount", event.target.value)} placeholder="0" /></div>
             </div>
+            <div className="grid grid-cols-2 gap-2 rounded-xl border bg-muted/30 p-3 text-sm">
+              <div><p className="text-xs text-muted-foreground">Eggs accounted for</p><p className="font-semibold tabular-nums">{resultTotal} / {cycle.eggsLoaded}</p></div>
+              <div><p className="text-xs text-muted-foreground">Calculated hatch rate</p><p className="font-semibold tabular-nums">{liveHatchRate == null ? "Enter hatched count" : `${liveHatchRate}%`}</p></div>
+            </div>
             {hasAllResults && <p className={resultsReconcile ? "rounded-xl border border-success-border bg-success-muted px-3 py-2 text-sm font-semibold text-success" : "rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm font-semibold text-destructive"}>{resultTotal} of {cycle.eggsLoaded} eggs accounted for{resultsReconcile ? "" : " — check the counts"}.</p>}
             <Button onClick={onComplete} disabled={completePending || !resultsReconcile} className="w-full">
               {completePending ? <Loader2 className="animate-spin" /> : <Check />}
@@ -321,6 +348,18 @@ function CycleCard({
       )}
       {isManager && cycle.status === "COMPLETED" && !cycle.createdBatchId && (
         <CardContent className="border-t pt-4">
+          <div className="mb-3 space-y-1.5">
+            <Label htmlFor={`farm-entry-date-${cycle.id}`}>Farm entry date</Label>
+            <Input
+              id={`farm-entry-date-${cycle.id}`}
+              type="date"
+              min={cycle.actualHatchDate ?? undefined}
+              max={todayIso()}
+              value={farmEntryDate}
+              onChange={(event) => setFarmEntryDate(event.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">The flock may enter the farm on or after the actual hatch date.</p>
+          </div>
           <Button variant="outline" onClick={onCreateBatch} disabled={createBatchPending} className="w-full">
             {createBatchPending ? <Loader2 className="animate-spin" /> : <Plus />}
             {t("incubation.createBatch")}

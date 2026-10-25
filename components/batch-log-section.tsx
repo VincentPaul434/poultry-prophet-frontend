@@ -229,6 +229,9 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
   const [count, setCount] = useState("1");
   const [lossType, setLossType] = useState<(typeof LOSS_CATEGORIES)[number]["type"] | "">("");
   const [salePurpose, setSalePurpose] = useState<"BREEDING" | "OTHER" | "NOT_SPECIFIED" | "">("");
+  const [saleAmount, setSaleAmount] = useState("");
+  const [saleBuyer, setSaleBuyer] = useState("");
+  const [saleReference, setSaleReference] = useState("");
   const [details, setDetails] = useState("");
   const [date, setDate] = useState(todayIso());
   const [sexChoice, setSexChoice] = useState<SexChoice>("");
@@ -269,6 +272,9 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
     setFormError("");
     if (!date || isFutureDate(date)) { setFormError("Choose a valid date."); return; }
     if (!lossType) { setFormError("Choose a population-change category."); return; }
+    if (lossType === "SALE" && (!saleAmount || !Number.isFinite(Number(saleAmount)) || Number(saleAmount) <= 0)) {
+      setFormError("Enter the total amount received for this sale."); return;
+    }
     const n = Number(count);
     if (!Number.isInteger(n) || (isCountCorrection ? n === 0 : n < 1)) {
       setFormError(isCountCorrection ? "Enter a non-zero whole-number adjustment." : "Enter at least 1 bird."); return;
@@ -287,17 +293,24 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
       if (!addsPopulation && available !== undefined && Math.abs(n) > available) {
         setFormError(`Only ${available} ${sexChoice.toLowerCase()} bird${available === 1 ? "" : "s"} are currently recorded.`); return;
       }
+      const saleDetails = lossType === "SALE" ? {
+        amount: Number(saleAmount), currency: "PHP", buyer: saleBuyer.trim() || null, reference: saleReference.trim() || null,
+      } : null;
       try {
         await createEvent.mutateAsync({
           eventDate: date, eventType: lossType, title: selectedCategory?.label ?? lossType,
           affectedCount: isCountCorrection ? 0 : n, populationDelta: isCountCorrection ? n : null,
           sexAllocation, tags: lossType === "SALE" && salePurpose ? `SALE_PURPOSE:${salePurpose}` : null,
+          saleDetails,
           details: details || null,
         });
         toast.success(isCountCorrection ? "Population count corrected" : "Population event recorded"); onDone();
       } catch (err) { setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again."); }
       return;
     }
+    const saleDetails = lossType === "SALE" ? {
+      amount: Number(saleAmount), currency: "PHP", buyer: saleBuyer.trim() || null, reference: saleReference.trim() || null,
+    } : null;
     try {
       await createEvent.mutateAsync({
         eventDate: date,
@@ -306,6 +319,7 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
         affectedCount: isCountCorrection ? 0 : n,
         populationDelta: isCountCorrection ? n : null,
         tags: lossType === "SALE" && salePurpose ? `SALE_PURPOSE:${salePurpose}` : null,
+        saleDetails,
         details: details || null,
       });
       toast.success(isCountCorrection ? "Population count corrected" : "Population event recorded");
@@ -337,6 +351,15 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
             <option value="OTHER">Other purpose</option>
           </NativeSelect>
           <p className="text-xs text-muted-foreground">This describes the sale only. It does not change the batch stage.</p>
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold">Total amount received <span className="font-normal text-muted-foreground">(PHP) *</span></Label>
+            <Input type="number" min="0.01" step="0.01" value={saleAmount} onChange={(event) => setSaleAmount(event.target.value)} placeholder="e.g. 2500" className="h-11" />
+            <p className="text-xs text-muted-foreground">Enter the total for all birds in this sale, not a per-bird price. It creates one auditable income record.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="space-y-1.5"><Label className="text-sm font-semibold">Buyer <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={saleBuyer} onChange={(event) => setSaleBuyer(event.target.value)} placeholder="Buyer or customer" className="h-11" /></div>
+            <div className="space-y-1.5"><Label className="text-sm font-semibold">Reference <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={saleReference} onChange={(event) => setSaleReference(event.target.value)} placeholder="Receipt or note" className="h-11" /></div>
+          </div>
         </div>
       )}
       </div>
@@ -576,6 +599,7 @@ export function EventTimeline({ events }: { events: BatchEvent[] }) {
                       </div>
                     )}
                     {ev.details && <p className="text-xs text-muted-foreground">{ev.details}</p>}
+                    {ev.eventType === "SALE" && ev.saleAmount != null && <p className="text-xs font-semibold text-success">Sale proceeds: ₱{Number(ev.saleAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{ev.saleBuyer ? ` · Buyer: ${ev.saleBuyer}` : ""}{ev.saleReference ? ` · Ref: ${ev.saleReference}` : ""}</p>}
                     <div className="flex items-center gap-1.5 pt-0.5">
                       <span className="text-xs font-semibold text-primary/70">{ev.handlerName}</span>
                       <span className="text-xs text-muted-foreground">·</span>

@@ -64,6 +64,14 @@ export function useFarmAlerts(activeOnly = true, enabled = true) {
   });
 }
 
+export function useFarmAlertPage(params: { activeOnly: boolean; page: number; size: number; severity?: string; batchId?: number; sort?: string }, enabled = true) {
+  return useQuery({ queryKey: qk.alertsFarmPage(params), queryFn: () => alertApi.pageFarm(params), enabled, placeholderData: (previous) => previous, staleTime: 15_000 });
+}
+
+export function useFarmAlertSummary(enabled = true) {
+  return useQuery({ queryKey: qk.alertsFarmSummary, queryFn: () => alertApi.summary(), enabled, staleTime: 15_000, refetchInterval: 60_000 });
+}
+
 export function useAcknowledgeFarmAlert() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -73,6 +81,7 @@ export function useAcknowledgeFarmAlert() {
       // Acknowledging from the centre affects the farm feed, every per-batch
       // alert list, and batch overviews' active-alert sets.
       queryClient.invalidateQueries({ queryKey: qk.alertsFarmRoot });
+      queryClient.invalidateQueries({ queryKey: qk.alertsFarmSummary });
       queryClient.invalidateQueries({ queryKey: qk.batches.all });
     },
   });

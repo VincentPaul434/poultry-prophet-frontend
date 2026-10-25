@@ -6,7 +6,7 @@ import { shouldUseOfflineSnapshot } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 import { useOfflineSync } from "@/lib/offline-sync-provider";
 import { qk } from "@/lib/query-keys";
-import type { BatchEvent, CreateBatchEventRequest, EventType } from "@/lib/types";
+import type { BatchEvent, BatchEventReport, CreateBatchEventRequest, EventType } from "@/lib/types";
 import { getBatchEventSnapshot, listOutbox, saveBatchEventSnapshot } from "@/lib/offline-db";
 
 const eventTypes: EventType[] = [
@@ -37,8 +37,17 @@ function toQueuedEvent(operation: Awaited<ReturnType<typeof listOutbox>>[number]
     details: typeof payload.details === "string" ? payload.details : null,
     tags: typeof payload.tags === "string" ? payload.tags : null,
     createdAt: operation.queuedAt,
+    occurredAt: operation.occurredAt,
     operationId: operation.operationId,
     populationDelta: typeof payload.populationDelta === "number" ? payload.populationDelta : null,
+    saleAmount: typeof (payload.saleDetails as { amount?: unknown } | undefined)?.amount === "number"
+      ? (payload.saleDetails as { amount: number }).amount : null,
+    saleCurrency: typeof (payload.saleDetails as { currency?: unknown } | undefined)?.currency === "string"
+      ? (payload.saleDetails as { currency: string }).currency : null,
+    saleBuyer: typeof (payload.saleDetails as { buyer?: unknown } | undefined)?.buyer === "string"
+      ? (payload.saleDetails as { buyer: string }).buyer : null,
+    saleReference: typeof (payload.saleDetails as { reference?: unknown } | undefined)?.reference === "string"
+      ? (payload.saleDetails as { reference: string }).reference : null,
     syncStatus: operation.status,
   };
 }
@@ -84,6 +93,14 @@ export function useBatchEvents(batchId: number | string, limit = 30, enabled = t
   });
 }
 
+export function useBatchEventPage(batchId: number | string, params: Record<string, unknown>, enabled = true) {
+  return useQuery({ queryKey: qk.batches.eventsPage(batchId, params), queryFn: () => batchEventApi.page(batchId, params), enabled: enabled && batchId != null && batchId !== "", placeholderData: (previous) => previous });
+}
+
+export function useBatchEventReport(batchId: number | string, params: Record<string, unknown>, enabled = true) {
+  return useQuery<BatchEventReport>({ queryKey: qk.batches.eventsReport(batchId, params), queryFn: () => batchEventApi.report(batchId, params), enabled: enabled && batchId != null && batchId !== "", staleTime: 30_000 });
+}
+
 export function useCreateEvent(batchId: number | string) {
   const queryClient = useQueryClient();
   const { enqueue } = useOfflineSync();
@@ -93,8 +110,8 @@ export function useCreateEvent(batchId: number | string) {
       await enqueue({
         entityType: "BATCH_EVENT",
         batchId: Number(batchId),
-        occurredAt: `${body.eventDate ?? new Date().toISOString().slice(0, 10)}T12:00:00.000Z`,
-        payload: { ...body, operationId },
+        occurredAt: body.occurredAt ?? `${body.eventDate ?? new Date().toISOString().slice(0, 10)}T12:00:00.000Z`,
+        payload: { ...body, operationId, occurredAt: body.occurredAt ?? new Date().toISOString() },
       });
       return { operationId };
     },
@@ -104,6 +121,11 @@ export function useCreateEvent(batchId: number | string) {
       queryClient.invalidateQueries({ queryKey: qk.batches.all });
       queryClient.invalidateQueries({ queryKey: qk.batches.detail(batchId) });
       queryClient.invalidateQueries({ queryKey: qk.alertsFarmRoot });
+      queryClient.invalidateQueries({ queryKey: qk.finance });
+      queryClient.invalidateQueries({ queryKey: qk.financeAnalytics(Number(batchId)) });
+      queryClient.invalidateQueries({ queryKey: qk.operationsAnalytics() });
+      queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviewPreview(batchId) });
+      queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviews(batchId) });
     },
   });
 }

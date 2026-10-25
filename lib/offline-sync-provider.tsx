@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "./api-client";
-import { syncApi } from "./api";
+import { offlineApi, syncApi } from "./api";
 import { qk } from "./query-keys";
 import { useAuth } from "./auth-context";
 import {
@@ -11,6 +11,12 @@ import {
   commitSyncedSelectionSession,
   getDeviceId,
   getLastSuccessfulSync,
+  saveBatchEventSnapshot,
+  saveBatchOverviewSnapshot,
+  saveBatchSnapshots,
+  saveDashboardSnapshot,
+  saveFarmProductSnapshots,
+  saveOfflineBootstrap,
   listOutbox,
   onOfflineOutboxChanged,
   putOutboxOperation,
@@ -88,6 +94,7 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const runRef = useRef<Promise<void> | null>(null);
   const retryTimer = useRef<number | null>(null);
+  const bootstrapAtRef = useRef(0);
   const [snapshot, setSnapshot] = useState<SyncSnapshot>({
     connection: "CHECKING",
     pendingCount: 0,
@@ -117,6 +124,30 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
     }
   }, [isAuthenticated, user]);
 
+  const hydrateOfflineBootstrap = useCallback(async () => {
+    if (!user?.farmId || !isAuthenticated) return;
+    try {
+      const farmId = user.farmId;
+      const data = await offlineApi.bootstrap();
+      await saveOfflineBootstrap(user.userId, farmId, data);
+      await Promise.all([
+        saveBatchSnapshots(user.userId, farmId, data.batches),
+        saveDashboardSnapshot(user.userId, farmId, data.dashboard),
+        saveFarmProductSnapshots(user.userId, farmId, data.products),
+        ...(data.events ? Object.entries(data.events).map(([batchId, events]) =>
+          saveBatchEventSnapshot(user.userId, farmId, Number(batchId), events)) : []),
+        ...(data.overviews ? Object.entries(data.overviews).map(([, overview]) =>
+          saveBatchOverviewSnapshot(user.userId, farmId, overview)) : []),
+      ]);
+    } catch (error) {
+      // A bootstrap failure must not discard the previous working set. The
+      // outbox can still replay independently when the server is reachable.
+      if (error instanceof ApiError && error.status === 401) {
+        setSnapshot((current) => ({ ...current, connection: "AUTH_REQUIRED" }));
+      }
+    }
+  }, [isAuthenticated, user]);
+
   const syncNow = useCallback(async () => {
     if (runRef.current) return runRef.current;
     const run = (async () => {
@@ -125,16 +156,15 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
         await refresh();
         return;
       }
-      if (!navigator.onLine) {
-        setSnapshot((current) => ({ ...current, connection: "OFFLINE" }));
+      setSnapshot((current) => ({ ...current, connection: "CHECKING" }));
+      if (!(await serverReachable())) {
+        setSnapshot((current) => ({ ...current, connection: navigator.onLine ? "SERVER_UNREACHABLE" : "OFFLINE" }));
         await refresh();
         return;
       }
-      setSnapshot((current) => ({ ...current, connection: "CHECKING" }));
-      if (!(await serverReachable())) {
-        setSnapshot((current) => ({ ...current, connection: "SERVER_UNREACHABLE" }));
-        await refresh();
-        return;
+      if (Date.now() - bootstrapAtRef.current > 5 * 60_000) {
+        await hydrateOfflineBootstrap();
+        bootstrapAtRef.current = Date.now();
       }
 
       const blockedBatches = new Set<number>();
@@ -181,6 +211,7 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
               queryClient.invalidateQueries({ queryKey: qk.batches.all });
               queryClient.invalidateQueries({ queryKey: qk.inputs });
               queryClient.invalidateQueries({ queryKey: qk.alertsFarmRoot });
+              queryClient.invalidateQueries({ queryKey: qk.alertsFarmSummary });
               if (item.entityType === "SEX_COMPOSITION") {
                 queryClient.invalidateQueries({ queryKey: qk.batches.sexComposition(item.batchId) });
                 queryClient.invalidateQueries({ queryKey: qk.batches.detail(item.batchId) });
@@ -194,6 +225,15 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
                 queryClient.invalidateQueries({ queryKey: qk.operationsAnalytics() });
                 queryClient.invalidateQueries({ queryKey: qk.batches.detail(item.batchId) });
                 queryClient.invalidateQueries({ queryKey: qk.batches.dashboard() });
+                queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviewPreview(item.batchId) });
+                queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviews(item.batchId) });
+              }
+              if (item.entityType === "BATCH_EVENT") {
+                queryClient.invalidateQueries({ queryKey: qk.finance });
+                queryClient.invalidateQueries({ queryKey: qk.financeAnalytics(item.batchId) });
+                queryClient.invalidateQueries({ queryKey: qk.operationsAnalytics() });
+                queryClient.invalidateQueries({ queryKey: qk.batches.detail(item.batchId) });
+                queryClient.invalidateQueries({ queryKey: qk.batches.events(item.batchId) });
                 queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviewPreview(item.batchId) });
                 queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviews(item.batchId) });
               }
@@ -233,7 +273,7 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
     })();
     runRef.current = run;
     try { await run; } finally { runRef.current = null; }
-  }, [isAuthenticated, isLoading, queryClient, refresh, user]);
+  }, [hydrateOfflineBootstrap, isAuthenticated, isLoading, queryClient, refresh, user]);
 
   const scheduleSync = useCallback((delay = 250) => {
     if (retryTimer.current) window.clearTimeout(retryTimer.current);

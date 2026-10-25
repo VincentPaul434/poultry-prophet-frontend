@@ -17,21 +17,28 @@ export const qk = {
   incubation: ["incubation-cycles"] as const,
   inputs: ["farm-inputs"] as const,
   farmInputs: (batchId?: number, cycleId?: number) => ["farm-inputs", batchId, cycleId] as const,
+  farmInputPage: (filters: Record<string, unknown>) => ["farm-inputs", "page", filters] as const,
   inventory: ["inventory"] as const,
   inventoryProducts: (includeInactive = false) => ["inventory", "products", { includeInactive }] as const,
   inventoryMovements: (params?: Record<string, unknown>) => ["inventory", "movements", params ?? {}] as const,
   inventoryPending: ["inventory", "pending-review"] as const,
   tasks: ["handler-tasks"] as const,
-  taskList: (mine = false) => ["handler-tasks", { mine }] as const,
+  taskPage: (filters: Record<string, unknown>) => ["handler-tasks", "page", filters] as const,
+  taskSummary: (filters: Record<string, unknown> = {}) => ["handler-tasks", "summary", filters] as const,
+  handlerTaskQueue: (bucket: string, size = 10) => ["handler-tasks", "queue", bucket, size] as const,
+  handlerTaskQueueSummary: ["handler-tasks", "queue-summary"] as const,
   vaccinationPrograms: ["vaccination-programs"] as const,
   finance: ["finance"] as const,
-  financeAnalytics: (batchId?: number, start?: string, end?: string) => ["finance", "analytics", { batchId, start, end }] as const,
+  financePage: (filters: Record<string, unknown>) => ["finance", "page", filters] as const,
+  financeAnalytics: (batchId?: number, start?: string, end?: string, type?: string, farmWide?: boolean, category?: string, sourceType?: string, status?: string) => ["finance", "analytics", { batchId, start, end, type, farmWide, category, sourceType, status }] as const,
   operationsAnalytics: (params?: Record<string, unknown>) => ["analytics", "operations", params ?? {}] as const,
   batchComparison: (params?: Record<string, unknown>) => ["analytics", "batch-comparison", params ?? {}] as const,
   testLab: ["test-lab"] as const,
   // Farm-wide alert feed (notifications centre), distinct from per-batch alerts.
   alertsFarmRoot: ["alerts", "farm"] as const,
   alertsFarm: (activeOnly?: boolean) => ["alerts", "farm", { activeOnly }] as const,
+  alertsFarmPage: (params: Record<string, unknown>) => ["alerts", "farm-page", params] as const,
+  alertsFarmSummary: ["alerts", "farm-summary"] as const,
   testLabStatus: ["test-lab", "status"] as const,
 
   batches: {
@@ -73,7 +80,12 @@ export const qk = {
       [...qk.batches.detail(batchId), "birds", String(birdId), "ranging"] as const,
     events: (batchId: number | string, limit?: number) =>
       [...qk.batches.detail(batchId), "events", { limit }] as const,
+    eventsPage: (batchId: number | string, params: Record<string, unknown>) =>
+      [...qk.batches.detail(batchId), "events-page", params] as const,
+    eventsReport: (batchId: number | string, params: Record<string, unknown>) =>
+      [...qk.batches.detail(batchId), "events-report", params] as const,
     sexComposition: (batchId: number | string) => [...qk.batches.detail(batchId), "sex-composition"] as const,
+    sexCompositionContext: (batchId: number | string, observedOn?: string) => [...qk.batches.detail(batchId), "sex-composition-context", observedOn ?? "today"] as const,
     vaccinationPlan: (batchId: number | string) => [...qk.batches.detail(batchId), "vaccination-plan"] as const,
   },
 } as const;

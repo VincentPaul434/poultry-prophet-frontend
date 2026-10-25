@@ -3,15 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Bird, ClipboardList, Egg, LayoutDashboard, LineChart, LogOut, MoreHorizontal, Package, Plus, Settings, WalletCards } from "lucide-react";
+import { Bell, Bird, ClipboardList, Egg, LayoutDashboard, LineChart, LogOut, MoreHorizontal, Package, Plus, Settings, UserCircle2, WalletCards } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useBatches } from "@/hooks/use-batches";
-import { useFarmAlerts } from "@/hooks/use-analytics";
+import { useFarmAlerts, useFarmAlertSummary } from "@/hooks/use-analytics";
 import { useFarmRealtime } from "@/hooks/use-farm-realtime";
 import { useFarm } from "@/hooks/use-farm";
 import { useReleaseVersion } from "@/hooks/use-version";
-import { useTestLabStatus } from "@/hooks/use-test-lab";
 import { getFarmDisplayName } from "@/lib/farm-display";
 import { getLoggingHref, LOGGING_ORIGINS } from "@/lib/logging-navigation";
 import { cn } from "@/lib/utils";
@@ -63,7 +62,7 @@ const NAV: NavItem[] = [
   { href: "/alerts", labelKey: "nav.alerts", icon: Bell },
   { href: "/incubation", labelKey: "nav.incubation", icon: Egg },
   { href: "/tasks", labelKey: "nav.tasks", icon: ClipboardList },
-  { href: "/inputs", labelKey: "nav.products", icon: Package },
+  { href: "/inputs", labelKey: "nav.products", icon: Package, managerOnly: true },
   { href: "/operations", labelKey: "nav.analytics", icon: LineChart, managerOnly: true },
   { href: "/finance", labelKey: "nav.finance", icon: WalletCards, managerOnly: true },
   { href: "/settings", labelKey: "nav.settings", icon: Settings },
@@ -86,12 +85,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { t } = useLocale();
   useFarmRealtime();
   const { data: activeAlerts } = useFarmAlerts(true, !!user);
+  const { data: alertSummary } = useFarmAlertSummary(!!user);
   const previousAlerts = useRef<{ farmId: number | null; ids: Set<number> } | null>(null);
   const farm = useFarm(!!user && user.farmId != null);
   const release = useReleaseVersion(!!user);
-  const testLab = useTestLabStatus(user?.role === "MANAGER");
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
-  const unread = activeAlerts?.length ?? 0;
+  const [profileOpen, setProfileOpen] = useState(false);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+  const unread = alertSummary?.activeTotal ?? activeAlerts?.length ?? 0;
 
   useEffect(() => {
     if (!activeAlerts || user?.farmId == null) return;
@@ -123,6 +124,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, [activeAlerts, user?.farmId, user?.role]);
 
+  useEffect(() => {
+    contentScrollRef.current?.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+  }, [pathname]);
+
   const farmName = getFarmDisplayName({
     farm: farm.data,
     farmId: user?.farmId,
@@ -131,14 +140,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const frontendVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0-validation";
   const frontendEnvironment = process.env.NEXT_PUBLIC_APP_ENVIRONMENT ?? "local";
   const backendEnvironment = release.data?.environment ?? frontendEnvironment;
-  const isValidation = backendEnvironment !== "production";
   const compatibilityMismatch = Boolean(
     release.data?.compatibleFrontendVersion &&
       release.data.compatibleFrontendVersion !== frontendVersion
   );
 
   return (
-    <SidebarProvider className="md:h-screen md:min-h-0">
+    <SidebarProvider className="h-dvh min-h-0 overflow-hidden md:h-screen">
       <Sidebar>
         <SidebarHeader className="border-b border-sidebar-border px-5 py-5">
           <div className="flex flex-col items-center text-center">
@@ -247,65 +255,75 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </DialogContent>
       </Dialog>
 
-      <SidebarInset className="min-h-0 min-w-0">
-        <header className="relative flex min-h-16 shrink-0 items-center justify-center border-b bg-card px-4 py-2 md:hidden">
-          <SidebarTrigger className="absolute left-4 top-1/2 size-11 -translate-y-1/2" />
-          <div className="flex min-w-0 items-center gap-3 pl-14 pr-16">
+      <HandlerProfileSheet
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+        user={user}
+        onSignOut={() => {
+          setProfileOpen(false);
+          setLogoutDialogOpen(true);
+        }}
+      />
+
+      <SidebarInset className="flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden">
+        <header className="relative flex min-h-[4.5rem] shrink-0 items-center justify-center border-b bg-card px-4 py-2 md:hidden">
+          {user?.role === "MANAGER" ? (
+            <SidebarTrigger className="absolute left-4 top-1/2 size-11 -translate-y-1/2" />
+          ) : (
+            <div className="absolute left-2 top-1/2 -translate-y-1/2">
+              <SyncStatusIndicator compact />
+            </div>
+          )}
+          <div className={cn("flex min-w-0 items-center gap-3", user?.role === "MANAGER" ? "pl-14 pr-16" : "pl-14 pr-14")}>
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15">
               <Bird className="size-5 text-primary" />
             </div>
             <div className="min-w-0">
+              <p className="truncate text-sm font-semibold tracking-tight">Poultry Prophet</p>
               <p className="truncate text-base font-bold tracking-tight">{farmName}</p>
               <p className="truncate text-xs text-muted-foreground">
                 {user?.role === "MANAGER" ? t("role.manager") : t("role.handler")}
               </p>
             </div>
           </div>
-          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-            <SyncStatusIndicator />
-          </div>
+          {user?.role === "MANAGER" ? (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <SyncStatusIndicator />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setProfileOpen(true)}
+              className="absolute right-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+              aria-label="Open profile menu"
+            >
+              <Avatar className="size-9">
+                <AvatarFallback className="bg-primary/15 text-xs font-bold text-primary">
+                  {initials(user?.fullName)}
+                </AvatarFallback>
+              </Avatar>
+            </button>
+          )}
         </header>
 
-        <main className="safe-pb min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10">
-          <NetworkStatusBanner />
-          <div className="mb-4 hidden justify-end md:flex">
-            <SyncStatusIndicator />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="shrink-0 px-4 pt-3 sm:px-6 lg:px-8 xl:px-10">
+            <NetworkStatusBanner />
+            <div className="mb-4 hidden justify-end md:flex"><SyncStatusIndicator /></div>
+            {compatibilityMismatch && (
+              <div className="mb-6 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
+                Frontend/backend version mismatch. Frontend {frontendVersion}; backend expects {" "}{release.data?.compatibleFrontendVersion}.
+              </div>
+            )}
           </div>
-          {isValidation && (
-            <div
-              className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-warning-border bg-warning-muted px-3 py-2 text-xs text-warning-ink dark:border-warning-border dark:bg-warning-muted dark:text-warning-ink"
-              role="status"
-            >
-              <span className="font-semibold">{t("status.validation")} — {t("status.synthetic")}</span>
-              {testLab.data?.enabled && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  render={<Link href="/test-lab" />}
-                  className="h-8 shrink-0 border-warning-border bg-background/70 text-xs text-warning-ink hover:bg-background"
-                >
-                  Test Lab
-                </Button>
-              )}
-            </div>
-          )}
-          {compatibilityMismatch && (
-            <div
-              className="mb-6 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-              role="alert"
-            >
-              Frontend/backend version mismatch. Frontend {frontendVersion}; backend expects
-              {" "}{release.data?.compatibleFrontendVersion}.
-            </div>
-          )}
-          {children}
-          <footer className="mt-10 border-t pt-4 text-xs text-muted-foreground">
-            Poultry Prophet {release.data?.version ?? frontendVersion} · {backendEnvironment}
-            {release.data?.commitSha && release.data.commitSha !== "unknown"
-              ? ` · ${release.data.commitSha.slice(0, 7)}`
-              : ""}
-          </footer>
-        </main>
+          <div ref={contentScrollRef} className="safe-pb min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10">
+            {children}
+            <footer className="mt-10 border-t pt-4 text-xs text-muted-foreground">
+              Poultry Prophet {release.data?.version ?? frontendVersion} · {backendEnvironment}
+              {release.data?.commitSha && release.data.commitSha !== "unknown" ? ` · ${release.data.commitSha.slice(0, 7)}` : ""}
+            </footer>
+          </div>
+        </div>
         <MobileBottomNav isManager={user?.role === "MANAGER"} unread={unread} />
       </SidebarInset>
     </SidebarProvider>
@@ -341,6 +359,7 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
         { href: "/dashboard", labelKey: "nav.home", icon: LayoutDashboard },
         { href: "/tasks", labelKey: "nav.tasks", icon: ClipboardList },
         { href: "/incubation", labelKey: "nav.incubation", icon: Egg },
+        { href: "/alerts", labelKey: "nav.alerts", icon: Bell },
       ];
 
   const activeBatches = (batches ?? []).filter((batch) => batch.status === "ACTIVE");
@@ -366,17 +385,19 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
             </button>
           )}
 
-          {items.slice(2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} />)}
+          {items.slice(2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
 
-          <button
-            type="button"
-            onClick={toggleSidebar}
-            className="flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
-            aria-label="Open more navigation options"
-          >
-            <MoreHorizontal className="size-5" aria-hidden="true" />
-            <span className="text-xs font-semibold">{t("nav.more")}</span>
-          </button>
+          {isManager ? (
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              className="flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+              aria-label="Open more navigation options"
+            >
+              <MoreHorizontal className="size-5" aria-hidden="true" />
+              <span className="text-xs font-semibold">{t("nav.more")}</span>
+            </button>
+          ) : null}
         </div>
       </nav>
 
@@ -422,6 +443,60 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
         </Sheet>
       )}
     </>
+  );
+}
+
+function HandlerProfileSheet({
+  open,
+  onOpenChange,
+  user,
+  onSignOut,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  user: ReturnType<typeof useAuth>["user"];
+  onSignOut: () => void;
+}) {
+  if (!user || user.role !== "HANDLER") return null;
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-[min(88vw,22rem)] p-0">
+        <SheetHeader className="border-b px-5 py-6 pr-12">
+          <div className="flex items-center gap-3">
+            <Avatar className="size-11 ring-2 ring-primary/20">
+              <AvatarFallback className="bg-primary/15 font-bold text-primary">{initials(user.fullName)}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <SheetTitle className="truncate">{user.fullName}</SheetTitle>
+              <SheetDescription>Handler · {user.email}</SheetDescription>
+            </div>
+          </div>
+        </SheetHeader>
+        <div className="space-y-2 p-4">
+          <Link
+            href="/settings/account"
+            onClick={() => onOpenChange(false)}
+            className="flex min-h-12 items-center gap-3 rounded-xl border px-3 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+          >
+            <UserCircle2 className="size-5 text-primary" aria-hidden="true" />
+            <span>My profile</span>
+          </Link>
+          <Link
+            href="/settings"
+            onClick={() => onOpenChange(false)}
+            className="flex min-h-12 items-center gap-3 rounded-xl border px-3 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+          >
+            <Settings className="size-5 text-primary" aria-hidden="true" />
+            <span>Settings</span>
+          </Link>
+          <Button type="button" variant="destructive" className="mt-4 min-h-12 w-full" onClick={onSignOut}>
+            <LogOut aria-hidden="true" />
+            Sign out
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

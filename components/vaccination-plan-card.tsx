@@ -72,7 +72,11 @@ export function VaccinationPlanCard({ batch, canEditSchedule }: { batch: Batch; 
     const normalized = steps.map((step) => ({ ...step, ageNumber: Number(step.age) }));
     if (normalized.some((step) => !step.vaccineName.trim() || !Number.isInteger(step.ageNumber) || step.ageNumber < 0)) return setError("Complete the vaccine name and age for every step.");
     try {
-      const created = await create.mutateAsync({ name: name.trim(), items: normalized.map((step) => ({ vaccineName: step.vaccineName.trim(), ageOffsetValue: step.ageNumber, ageOffsetUnit: step.unit, reminderLeadDays: 1 })) });
+      const created = await create.mutateAsync({ body: { name: name.trim(), items: normalized.map((step) => ({ vaccineName: step.vaccineName.trim(), ageOffsetValue: step.ageNumber, ageOffsetUnit: step.unit, reminderLeadDays: 1 })) }, batchId: batch.id, replace: hasPlan });
+      if ("queued" in created) {
+        toast.success("Schedule saved on this phone; it will sync when online.");
+        setShowCreate(false); setName(""); setSteps(initialSteps()); return;
+      }
       if (!(hasPlan ? await replaceSelected(created.id) : await assignSelected(created.id))) return;
       setShowCreate(false); setName(""); setSteps(initialSteps());
     } catch (err) { setError(err instanceof ApiError ? err.message : "Could not create the schedule."); }

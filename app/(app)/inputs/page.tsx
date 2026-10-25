@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Loader2, Package, Save, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight, Loader2, Package, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useBatches } from "@/hooks/use-batches";
-import { useCreateFarmInput, useFarmInputs } from "@/hooks/use-operations";
+import { useCreateFarmInput, useFarmInputPage } from "@/hooks/use-operations";
 import { useLocalDraft } from "@/hooks/use-local-draft";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
@@ -24,12 +25,29 @@ const UNITS = ["packs", "sachets", "kg", "liters", "bottles", "Other"];
 function localDateTimeNow() { const now = new Date(); const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 16); }
 
 export default function InputsPage() {
+  const router = useRouter();
+  const { user, isManager, isLoading: authLoading } = useAuth();
+  useEffect(() => {
+    if (!authLoading && user && !isManager) router.replace("/dashboard");
+  }, [authLoading, isManager, router, user]);
+
+  if (authLoading || !user) return null;
+  if (!isManager) {
+    return <div className="mx-auto w-full max-w-3xl rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">Product records are available inside each batch.</div>;
+  }
+
+  return <ManagerInputsPage />;
+}
+
+function ManagerInputsPage() {
   const { user } = useAuth();
   const { data: batches } = useBatches();
-  const { data: logs, isLoading } = useFarmInputs();
   const create = useCreateFarmInput();
   const [filterBatch, setFilterBatch] = useState("all");
   const [filterType, setFilterType] = useState<"ALL" | InputProductType>("ALL");
+  const [historyPage, setHistoryPage] = useState(0);
+  const { data: logPage, isLoading } = useFarmInputPage({ page: historyPage, size: 20, batchId: filterBatch !== "all" && filterBatch !== "farm" ? Number(filterBatch) : undefined, farmWide: filterBatch === "farm", productType: filterType === "ALL" ? undefined : filterType });
+  const logs = logPage?.items ?? [];
   const [formError, setFormError] = useState("");
   const [lastSaved, setLastSaved] = useState("");
   const [activeTab, setActiveTab] = useState<"record" | "history">("history");
@@ -39,7 +57,7 @@ export default function InputsPage() {
   const { batchId, productType, brandName, productName, quantity, unit, purpose, notes, recordedAt } = draft.value;
   const batchNames = useMemo(() => new Map((batches ?? []).map((batch) => [batch.id, batch.name])), [batches]);
   const recentProducts = useMemo(() => { const seen = new Set<string>(); return (logs ?? []).filter((log) => { const key = `${log.productType}:${log.brandName}:${log.productName ?? ""}`; if (seen.has(key) || log.productType !== productType) return false; seen.add(key); return true; }).slice(0, 3); }, [logs, productType]);
-  const visibleLogs = (logs ?? []).filter((log) => { const batchMatches = filterBatch === "all" || (filterBatch === "farm" && log.batchId == null) || String(log.batchId) === filterBatch; return batchMatches && (filterType === "ALL" || log.productType === filterType); });
+  const visibleLogs = logs;
 
   function applyRecentProduct(log: FarmInputLog) { draft.setValue((current) => ({ ...current, productType: log.productType, brandName: log.brandName, productName: log.productName ?? "", unit: log.unit ?? "", purpose: log.purpose ?? "" })); }
   async function submit(event: React.FormEvent) {
@@ -72,7 +90,7 @@ export default function InputsPage() {
           </form>
         </CardContent></Card>
       ) : (
-        <section className="space-y-3"><div className="flex flex-col gap-2 sm:flex-row"><NativeSelect aria-label="Filter product records by batch" value={filterBatch} onChange={(e) => setFilterBatch(e.target.value)}><option value="all">All batches</option><option value="farm">Farm-wide / no batch</option>{batches?.map((batch) => <option key={batch.id} value={batch.id}>{batch.name}</option>)}</NativeSelect><NativeSelect aria-label="Filter product records by type" value={filterType} onChange={(e) => setFilterType(e.target.value as typeof filterType)}><option value="ALL">All product types</option>{PRODUCT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</NativeSelect></div>{isLoading && <p className="text-sm text-muted-foreground">Loading records…</p>}<div className="grid gap-2 sm:grid-cols-2">{visibleLogs.map((log) => <Card key={log.id} className="shadow-none"><CardContent className="p-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{log.productType} · {log.brandName}</p><p className="mt-1 text-xs text-muted-foreground">{log.batchId == null ? "Farm-wide" : batchNames.get(log.batchId) ?? `Batch ${log.batchId}`} · {new Date(log.recordedAt).toLocaleDateString()}</p><p className="mt-1 text-xs text-muted-foreground">{log.quantity != null ? `${log.quantity} ${log.unit ?? "units"}` : "Quantity not measured"}{log.purpose ? ` · ${log.purpose}` : ""}{log.calculatedCost != null ? ` · ₱${Number(log.calculatedCost).toLocaleString()}` : log.farmProductId ? " · Cost unavailable" : ""}</p></div><Badge variant="secondary">Recorded</Badge></div></CardContent></Card>)}</div>{!isLoading && visibleLogs.length === 0 && <Card className="border-dashed shadow-none"><CardContent className="p-8 text-center text-sm text-muted-foreground">No product records match this view.</CardContent></Card>}</section>
+        <section className="space-y-3"><div className="flex flex-col gap-2 sm:flex-row"><NativeSelect aria-label="Filter product records by batch" value={filterBatch} onChange={(e) => { setFilterBatch(e.target.value); setHistoryPage(0); }}><option value="all">All batches</option><option value="farm">Farm-wide / no batch</option>{batches?.map((batch) => <option key={batch.id} value={batch.id}>{batch.name}</option>)}</NativeSelect><NativeSelect aria-label="Filter product records by type" value={filterType} onChange={(e) => { setFilterType(e.target.value as typeof filterType); setHistoryPage(0); }}><option value="ALL">All product types</option>{PRODUCT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</NativeSelect></div>{isLoading && <p className="text-sm text-muted-foreground">Loading records…</p>}<div className="grid gap-2 sm:grid-cols-2">{visibleLogs.map((log) => <Card key={log.id} className="shadow-none"><CardContent className="p-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-semibold">{log.productType} · {log.brandName}</p><p className="mt-1 text-xs text-muted-foreground">{log.batchId == null ? "Farm-wide" : batchNames.get(log.batchId) ?? `Batch ${log.batchId}`} · {new Date(log.recordedAt).toLocaleDateString()}</p><p className="mt-1 text-xs text-muted-foreground">{log.quantity != null ? `${log.quantity} ${log.unit ?? "units"}` : "Quantity not measured"}{log.purpose ? ` · ${log.purpose}` : ""}{log.calculatedCost != null ? ` · ₱${Number(log.calculatedCost).toLocaleString()}` : log.farmProductId ? " · Cost unavailable" : ""}</p></div><Badge variant="secondary">Recorded</Badge></div></CardContent></Card>)}</div>{!isLoading && visibleLogs.length === 0 && <Card className="border-dashed shadow-none"><CardContent className="p-8 text-center text-sm text-muted-foreground">No product records match this view.</CardContent></Card>}{!isLoading && logPage && logPage.totalPages > 1 && <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm text-muted-foreground"><span>{logPage.totalItems} records</span><div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!logPage.hasPrevious} onClick={() => setHistoryPage((current) => Math.max(0, current - 1))}><ChevronLeft className="size-4" />Previous</Button><span>Page {logPage.page + 1} of {logPage.totalPages}</span><Button type="button" variant="outline" size="sm" disabled={!logPage.hasNext} onClick={() => setHistoryPage((current) => current + 1)}>Next<ChevronRight className="size-4" /></Button></div></div>}</section>
       )}
     </div>
   );

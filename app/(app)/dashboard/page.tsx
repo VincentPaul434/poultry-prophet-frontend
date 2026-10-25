@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useArchivedBatches, useCreateBatch, useDashboardBatches, useRestoreBatch } from "@/hooks/use-batches";
-import { useTasks } from "@/hooks/use-operations";
+import { useTaskPage, useTaskSummary } from "@/hooks/use-operations";
 import { useFarm } from "@/hooks/use-farm";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
@@ -53,7 +53,7 @@ import {
 
 function daysElapsed(startDate: string) {
   return Math.max(
-    1,
+    0,
     Math.round((Date.now() - new Date(startDate).getTime()) / 86_400_000)
   );
 }
@@ -84,7 +84,8 @@ export default function DashboardPage() {
   const { t } = useLocale();
   const { data: dashboardItems, isLoading, isError, error } = useDashboardBatches();
   const { data: archivedBatches } = useArchivedBatches(isManager);
-  const { data: tasks } = useTasks(!isManager);
+  const { data: taskSummary } = useTaskSummary();
+  const { data: taskPage } = useTaskPage({ page: 0, size: 2, view: "OPEN", dueBucket: "ALL" });
   const farm = useFarm(!!user && user.farmId != null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [search, setSearch] = useState("");
@@ -104,7 +105,7 @@ export default function DashboardPage() {
     farmId: user?.farmId,
     isError: farm.isError,
   });
-  const openTasks = (tasks ?? []).filter((task) => task.status !== "COMPLETED" && task.status !== "CANCELLED");
+  const openTasks = taskPage?.items ?? [];
   const activeBatchCount = (dashboardItems ?? []).filter(({ batch }) => batch.status === "ACTIVE").length;
   const controlsVisible = showBatchControls || Boolean(search) || stageFilter !== "all";
 
@@ -114,7 +115,7 @@ export default function DashboardPage() {
       <PendingInvitesBanner />
 
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="sticky top-0 z-30 isolate -mx-4 flex flex-col gap-4 border-b bg-background px-4 py-3 shadow-[0_8px_18px_rgb(0_0_0_/_0.05)] sm:-mx-6 sm:px-6 md:static md:mx-0 md:border-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none lg:-mx-8 lg:px-8 xl:-mx-10 xl:px-10">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{t("dashboard.pageTitle")}</h1>
           <p className="text-sm font-medium text-muted-foreground">{farmName}</p>
@@ -127,14 +128,14 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {!isManager && openTasks.length > 0 && (
+      {!isManager && (taskSummary?.open ?? 0) > 0 && (
         <Card className="border-primary/20 bg-primary/5 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between gap-3 p-4 pb-3">
             <div>
               <CardTitle className="text-base">{t("dashboard.todayTasks")}</CardTitle>
               <CardDescription>{t("dashboard.todayTasksHint")}</CardDescription>
             </div>
-            <Badge variant="secondary">{openTasks.length} {t("dashboard.openTasks")}</Badge>
+            <Badge variant="secondary">{taskSummary?.open ?? 0} {t("dashboard.openTasks")}</Badge>
           </CardHeader>
           <CardContent className="space-y-2 p-4 pt-0">
             {openTasks.slice(0, 2).map((task) => (
@@ -161,7 +162,7 @@ export default function DashboardPage() {
                 )}
               </Link>
             ))}
-            {openTasks.length > 2 && (
+            {(taskSummary?.open ?? 0) > 2 && (
               <Link href="/tasks" className="inline-flex min-h-11 items-center text-sm font-semibold text-primary hover:underline">
                 {t("dashboard.viewAllTasks")}
               </Link>
@@ -301,7 +302,7 @@ function BatchCard({
 }) {
   const { t } = useLocale();
   const { batch, summary } = item;
-  const days = daysElapsed(batch.startDate);
+  const days = daysElapsed(batch.hatchDate ?? batch.startDate);
   const stageBar = stageColor(batch.stageName);
   const stageLabel = stageDisplayName(batch.stageName);
 
@@ -384,7 +385,8 @@ function CreateBatchDialog({ variant }: { variant?: "inline" }) {
 
   const [name, setName] = useState("");
   const [initialPopulation, setInitialPopulation] = useState("");
-  const [startDate, setStartDate] = useState(todayIso());
+  const [hatchDate, setHatchDate] = useState(todayIso());
+  const [farmEntryDate, setFarmEntryDate] = useState(todayIso());
   const [bloodline, setBloodline] = useState("");
   const [source, setSource] = useState("");
 
@@ -403,15 +405,21 @@ function CreateBatchDialog({ variant }: { variant?: "inline" }) {
       toast.error(t("dashboard.populationRequired"));
       return;
     }
-    if (!startDate || isFutureDate(startDate)) {
-      toast.error(t("dashboard.startDateRequired"));
+    if (!hatchDate || isFutureDate(hatchDate) || !farmEntryDate || isFutureDate(farmEntryDate)) {
+      toast.error("Choose both dates; neither can be in the future.");
+      return;
+    }
+    if (farmEntryDate < hatchDate) {
+      toast.error("Farm entry date cannot be before the hatch date.");
       return;
     }
     try {
       await createBatch.mutateAsync({
         name: name.trim(),
         initialPopulation: population,
-        startDate,
+        startDate: farmEntryDate,
+        hatchDate,
+        farmEntryDate,
         bloodline: bloodline || null,
         source: source || null,
       });
@@ -475,15 +483,27 @@ function CreateBatchDialog({ variant }: { variant?: "inline" }) {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="start" className="font-semibold">{t("dashboard.startDate")}</Label>
+                <Label htmlFor="hatch-date" className="font-semibold">Hatch date</Label>
                 <Input
-                  id="start"
+                  id="hatch-date"
                   type="date"
                   required
                   max={todayIso()}
                   className="h-11 rounded-xl"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
+                  value={hatchDate}
+                  onChange={(e) => setHatchDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="farm-entry-date" className="font-semibold">Farm entry date</Label>
+                <Input
+                  id="farm-entry-date"
+                  type="date"
+                  required
+                  max={todayIso()}
+                  className="h-11 rounded-xl"
+                  value={farmEntryDate}
+                  onChange={(e) => setFarmEntryDate(e.target.value)}
                 />
               </div>
             </div>

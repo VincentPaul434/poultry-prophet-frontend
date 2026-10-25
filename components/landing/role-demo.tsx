@@ -1,23 +1,29 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, ClipboardCheck, ClipboardPenLine, CloudCheck, FileText, WalletCards } from "lucide-react";
+import { BarChart3, Check, ClipboardPenLine, CloudCheck, History, Syringe } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const roles = {
   handler: {
     label: "Handler",
-    title: "Mabilis na pag-record sa batch.",
-    description: "Malalaki at direct ang actions para sa araw-araw na trabaho.",
-    items: ["Open batch", "Record what happened", "Check assigned tasks", "Confirm synchronization"],
+    eyebrow: "Trabaho ngayon",
+    title: "Tatlong gawain na lang.",
+    subtitle: "Piliin. Itala. Markahan na tapos.",
     icon: ClipboardPenLine,
+    stats: [["Ngayon", "3"], ["Late", "1"], ["Na-sync", "12"]],
+    actions: ["Pakainin ang Batch 012", "Ibigay ang Newcastle vaccine", "Suriin ang inumin"],
+    accent: "bg-[#f4bf55]",
   },
   manager: {
     label: "Manager",
-    title: "Mas malinaw na review bago magdesisyon.",
-    description: "Makikita ang importanteng history nang hindi naghahanap sa maraming record.",
-    items: ["Review batch history", "Check population and health records", "Review products and finances", "Open the batch report"],
-    icon: ClipboardCheck,
+    eyebrow: "Farm overview",
+    title: "Alam kung ano ang dapat tingnan.",
+    subtitle: "Batch, gastos, health, at alerts—magkakaugnay.",
+    icon: BarChart3,
+    stats: [["Buhay", "420"], ["Alerts", "2"], ["Net", "₱19k"]],
+    actions: ["Review health concern", "Suriin ang batch cost", "Buksan ang weekly report"],
+    accent: "bg-[#a9d6b1]",
   },
 } as const;
 
@@ -27,28 +33,74 @@ export function RoleDemo() {
   const Icon = active.icon;
 
   return (
-    <section className="border-y border-border bg-muted/40 py-16 sm:py-20">
-      <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 sm:px-6 md:grid-cols-[0.85fr_1.15fr] md:items-center lg:px-8">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Para sa farm team</p>
-          <h2 className="mt-3 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">Iba ang trabaho, iisa ang record.</h2>
-          <p className="mt-3 max-w-lg text-base leading-7 text-muted-foreground">Handler ang nagre-record. Manager ang nagre-review. Pareho silang nakakakita ng tamang farm context.</p>
-          <div className="mt-6 inline-flex rounded-2xl border border-border bg-card p-1" role="group" aria-label="Choose a role to preview">
+    <section id="roles" className="scroll-mt-24 px-3 py-5 sm:px-5" aria-labelledby="roles-heading">
+      <div className="mx-auto grid max-w-7xl overflow-hidden rounded-[2rem] bg-[#eddfc9] lg:grid-cols-[0.75fr_1.25fr] sm:rounded-[2.75rem]">
+        <div className="flex flex-col justify-center p-7 sm:p-10 lg:p-14">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-[#9b6811]">Dalawang role</p>
+          <h2 id="roles-heading" className="mt-4 text-3xl font-black leading-tight tracking-[-0.04em] sm:text-5xl">
+            Iba ang trabaho.
+            <span className="block text-[#cc7d2e]">Iisa ang record.</span>
+          </h2>
+          <p className="mt-5 max-w-md text-base font-semibold leading-7 text-[#617267]">
+            Simple para sa handler. Kumpleto para sa manager.
+          </p>
+
+          <div className="mt-7 inline-flex w-fit rounded-full border border-[#173d2a]/10 bg-white/55 p-1" role="group" aria-label="Pumili ng role">
             {(Object.keys(roles) as Array<keyof typeof roles>).map((value) => (
-              <button type="button" key={value} onClick={() => setRole(value)} aria-pressed={role === value} className={cn("min-h-11 rounded-xl px-4 text-sm font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50", role === value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>{roles[value].label}</button>
+              <button
+                type="button"
+                key={value}
+                onClick={() => setRole(value)}
+                aria-pressed={role === value}
+                className={cn(
+                  "min-h-11 rounded-full px-5 text-sm font-black transition-all focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[#173d2a]/25",
+                  role === value ? "bg-[#173d2a] text-white shadow-lg" : "text-[#617267] hover:text-[#173d2a]",
+                )}
+              >
+                {roles[value].label}
+              </button>
             ))}
           </div>
         </div>
 
-        <div className="rounded-3xl border border-border bg-card p-5 shadow-[var(--shadow-overlay)] sm:p-7">
-          <div className="flex items-start gap-4">
-            <span className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-accent text-accent-foreground"><Icon className="size-6" aria-hidden="true" /></span>
-            <div><p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">{active.label} view</p><h3 className="mt-1 text-xl font-bold tracking-tight text-foreground">{active.title}</h3><p className="mt-2 text-sm text-muted-foreground">{active.description}</p></div>
+        <div className="relative min-h-[31rem] overflow-hidden bg-[#173d2a] p-5 sm:p-9 lg:p-12">
+          <div className="landing-paper-grid absolute inset-0 opacity-15" aria-hidden="true" />
+          <div className="absolute -right-20 -top-20 size-72 rounded-full bg-[#f4bf55]/15 blur-3xl" aria-hidden="true" />
+          <div key={role} className="relative mx-auto max-w-2xl animate-[landing-slide-in_360ms_ease-out] rounded-[2rem] bg-[#fffdf8] p-5 text-[#173d2a] shadow-[0_30px_70px_rgb(0_0_0_/_0.3)] motion-reduce:animate-none sm:p-7" aria-live="polite">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#617267]">{active.eyebrow}</p>
+                <h3 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">{active.title}</h3>
+                <p className="mt-2 text-sm font-semibold text-[#617267]">{active.subtitle}</p>
+              </div>
+              <span className={`${active.accent} flex size-12 shrink-0 items-center justify-center rounded-2xl`}><Icon className="size-6" aria-hidden="true" /></span>
+            </div>
+
+            <div className="mt-7 grid grid-cols-3 gap-2">
+              {active.stats.map(([label, value]) => (
+                <div key={label} className="rounded-2xl bg-[#edf3e8] p-3">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-[#617267]">{label}</p>
+                  <p className="mt-1 text-xl font-black">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {active.actions.map((action, index) => (
+                <div key={action} className="flex min-h-14 items-center gap-3 rounded-2xl border border-[#173d2a]/10 bg-white px-4">
+                  <span className={`${index === 0 ? active.accent : "bg-[#edf3e8]"} flex size-8 shrink-0 items-center justify-center rounded-xl`}>
+                    {index === 1 ? <Syringe className="size-4" aria-hidden="true" /> : index === 2 ? <History className="size-4" aria-hidden="true" /> : <Check className="size-4" aria-hidden="true" />}
+                  </span>
+                  <p className="text-sm font-bold">{action}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex items-center gap-2 text-xs font-bold text-[#4d735b]">
+              <CloudCheck className="size-4" aria-hidden="true" />
+              Parehong updated ang records
+            </div>
           </div>
-          <ul className="mt-6 grid gap-2 sm:grid-cols-2">
-            {active.items.map((item) => <li key={item} className="flex items-center gap-2 rounded-xl border border-border bg-background px-3 py-3 text-sm font-medium text-foreground"><CheckCircle2 className="size-4 text-primary" aria-hidden="true" />{item}</li>)}
-          </ul>
-          <div className="mt-5 flex flex-wrap gap-2 text-xs text-muted-foreground"><span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1.5"><CloudCheck className="size-3.5 text-primary" aria-hidden="true" />Sync status</span><span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1.5"><FileText className="size-3.5 text-primary" aria-hidden="true" />Batch records</span><span className="inline-flex items-center gap-1.5 rounded-full border border-border px-2.5 py-1.5"><WalletCards className="size-3.5 text-primary" aria-hidden="true" />Farm context</span></div>
         </div>
       </div>
     </section>

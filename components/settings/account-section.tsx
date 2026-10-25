@@ -13,6 +13,7 @@ import type { StoredUser } from "@/lib/auth-storage";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { initials } from "./sections";
 
@@ -155,9 +156,8 @@ function PasswordForm() {
       <div className="grid gap-5 md:grid-cols-3">
         <div className="space-y-2">
           <Label htmlFor="pw-current" className="font-semibold">Current password</Label>
-          <Input
+          <PasswordInput
             id="pw-current"
-            type="password"
             required
             autoComplete="current-password"
             className="h-11 rounded-xl"
@@ -167,9 +167,8 @@ function PasswordForm() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="pw-new" className="font-semibold">New password</Label>
-          <Input
+          <PasswordInput
             id="pw-new"
-            type="password"
             required
             minLength={8}
             autoComplete="new-password"
@@ -180,9 +179,8 @@ function PasswordForm() {
         </div>
         <div className="space-y-2">
           <Label htmlFor="pw-confirm" className="font-semibold">Confirm new password</Label>
-          <Input
+          <PasswordInput
             id="pw-confirm"
-            type="password"
             required
             autoComplete="new-password"
             className="h-11 rounded-xl"

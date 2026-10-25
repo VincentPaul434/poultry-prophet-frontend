@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bird, Loader2, Lock, Mail, User } from "lucide-react";
+import { Loader2, Lock, Mail, User } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
+import { AuthBrandLink, BackToHomeLink } from "@/components/auth/auth-home-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -17,10 +19,18 @@ export default function RegisterPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const confirmPasswordRef = useRef<HTMLInputElement>(null);
   const [submitting, setSubmitting] = useState(false);
+  const passwordsMismatch = Boolean(confirmPassword) && password !== confirmPassword;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (password !== confirmPassword) {
+      confirmPasswordRef.current?.focus();
+      toast.error("Passwords do not match.");
+      return;
+    }
     setSubmitting(true);
     try {
       await register({ fullName, email, password });
@@ -37,11 +47,11 @@ export default function RegisterPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       {/* Hero banner */}
-      <div className="flex flex-col items-center justify-center bg-primary px-6 py-12 text-primary-foreground">
-        <div className="flex size-16 items-center justify-center rounded-2xl bg-white/15 mb-4 shadow-lg">
-          <Bird className="size-9" />
+      <div className="flex flex-col items-center justify-center bg-primary px-6 py-8 text-primary-foreground">
+        <div className="mb-4 w-full max-w-sm self-center">
+          <BackToHomeLink className="text-primary-foreground/80 hover:bg-primary-foreground/10 hover:text-primary-foreground" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">Poultry Prophet</h1>
+        <AuthBrandLink variant="hero" className="mb-1 flex-col gap-3 text-center" />
         <p className="mt-1.5 text-sm text-primary-foreground/70 text-center max-w-xs">
           Create your account to start tracking
         </p>
@@ -95,9 +105,9 @@ export default function RegisterPage() {
               <Label htmlFor="password" className="text-sm font-semibold">Password</Label>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-1/2 size-4.5 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
+                  name="password"
                   autoComplete="new-password"
                   required
                   minLength={8}
@@ -107,6 +117,25 @@ export default function RegisterPage() {
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
+            </div>
+
+            {/* Confirm password */}
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword" className="text-sm font-semibold">Confirm password</Label>
+              <PasswordInput
+                ref={confirmPasswordRef}
+                id="confirmPassword"
+                name="confirmPassword"
+                autoComplete="new-password"
+                required
+                aria-invalid={passwordsMismatch}
+                aria-describedby={passwordsMismatch ? "confirm-password-error" : undefined}
+                placeholder="Re-enter your password"
+                className="h-12 text-base rounded-xl"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+              {passwordsMismatch && <p id="confirm-password-error" className="text-sm text-destructive">Passwords do not match.</p>}
             </div>
 
             <Button

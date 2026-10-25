@@ -65,7 +65,9 @@ export interface Batch {
   currentPopulation: number;
   populationStatus: "VALID" | "RECONCILIATION_REQUIRED";
   populationWarning: string | null;
-  startDate: string; // ISO date
+  startDate: string; // Legacy compatibility date
+  hatchDate: string | null; // ISO date; source of age, lifecycle, and vaccine dates
+  farmEntryDate: string | null; // ISO date; when the flock entered the farm
   bloodline: string | null;
   source: string | null;
   hatchDateConfirmedAt: string | null;
@@ -124,7 +126,9 @@ export interface BatchDashboardItem {
 export interface CreateBatchRequest {
   name: string;
   initialPopulation: number;
-  startDate: string; // ISO date
+  startDate?: string | null; // Legacy compatibility field
+  hatchDate: string; // ISO date
+  farmEntryDate: string; // ISO date
   bloodline?: string | null;
   source?: string | null;
   handlerUserIds?: number[];
@@ -150,10 +154,19 @@ export interface SexComposition {
   projectedAsOf?: string | null;
   projectionStatus?: "VALID" | "NO_BASELINE" | "MISSING_ALLOCATION" | "NEGATIVE_CATEGORY" | string | null;
   projectionMessage?: string | null;
+  recordedPopulationAsOfObservation?: number | null;
+  recordedMaleCount?: number | null;
+  recordedFemaleCount?: number | null;
+  recordedUnclassifiedCount?: number | null;
+  projectedPopulation?: number | null;
+  projectedMaleCount?: number | null;
+  projectedFemaleCount?: number | null;
+  projectedUnclassifiedCount?: number | null;
   /** Client-only marker for a record waiting for offline synchronization. */
   pendingSync?: boolean;
 }
-export interface CreateSexCompositionRequest { observedOn: string; maleCount: number; femaleCount: number; unclassifiedCount: number; revisionReason?: string | null; notes?: string | null; operationId?: string; }
+export interface CreateSexCompositionRequest { observedOn: string; maleCount: number; femaleCount: number; unclassifiedCount: number; revisionReason?: string | null; notes?: string | null; operationId?: string; expectedCurrentRecordId?: number | null; }
+export interface SexCompositionContext { observedOn: string; expectedPopulation: number | null; populationStatus: string; populationMessage: string | null; currentRecordId: number | null; }
 export interface VaccinationProgramItem { id: number; sequenceNumber: number; vaccineName: string; farmProductId: number | null; ageOffsetValue: number; ageOffsetUnit: "DAY" | "WEEK"; normalizedOffsetDays: number; reminderLeadDays: number; route: string | null; doseGuidance: string | null; instructions: string | null; }
 export interface VaccinationProgram { id: number; farmId: number; seriesId: string; name: string; description: string | null; versionNumber: number; defaultForNewBatches: boolean; createdAt: string; items: VaccinationProgramItem[]; }
 export interface CreateVaccinationProgramRequest { name: string; description?: string | null; defaultForNewBatches?: boolean; seriesId?: string; supersedesProgramId?: number | null; items: Array<{ vaccineName: string; farmProductId?: number | null; ageOffsetValue: number; ageOffsetUnit: "DAY" | "WEEK"; reminderLeadDays?: number; route?: string | null; doseGuidance?: string | null; instructions?: string | null; }>; }
@@ -233,8 +246,8 @@ export interface IncubationCycle {
   notes: string | null;
   createdBatchId: number | null;
   createdAt: string;
-  hatchRatePercent: number;
-  durationDays: number;
+  hatchRatePercent: number | null;
+  durationDays: number | null;
 }
 export interface CreateIncubationCycleRequest {
   cycleName: string;
@@ -252,6 +265,9 @@ export interface CompleteIncubationRequest {
   unhatchedCount: number;
   removedDamagedCount: number;
   notes?: string | null;
+}
+export interface CreateBatchFromIncubationRequest {
+  farmEntryDate: string;
 }
 
 export type InputProductType = "FEED" | "VITAMIN" | "MEDICINE" | "VACCINE" | "OTHER";
@@ -278,6 +294,15 @@ export interface FarmInputLog {
   costStatus?: "VALUED" | "UNVALUED" | "FREE" | null;
   inventoryStatus?: "DEDUCTED" | "PENDING_STOCK_REVIEW" | "UNTRACKED" | "NOT_APPLICABLE" | "LEGACY" | null;
   affectedBirdCount?: number | null;
+  pendingSync?: boolean;
+}
+export interface FarmInputPageFilters {
+  page: number;
+  size: number;
+  batchId?: number;
+  incubationCycleId?: number;
+  farmWide?: boolean;
+  productType?: InputProductType;
 }
 export interface CreateFarmInputRequest {
   batchId?: number | null;
@@ -371,6 +396,19 @@ export interface InventoryMovement {
 
 export type TaskPriority = "LOW" | "NORMAL" | "HIGH" | "URGENT";
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "BLOCKED" | "COMPLETED" | "CANCELLED";
+export type TaskAssignmentMode = "SPECIFIC_HANDLER" | "ALL_HANDLERS";
+export type TaskView = "OPEN" | "COMPLETED" | "CANCELLED" | "ALL";
+export type TaskDueBucket = "ALL" | "LATE" | "TODAY" | "UPCOMING" | "NO_DUE";
+export type HandlerTaskQueueBucket = "NOW" | "UPCOMING" | "COMPLETED";
+export interface PageResponse<T> {
+  items: T[];
+  page: number;
+  size: number;
+  totalItems: number;
+  totalPages: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
 export interface HandlerTask {
   id: number;
   farmId: number;
@@ -393,6 +431,35 @@ export interface HandlerTask {
   sourceType: string | null;
   sourceId: number | null;
   completedBy: number | null;
+  pendingSync?: boolean;
+}
+export interface TaskPageFilters {
+  page: number;
+  size: number;
+  view: TaskView;
+  dueBucket: TaskDueBucket;
+  batchId?: number;
+  farmWide?: boolean;
+  assignedHandlerId?: number;
+  priority?: TaskPriority;
+  sourceType?: string;
+  assignmentScope?: string;
+  search?: string;
+}
+export interface TaskSummaryResponse {
+  open: number;
+  late: number;
+  today: number;
+  upcoming: number;
+  noDueDate: number;
+  completed: number;
+  cancelled: number;
+}
+export interface HandlerTaskQueueSummary {
+  now: number;
+  upcoming: number;
+  completed: number;
+  vaccinationReminders: number;
 }
 export interface CreateTaskRequest {
   title: string;
@@ -402,8 +469,9 @@ export interface CreateTaskRequest {
   assignedHandlerId?: number | null;
   dueAt?: string | null;
   priority?: TaskPriority;
+  assignmentMode?: TaskAssignmentMode;
 }
-export interface UpdateTaskStatusRequest { status: TaskStatus; note?: string | null; }
+export interface UpdateTaskStatusRequest { status: TaskStatus; note?: string | null; operationId?: string; occurredAt?: string | null; }
 
 export type FinanceTransactionType = "INCOME" | "EXPENSE";
 export interface FinancialTransaction {
@@ -419,11 +487,24 @@ export interface FinancialTransaction {
   counterparty: string | null;
   description: string | null;
   sourceType: string | null;
+  sourceEventId: number | null;
   sourceOperationId: string | null;
   status: "POSTED" | "VOIDED";
   enteredBy: number;
   voidReason: string | null;
   createdAt: string;
+}
+export interface FinancePageFilters {
+  page: number;
+  size: number;
+  start?: string;
+  end?: string;
+  batchId?: number;
+  farmWide?: boolean;
+  type?: FinanceTransactionType;
+  category?: string;
+  sourceType?: string;
+  status?: "POSTED" | "VOIDED";
 }
 export interface CreateFinancialTransactionRequest {
   batchId?: number | null;
@@ -439,7 +520,7 @@ export interface CreateFinancialTransactionRequest {
 export interface OperationsAnalytics {
   startDate: string;
   endDate: string;
-  incubation: { totalCycles: number; completedCycles: number; eggsLoaded: number; hatched: number; unhatched: number; removedOrDamaged: number; hatchRatePercent: number; averageDurationDays: number };
+  incubation: { totalCycles: number; completedCycles: number; eggsLoaded: number; hatched: number; unhatched: number; removedOrDamaged: number; hatchRatePercent: number | null; averageDurationDays: number | null };
   tasks: { totalTasks: number; openTasks: number; completedTasks: number; overdueTasks: number; completionRatePercent: number };
   inputs: { totalLogs: number; byProductType: Record<string, number>; byBrand: Record<string, number> };
   finance: { currency: string; income: string; expense: string; net: string; transactionCount: number };
@@ -454,6 +535,9 @@ export interface FinanceAnalytics {
   currency: string;
   totals: {
     recordedIncome: string;
+    saleIncome: string;
+    otherIncome: string;
+    saleTransactionCount: number;
     recordedExpense: string;
     recordedNetCashFlow: string;
     productsConsumedCost: string;
@@ -582,6 +666,13 @@ export interface Alert {
   acknowledgedAt: string | null;
   acknowledgmentNote: string | null;
   createdAt: string;
+}
+
+export interface AlertSummary {
+  activeTotal: number;
+  critical: number;
+  warning: number;
+  info: number;
 }
 
 // Pushed over STOMP /topic/farms/{farmId}/alerts
@@ -744,6 +835,9 @@ export interface SelectionReviewFinance {
   startDate: string;
   endDate: string;
   recordedIncome: number;
+  saleIncome: number;
+  otherIncome: number;
+  saleTransactionCount: number;
   recordedExpense: number;
   recordedNetCashFlow: number;
   productsConsumedCost: number;
@@ -923,11 +1017,13 @@ export interface BatchEvent {
   eventDate: string; // ISO date
   eventType: EventType;
   severityLabel: string | null;
+  concernLevel?: "LOW" | "MEDIUM" | "HIGH" | "UNRATED";
   affectedCount: number;
   title: string;
   details: string | null;
   tags: string | null; // comma-separated
   createdAt: string; // ISO instant — when the log was submitted
+  occurredAt?: string | null;
   operationId?: string | null;
   populationDelta?: number | null;
   populationAfter?: number | null;
@@ -937,6 +1033,22 @@ export interface BatchEvent {
   maleDelta?: number | null;
   femaleDelta?: number | null;
   unclassifiedDelta?: number | null;
+  saleAmount?: number | string | null;
+  saleCurrency?: string | null;
+  saleBuyer?: string | null;
+  saleReference?: string | null;
+}
+
+export interface BatchEventReport {
+  totalRecords: number;
+  deathRecords: number;
+  birdsLost: number;
+  healthConcerns: number;
+  populationMovements: number;
+  vaccineMedicineRecords: number;
+  overTime: Array<{ date: string; count: number }>;
+  categoryDistribution: Record<string, number>;
+  concernDistribution: Record<string, number>;
 }
 
 export interface CreateBatchEventRequest {
@@ -954,9 +1066,11 @@ export interface CreateBatchEventRequest {
   } | null;
   details?: string | null;
   tags?: string | null;
+  occurredAt?: string | null;
+  saleDetails?: { amount?: number | null; currency?: string | null; buyer?: string | null; reference?: string | null } | null;
 }
 
-export type SyncEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE" | "SEX_COMPOSITION" | "VACCINATION_PLAN";
+export type SyncEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE" | "SEX_COMPOSITION" | "VACCINATION_PLAN" | "TASK_STATUS" | "VACCINATION_SCHEDULE";
 export type SyncResultStatus = "APPLIED" | "ALREADY_APPLIED" | "CONFLICT" | "REJECTED" | "RETRYABLE" | "AUTH_REQUIRED";
 export interface SyncOperationRequest {
   operationId: string;
@@ -984,6 +1098,21 @@ export interface SyncOperationsResponse {
   rejected: number;
   retryable: number;
   results: SyncOperationResult[];
+}
+
+export interface OfflineBootstrap {
+  farmId: number;
+  userId: number;
+  role: string;
+  generatedAt: string;
+  batches: Batch[];
+  dashboard: BatchDashboardItem[];
+  products: FarmProduct[];
+  tasks: HandlerTask[];
+  vaccinationPlans: Record<string, VaccinationPlanItem[]>;
+  overviews: Record<string, BatchOverview>;
+  events: Record<string, BatchEvent[]>;
+  inputs: Record<string, FarmInputLog[]>;
 }
 
 export interface VersionInfo {

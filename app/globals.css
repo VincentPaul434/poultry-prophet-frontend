@@ -195,6 +195,89 @@
   }
 }
 
+@keyframes landing-fade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes landing-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes landing-float {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(var(--landing-rotate, 0deg)); }
+  50% { transform: translate3d(0, -10px, 0) rotate(var(--landing-rotate, 0deg)); }
+}
+
+@keyframes landing-flow {
+  0% { transform: translateX(-120%); opacity: 0; }
+  20% { opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateX(420%); opacity: 0; }
+}
+
+@keyframes landing-pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgb(238 181 65 / 0.4); }
+  70% { box-shadow: 0 0 0 12px rgb(238 181 65 / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(238 181 65 / 0); }
+}
+
+.landing-enter {
+  animation: landing-rise 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.landing-enter-delay-1 { animation-delay: 90ms; }
+.landing-enter-delay-2 { animation-delay: 180ms; }
+.landing-enter-delay-3 { animation-delay: 270ms; }
+
+.landing-reveal {
+  animation: landing-rise 650ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--landing-delay, 0ms);
+}
+
+.landing-float { animation: landing-float 4.8s ease-in-out infinite; }
+.landing-float-slow { animation: landing-float 6.4s ease-in-out 500ms infinite; }
+.landing-flow-dot { animation: landing-flow 3.2s ease-in-out infinite; }
+.landing-pulse-ring { animation: landing-pulse-ring 2.2s ease-out infinite; }
+
+.landing-paper-grid {
+  background-image:
+    linear-gradient(rgb(23 61 42 / 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(23 61 42 / 0.055) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-reveal {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
 /* Ensure mobile bottom nav doesn't overlap content */
 @layer utilities {
   .safe-pb {

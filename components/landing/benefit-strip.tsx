@@ -1,25 +1,28 @@
-import { ClipboardCheck, HandCoins, Smartphone } from "lucide-react";
+import { ClipboardCheck, RefreshCw, Zap } from "lucide-react";
+import { Reveal } from "@/components/landing/reveal";
 
 const benefits = [
-  { icon: Smartphone, title: "Mabilis mag-record", detail: "Direct actions sa tamang batch" },
-  { icon: ClipboardCheck, title: "Reviewable history", detail: "Records connected by date" },
-  { icon: HandCoins, title: "Kasama ang finance", detail: "Products, expenses, at income" },
+  { icon: Zap, title: "Tala agad", detail: "Sa tamang batch", color: "bg-[#f4bf55]" },
+  { icon: RefreshCw, title: "Sync kusa", detail: "Pagbalik ng internet", color: "bg-[#dcebd8]" },
+  { icon: ClipboardCheck, title: "Suri malinaw", detail: "History, gastos, bakuna", color: "bg-[#f5d8c9]" },
 ];
 
 export function BenefitStrip() {
   return (
-    <section className="border-b border-border bg-card/70" aria-label="Key benefits">
-      <div className="mx-auto grid w-full max-w-6xl divide-y divide-border px-4 sm:px-6 md:grid-cols-3 md:divide-x md:divide-y-0 lg:px-8">
-        {benefits.map(({ icon: Icon, title, detail }) => (
-          <div key={title} className="flex items-center gap-3 py-4 md:px-6 md:py-5 first:md:pl-0 last:md:pr-0">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
-              <Icon className="size-4.5" aria-hidden="true" />
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-foreground">{title}</p>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{detail}</p>
+    <section className="bg-[#f7f1e7] px-4 py-10 sm:px-6 sm:py-14" aria-label="Pangunahing benepisyo">
+      <div className="mx-auto grid w-full max-w-6xl gap-3 md:grid-cols-3">
+        {benefits.map(({ icon: Icon, title, detail, color }, index) => (
+          <Reveal key={title} delay={index * 90}>
+            <div className="flex items-center gap-4 rounded-[1.75rem] border border-[#173d2a]/10 bg-white/75 p-4 shadow-[0_12px_35px_rgb(23_61_42_/_0.07)]">
+              <span className={"flex size-12 shrink-0 items-center justify-center rounded-2xl text-[#173d2a] " + color}>
+                <Icon className="size-5" aria-hidden="true" />
+              </span>
+              <div>
+                <p className="text-lg font-black tracking-tight text-[#173d2a]">{title}</p>
+                <p className="text-sm font-medium text-[#617267]">{detail}</p>
+              </div>
             </div>
-          </div>
+          </Reveal>
         ))}
       </div>
     </section>

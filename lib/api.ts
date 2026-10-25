@@ -7,6 +7,7 @@ import { apiClient } from "./api-client";
 import type { BatchComparison, FarmSummaryAnalytics } from "./farm-summary-types";
 import type {
   Alert,
+  AlertSummary,
   AuthResponse,
   Batch,
   BatchDashboardItem,
@@ -18,6 +19,7 @@ import type {
   Bird,
   CreateBatchEventRequest,
   CreateBatchRequest,
+  CreateBatchFromIncubationRequest,
   CreateBirdRequest,
   CreateHandlerRequest,
   CreateInviteRequest,
@@ -53,9 +55,18 @@ import type {
   CreateIncubationCycleRequest,
   CreateTaskRequest,
   FarmInputLog,
+  FarmInputPageFilters,
   FinancialTransaction,
+  BatchEventReport,
+  FinanceTransactionType,
   FinanceAnalytics,
+  FinancePageFilters,
   HandlerTask,
+  HandlerTaskQueueBucket,
+  HandlerTaskQueueSummary,
+  PageResponse,
+  TaskPageFilters,
+  TaskSummaryResponse,
   IncubationCycle,
   UpdateTaskStatusRequest,
   GenerateTestBatchRequest,
@@ -91,6 +102,10 @@ export const authApi = {
 export const syncApi = {
   operations: (body: SyncOperationsRequest) =>
     apiClient.post<SyncOperationsResponse>("/sync/v2/operations", body).then((r) => r.data),
+};
+
+export const offlineApi = {
+  bootstrap: () => apiClient.get<import("./types").OfflineBootstrap>("/offline/bootstrap").then((r) => r.data),
 };
 
 export const versionApi = {
@@ -135,6 +150,7 @@ export const batchApi = {
     apiClient.delete<void>(`/batches/${batchId}`, { data: body }).then((r) => r.data),
   confirmHatchDate: (batchId: Id, hatchDate: string) => apiClient.patch<Batch>(`/batches/${batchId}/hatch-date`, { hatchDate }).then((r) => r.data),
   sexComposition: (batchId: Id) => apiClient.get<SexComposition | null>(`/batches/${batchId}/sex-composition`).then((r) => r.data),
+  sexCompositionContext: (batchId: Id, observedOn?: string) => apiClient.get<import("@/lib/types").SexCompositionContext>(`/batches/${batchId}/sex-composition/context`, { params: observedOn ? { observedOn } : undefined }).then((r) => r.data),
   sexHistory: (batchId: Id) => apiClient.get<SexComposition[]>(`/batches/${batchId}/sex-composition/history`).then((r) => r.data),
   recordSexComposition: (batchId: Id, body: CreateSexCompositionRequest) => apiClient.post<SexComposition>(`/batches/${batchId}/sex-composition`, body).then((r) => r.data),
 };
@@ -200,6 +216,9 @@ export const alertApi = {
     apiClient
       .get<Alert[]>(`/alerts`, { params: { activeOnly, limit } })
       .then((r) => r.data),
+  pageFarm: (params: { activeOnly: boolean; page: number; size: number; severity?: string; batchId?: number; sort?: string }) =>
+    apiClient.get<PageResponse<Alert>>("/alerts/page", { params }).then((r) => r.data),
+  summary: () => apiClient.get<AlertSummary>("/alerts/summary").then((r) => r.data),
   acknowledge: (id: number, note?: string) =>
     apiClient.post<Alert>(`/alerts/${id}/acknowledge`, { note }).then((r) => r.data),
 };
@@ -272,6 +291,10 @@ export const batchEventApi = {
     apiClient
       .get<BatchEvent[]>(`/batches/${batchId}/events`, { params: { limit } })
       .then((r) => r.data),
+  page: (batchId: Id, params: Record<string, unknown>) =>
+    apiClient.get<PageResponse<BatchEvent>>(`/batches/${batchId}/events/page`, { params }).then((r) => r.data),
+  report: (batchId: Id, params: Record<string, unknown>) =>
+    apiClient.get<BatchEventReport>(`/batches/${batchId}/events/report`, { params }).then((r) => r.data),
   create: (batchId: Id, body: CreateBatchEventRequest) =>
     apiClient
       .post<BatchEvent>(`/batches/${batchId}/events`, body)
@@ -309,10 +332,11 @@ export const incubationApi = {
   list: () => apiClient.get<IncubationCycle[]>("/incubation-cycles").then((r) => r.data),
   create: (body: CreateIncubationCycleRequest) => apiClient.post<IncubationCycle>("/incubation-cycles", body).then((r) => r.data),
   complete: (id: number, body: CompleteIncubationRequest) => apiClient.post<IncubationCycle>(`/incubation-cycles/${id}/complete`, body).then((r) => r.data),
-  createBatch: (id: number) => apiClient.post<Batch>(`/incubation-cycles/${id}/create-batch`).then((r) => r.data),
+  createBatch: (id: number, body: CreateBatchFromIncubationRequest) => apiClient.post<Batch>(`/incubation-cycles/${id}/create-batch`, body).then((r) => r.data),
 };
 export const inputApi = {
   list: (batchId?: number, incubationCycleId?: number) => apiClient.get<FarmInputLog[]>("/inputs", { params: { batchId, incubationCycleId } }).then((r) => r.data),
+  page: (filters: FarmInputPageFilters) => apiClient.get<PageResponse<FarmInputLog>>("/inputs/page", { params: filters }).then((r) => r.data),
   create: (body: CreateFarmInputRequest) => apiClient.post<FarmInputLog>("/inputs", body).then((r) => r.data),
 };
 export const inventoryApi = {
@@ -321,14 +345,40 @@ export const inventoryApi = {
   stockIn: (productId: number, body: StockInRequest) => apiClient.post<InventoryMovement>(`/inventory/products/${productId}/stock-ins`, body).then((r) => r.data),
   adjust: (productId: number, body: InventoryAdjustmentRequest) => apiClient.post<InventoryMovement>(`/inventory/products/${productId}/adjustments`, body).then((r) => r.data),
   movements: (params: { productId?: number; batchId?: number } = {}) => apiClient.get<InventoryMovement[]>("/inventory/movements", { params }).then((r) => r.data),
+  movementsPage: (params: { page: number; size: number; productId?: number; batchId?: number }) => apiClient.get<PageResponse<InventoryMovement>>("/inventory/movements/page", { params }).then((r) => r.data),
   pendingReview: () => apiClient.get<FarmInputLog[]>("/inventory/pending-review").then((r) => r.data),
   retryPending: (inputId: number) => apiClient.post<FarmInputLog>(`/inventory/pending-review/${inputId}/apply`).then((r) => r.data),
 };
 export const taskApi = {
-  list: (mine = false) => apiClient.get<HandlerTask[]>("/tasks", { params: { mine } }).then((r) => r.data),
+  list: (filters: TaskPageFilters) => apiClient.get<PageResponse<HandlerTask>>("/tasks", { params: taskParams(filters) }).then((r) => r.data),
+  // Compatibility read for one release while older deployments catch up with
+  // the dedicated handler-queue endpoints. Both the old API (array) and the
+  // new paged API shape are normalized for the queue hooks.
+  mine: () => apiClient.get<HandlerTask[] | PageResponse<HandlerTask>>("/tasks", { params: { mine: true, page: 0, size: 100 } }).then((r) => Array.isArray(r.data) ? r.data : r.data.items),
+  summary: (filters: Partial<Omit<TaskPageFilters, "page" | "size" | "view" | "dueBucket">> = {}) =>
+    apiClient.get<TaskSummaryResponse>("/tasks/summary", { params: taskParams(filters) }).then((r) => r.data),
+  handlerQueue: (bucket: HandlerTaskQueueBucket, page = 0, size = 10) =>
+    apiClient.get<PageResponse<HandlerTask>>("/tasks/handler-queue", { params: { bucket, page, size } }).then((r) => r.data),
+  handlerQueueSummary: () => apiClient.get<HandlerTaskQueueSummary>("/tasks/handler-queue/summary").then((r) => r.data),
   create: (body: CreateTaskRequest) => apiClient.post<HandlerTask>("/tasks", body).then((r) => r.data),
   updateStatus: (id: number, body: UpdateTaskStatusRequest) => apiClient.post<HandlerTask>(`/tasks/${id}/status`, body).then((r) => r.data),
 };
+
+function taskParams(filters: Partial<TaskPageFilters>) {
+  const params: Record<string, unknown> = {};
+  if (filters.page != null) params.page = filters.page;
+  if (filters.size != null) params.size = filters.size;
+  if (filters.view && filters.view !== "ALL") params.view = filters.view;
+  if (filters.dueBucket && filters.dueBucket !== "ALL") params.dueBucket = filters.dueBucket;
+  if (filters.batchId != null) params.batchId = filters.batchId;
+  if (filters.farmWide != null) params.farmWide = filters.farmWide;
+  if (filters.assignedHandlerId != null) params.assignedHandlerId = filters.assignedHandlerId;
+  if (filters.priority) params.priority = filters.priority;
+  if (filters.sourceType) params.sourceType = filters.sourceType;
+  if (filters.assignmentScope) params.assignmentScope = filters.assignmentScope;
+  if (filters.search?.trim()) params.search = filters.search.trim();
+  return params;
+}
 export const vaccinationApi = {
   programs: () => apiClient.get<VaccinationProgram[]>("/vaccination-programs").then((r) => r.data),
   createProgram: (body: CreateVaccinationProgramRequest) => apiClient.post<VaccinationProgram>("/vaccination-programs", body).then((r) => r.data),
@@ -340,8 +390,9 @@ export const vaccinationApi = {
 };
 export const financeApi = {
   list: () => apiClient.get<FinancialTransaction[]>("/financial-transactions").then((r) => r.data),
+  page: (filters: FinancePageFilters) => apiClient.get<PageResponse<FinancialTransaction>>("/financial-transactions/page", { params: filters }).then((r) => r.data),
   create: (body: CreateFinancialTransactionRequest) => apiClient.post<FinancialTransaction>("/financial-transactions", body).then((r) => r.data),
-  analytics: (batchId?: number, start?: string, end?: string) => apiClient.get<FinanceAnalytics>("/financial-transactions/analytics", { params: { batchId, start, end } }).then((r) => r.data),
+  analytics: (batchId?: number, start?: string, end?: string, type?: FinanceTransactionType, farmWide?: boolean, category?: string, sourceType?: string, status?: "POSTED" | "VOIDED") => apiClient.get<FinanceAnalytics>("/financial-transactions/analytics", { params: { batchId, start, end, type, farmWide, category, sourceType, status } }).then((r) => r.data),
 };
 export const operationsAnalyticsApi = {
   get: (params: { scope?: "FARM" | "BATCH"; batchId?: number; start?: string; end?: string; origin?: "REAL" | "SYNTHETIC" | "ALL"; testRunId?: string } = {}) => apiClient.get<FarmSummaryAnalytics>("/analytics/operations/v2", { params }).then((r) => r.data),

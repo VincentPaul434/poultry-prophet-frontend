@@ -1,58 +1,69 @@
-import {
-  ClipboardList,
-  CloudCog,
-  PackageCheck,
-  WalletCards,
-} from "lucide-react";
+import { BarChart3, ClipboardList, History, Syringe, WalletCards } from "lucide-react";
+import { Reveal } from "@/components/landing/reveal";
 
-const capabilities = [
+const views = [
   {
     icon: ClipboardList,
-    title: "Daily batch records",
-    description: "Population changes, health observations, medicine, feed, and other farm events.",
+    number: "01",
+    eyebrow: "Handler",
+    title: "Gawin. I-record. Tapos.",
+    tags: ["Gawain", "Record", "Bakuna"],
+    color: "bg-[#f4bf55]",
   },
   {
-    icon: CloudCog,
-    title: "Batch history and review",
-    description: "A traceable summary that keeps important facts connected to the batch and date.",
+    icon: BarChart3,
+    number: "02",
+    eyebrow: "Manager",
+    title: "Suriin bago magdesisyon.",
+    tags: ["Batch", "Finance", "Report"],
+    color: "bg-[#dcebd8]",
   },
   {
-    icon: PackageCheck,
-    title: "Products and inventory",
-    description: "See what was used and keep product deductions connected to the farm record.",
-  },
-  {
-    icon: WalletCards,
-    title: "Recorded farm finance",
-    description: "Track batch expenses, recorded income, and cash flow without pretending it is full accounting.",
+    icon: History,
+    number: "03",
+    eyebrow: "Traceability",
+    title: "Balikan ang buong kuwento.",
+    tags: ["Event", "Alert", "Audit"],
+    color: "bg-[#f5d8c9]",
   },
 ];
 
 export function CapabilityGrid() {
   return (
-    <section id="features" className="scroll-mt-24 py-16 sm:py-20">
-      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-          <div className="max-w-2xl">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Built for the farm workflow</p>
-            <h2 className="mt-3 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              The records your team already needs, connected in one place.
-            </h2>
+    <section id="features" className="scroll-mt-24 bg-[#fffdf8] px-4 py-16 sm:px-6 sm:py-24" aria-labelledby="features-heading">
+      <div className="mx-auto w-full max-w-6xl">
+        <Reveal>
+          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-black uppercase tracking-[0.2em] text-[#9b6811]">Simple sa bawat role</p>
+              <h2 id="features-heading" className="mt-4 text-3xl font-black leading-tight tracking-[-0.04em] sm:text-5xl">
+                Isang sistema.
+                <span className="block text-[#cc7d2e]">Tamang view sa tamang tao.</span>
+              </h2>
+            </div>
+            <div className="flex gap-2 text-[#173d2a]/65" aria-hidden="true">
+              <Syringe className="size-5" />
+              <WalletCards className="size-5" />
+              <History className="size-5" />
+            </div>
           </div>
-          <p className="max-w-sm text-sm leading-6 text-muted-foreground">
-            Hindi kailangan ng maraming bagong routine. Start with what the handler already sees and records.
-          </p>
-        </div>
+        </Reveal>
 
-        <div className="mt-10 grid gap-4 sm:grid-cols-2">
-          {capabilities.map(({ icon: Icon, title, description }) => (
-            <article key={title} className="rounded-2xl border border-border bg-card p-5 transition-[border-color,box-shadow] duration-200 hover:border-primary/35 hover:shadow-[var(--shadow-interactive-lift)]">
-              <span className="flex size-10 items-center justify-center rounded-xl bg-accent text-accent-foreground">
-                <Icon className="size-5" aria-hidden="true" />
-              </span>
-              <h3 className="mt-5 text-base font-bold text-foreground">{title}</h3>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{description}</p>
-            </article>
+        <div className="mt-10 grid gap-4 md:grid-cols-3">
+          {views.map(({ icon: Icon, number, eyebrow, title, tags, color }, index) => (
+            <Reveal key={eyebrow} delay={index * 100}>
+              <article className={`${color} group min-h-[21rem] rounded-[2.25rem] p-6 transition-transform duration-300 hover:-translate-y-2 sm:p-7`}>
+                <div className="flex items-start justify-between">
+                  <span className="flex size-12 items-center justify-center rounded-2xl bg-white/65"><Icon className="size-6" aria-hidden="true" /></span>
+                  <span className="text-6xl font-black tracking-[-0.08em] text-[#173d2a]/10">{number}</span>
+                </div>
+                <p className="mt-12 text-xs font-black uppercase tracking-[0.18em] text-[#173d2a]/55">{eyebrow}</p>
+                <h3 className="mt-2 text-2xl font-black leading-tight tracking-tight">{title}</h3>
+                <div className="mt-6 flex flex-wrap gap-2">
+                  {tags.map((tag) => <span key={tag} className="rounded-full bg-white/60 px-3 py-2 text-xs font-black">{tag}</span>)}
+                </div>
+              </article>
+            </Reveal>
           ))}
         </div>
       </div>

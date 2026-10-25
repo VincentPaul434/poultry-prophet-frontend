@@ -13,6 +13,7 @@ export interface FarmSummaryAnalytics {
     activeBatches: number;
     initialPopulation: number;
     currentPopulation: number;
+    asOfDate?: string;
     available: boolean;
   };
   events: {
@@ -37,6 +38,8 @@ export interface FarmSummaryAnalytics {
   finance: {
     currency: string;
     income: string;
+    saleIncome: string;
+    saleTransactionCount: number;
     expense: string;
     net: string;
     transactionCount: number;
@@ -66,8 +69,8 @@ export interface FarmSummaryAnalytics {
     inProgressCycles: number;
     finalizedEggsLoaded: number;
     finalizedHatched: number;
-    finalizedHatchRatePercent: number;
-    averageDurationDays: number;
+    finalizedHatchRatePercent: number | null;
+    averageDurationDays: number | null;
     available: boolean;
   };
   inputTypes: Record<string, number>;

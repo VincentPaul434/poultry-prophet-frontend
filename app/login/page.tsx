@@ -3,10 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Bird, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
+import { AuthBrandLink, BackToHomeLink } from "@/components/auth/auth-home-link";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -44,11 +46,10 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-svh items-center justify-center bg-muted/40 p-6 md:p-10">
       <div className="w-full max-w-sm">
+        <BackToHomeLink className="mb-3" />
         <Card>
           <CardHeader className="text-center">
-            <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-sm">
-              <Bird className="size-6" aria-hidden="true" />
-            </div>
+            <AuthBrandLink className="mx-auto mb-2" />
             <CardTitle className="text-2xl">Login to your account</CardTitle>
             <CardDescription>
               Enter your email below to login to Poultry Prophet
@@ -74,9 +75,9 @@ export default function LoginPage() {
                 <div className="flex items-center justify-between gap-4">
                   <Label htmlFor="password">Password</Label>
                 </div>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
+                  name="password"
                   autoComplete="current-password"
                   required
                   placeholder="Enter your password"

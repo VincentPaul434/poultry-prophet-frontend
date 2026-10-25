@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
  * The queue, retries, and conflict state remain in OfflineSyncProvider;
  * handlers only see the one action they can understand.
  */
-export function SyncStatusIndicator() {
+export function SyncStatusIndicator({ compact = false }: { compact?: boolean }) {
   const { snapshot, syncNow } = useOfflineSync();
   const { language, t } = useLocale();
   const taglish = language === "taglish";
@@ -23,6 +23,9 @@ export function SyncStatusIndicator() {
   const isBusy = snapshot.connection === "CHECKING" || snapshot.connection === "SYNCING";
   const pending = snapshot.pendingCount;
   const canAct = !storageUnavailable && ((pending > 0 && snapshot.connection !== "OFFLINE") || hasIssues || snapshot.connection === "AUTH_REQUIRED");
+  const lastSync = snapshot.lastSuccessfulSync
+    ? new Date(snapshot.lastSuccessfulSync).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+    : null;
 
   const label = storageUnavailable
     ? t("status.offlineStorageUnavailable")
@@ -40,8 +43,8 @@ export function SyncStatusIndicator() {
               : t("status.serverUnavailable")
             : snapshot.connection === "OFFLINE"
               ? pending > 0
-                ? pending + (taglish ? " naka-save sa phone" : " saved on phone")
-                : "Offline"
+                ? pending + (taglish ? " naka-save sa phone" : " saved on phone") + (lastSync ? ` · ${lastSync}` : "")
+                : (taglish ? "Offline" : "Offline") + (lastSync ? ` · ${lastSync}` : "")
               : pending > 0
                 ? (taglish ? "I-sync " : "Sync ") + pending
                 : "Online";
@@ -90,7 +93,7 @@ export function SyncStatusIndicator() {
       <span className="relative flex size-4 items-center justify-center">
         <Icon className={cn("size-4", color, isBusy && "animate-spin")} aria-hidden="true" />
       </span>
-      <span className="max-w-[10rem] truncate">{label}</span>
+      <span className={cn("max-w-[10rem] truncate", compact && "hidden min-[390px]:inline max-w-[7rem]")}>{label}</span>
     </>
   );
 
@@ -103,14 +106,20 @@ export function SyncStatusIndicator() {
           size="sm"
           onClick={() => void handleAction()}
           disabled={isBusy || snapshot.connection === "OFFLINE"}
-          className="min-h-11 max-w-full gap-2 rounded-full bg-background/95 px-3 text-xs shadow-[var(--shadow-interactive-lift)]"
+          className={cn(
+            "min-h-11 max-w-full gap-2 rounded-full bg-background/95 text-xs shadow-[var(--shadow-interactive-lift)]",
+            compact ? "min-w-11 justify-center px-2 min-[390px]:px-3" : "px-3"
+          )}
           aria-label={label}
         >
           {content}
         </Button>
       ) : (
         <div
-          className="flex min-h-11 max-w-full items-center gap-2 rounded-full px-3 text-xs"
+          className={cn(
+            "flex min-h-11 max-w-full items-center gap-2 rounded-full text-xs",
+            compact ? "min-w-11 justify-center px-2 min-[390px]:px-3" : "px-3"
+          )}
           role="status"
           aria-label={label}
         >
