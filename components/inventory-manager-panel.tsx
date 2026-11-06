@@ -5,11 +5,14 @@ import { Loader2, PackagePlus, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 import { useCreateFarmProduct, useFarmProducts, usePendingInventoryReview, useRetryPendingInventory, useStockInProduct } from "@/hooks/use-operations";
 import type { InputProductType } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 const TYPES: Array<{ value: InputProductType; label: string }> = [
   { value: "FEED", label: "Feed" }, { value: "VITAMIN", label: "Vitamin" },
@@ -72,19 +75,32 @@ export function InventoryManagerPanel() {
   return <Card className="shadow-none">
     <CardHeader className="flex flex-row items-center justify-between gap-3 p-4 pb-2">
       <CardTitle className="flex items-center gap-2 text-base"><PackagePlus className="size-4 text-primary" /> Farm products and stock</CardTitle>
-      <Button type="button" variant="outline" size="sm" onClick={() => setShowCreate((value) => !value)}><Plus className="size-4" /> {showCreate ? "Close" : "Add product"}</Button>
+      <Button type="button" variant="outline" size="sm" onClick={() => setShowCreate(true)}><Plus className="size-4" /> Add product</Button>
     </CardHeader>
     <CardContent className="space-y-4 p-4 pt-2">
-      {showCreate && <form onSubmit={(event) => void submitProduct(event)} className="rounded-xl border bg-muted/20 p-3">
-        <div className="grid gap-2.5 sm:grid-cols-2">
-          <div className="space-y-1.5"><Label>Product / brand</Label><Input required value={brand} onChange={(event) => setBrand(event.target.value)} placeholder="Baby Stag Booster" /></div>
-          <div className="space-y-1.5"><Label>Type</Label><NativeSelect value={type} onChange={(event) => setType(event.target.value as InputProductType)}>{TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</NativeSelect></div>
-          <div className="space-y-1.5"><Label>Inventory unit</Label><Input required value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="sachet, pack, bottle" /></div>
-          <div className="space-y-1.5"><Label>Starting stock <span className="font-normal text-muted-foreground">(optional)</span></Label><Input type="number" min="0" step="0.001" value={opening} onChange={(event) => setOpening(event.target.value)} placeholder="0" /></div>
-        </div>
-        <div className="mt-2.5 grid gap-2.5 sm:grid-cols-3"><Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Generic name / variant (optional)" /><Input value={packageDescription} onChange={(event) => setPackageDescription(event.target.value)} placeholder="Package description (optional)" /><div className="space-y-1.5"><Label>Opening price per {unit.trim() || "unit"}</Label><Input type="number" min="0" step="0.000001" value={openingCost} onChange={(event) => setOpeningCost(event.target.value)} placeholder="₱0.00" /></div></div>
-        <Button type="submit" className="mt-3" disabled={createProduct.isPending}>{createProduct.isPending ? <Loader2 className="animate-spin" /> : <Save className="size-4" />} Save product</Button>
-      </form>}
+      <Dialog open={showCreate} onOpenChange={setShowCreate}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add farm product</DialogTitle>
+            <DialogDescription>Add the product once, then track purchases and usage from the inventory table.</DialogDescription>
+          </DialogHeader>
+          <form id="add-product-form" onSubmit={(event) => void submitProduct(event)} className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5"><Label htmlFor="product-brand">Product / brand</Label><Input id="product-brand" required value={brand} onChange={(event) => setBrand(event.target.value)} placeholder="Baby Stag Booster" /></div>
+              <div className="space-y-1.5"><Label htmlFor="product-type">Type</Label><NativeSelect id="product-type" value={type} onChange={(event) => setType(event.target.value as InputProductType)}>{TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</NativeSelect></div>
+              <div className="space-y-1.5"><Label htmlFor="product-unit">Inventory unit</Label><Input id="product-unit" required value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="sachet, pack, bottle" /></div>
+              <div className="space-y-1.5"><Label htmlFor="product-opening-stock">Starting stock <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="product-opening-stock" type="number" min="0" step="0.001" value={opening} onChange={(event) => setOpening(event.target.value)} placeholder="0" /></div>
+              <div className="space-y-1.5"><Label htmlFor="product-name">Generic name / variant <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="product-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Vitamin booster" /></div>
+              <div className="space-y-1.5"><Label htmlFor="product-package">Package description <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="product-package" value={packageDescription} onChange={(event) => setPackageDescription(event.target.value)} placeholder="100 sachets per box" /></div>
+              <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="product-opening-cost">Opening price per {unit.trim() || "unit"} <span className="font-normal text-muted-foreground">(required when starting stock is added)</span></Label><Input id="product-opening-cost" type="number" min="0" step="0.000001" value={openingCost} onChange={(event) => setOpeningCost(event.target.value)} placeholder="₱0.00" /></div>
+            </div>
+          </form>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>Cancel</Button>
+            <Button type="submit" form="add-product-form" disabled={createProduct.isPending}>{createProduct.isPending ? <Loader2 className="animate-spin" /> : <Save className="size-4" />} Save product</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <form onSubmit={(event) => void submitStock(event)} className="grid gap-2.5 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_8rem_8rem_auto] sm:items-end">
         <div className="space-y-1.5"><Label>Add stock</Label><NativeSelect value={selectedId ?? ""} onChange={(event) => setSelectedId(event.target.value ? Number(event.target.value) : null)}><option value="">Select product</option>{activeProducts.map((item) => <option key={item.id} value={item.id}>{item.brandName} · {item.stockOnHand} {item.stockUnit}</option>)}</NativeSelect></div>
         <div className="space-y-1.5"><Label>Quantity purchased</Label><Input required type="number" min="0.001" step="0.001" value={stockQuantity} onChange={(event) => setStockQuantity(event.target.value)} /></div>
@@ -96,7 +112,41 @@ export function InventoryManagerPanel() {
       </form>
       {isLoading && <p className="text-sm text-muted-foreground">Loading products…</p>}
       {!isLoading && activeProducts.length === 0 && <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No products yet. Add the usual medicine, vitamins, or feed packs.</p>}
-      <div className="grid gap-2 sm:grid-cols-2">{activeProducts.map((item) => <div key={item.id} className="flex items-center justify-between gap-3 rounded-xl border p-3"><div className="min-w-0"><p className="truncate text-sm font-semibold">{item.brandName}</p><p className="text-xs text-muted-foreground">{item.productType} · {item.packageDescription ?? item.stockUnit}</p><p className="mt-1 text-xs text-muted-foreground">{item.averageUnitCost == null ? "Cost unavailable" : `Avg. ₱${Number(item.averageUnitCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} / ${item.stockUnit}`}</p></div><div className={item.lowStock ? "text-right text-sm font-bold text-warning-ink" : "text-right text-sm font-bold"}><p>{item.stockOnHand} {item.stockUnit}</p>{item.inventoryValue != null && <p className="text-xs font-normal text-muted-foreground">₱{Number(item.inventoryValue).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} on hand</p>}{item.lowStock && <p className="text-[11px] font-medium">Low stock</p>}</div></div>)}</div>
+      {!isLoading && activeProducts.length > 0 && <div className="overflow-hidden rounded-xl border">
+        <Table>
+          <TableHeader className="bg-muted/40">
+            <TableRow>
+              <TableHead className="min-w-52">Product</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Unit</TableHead>
+              <TableHead className="text-right">On hand</TableHead>
+              <TableHead className="text-right">Average cost</TableHead>
+              <TableHead className="text-right">Inventory value</TableHead>
+              <TableHead className="text-right">Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {activeProducts.map((item) => {
+              const typeLabel = TYPES.find((productType) => productType.value === item.productType)?.label ?? item.productType;
+              const averageUnitCost = item.averageUnitCost == null ? null : Number(item.averageUnitCost);
+              const inventoryValue = item.inventoryValue == null ? null : Number(item.inventoryValue);
+
+              return <TableRow key={item.id}>
+                <TableCell className="min-w-52 whitespace-normal">
+                  <p className="font-semibold">{item.brandName}</p>
+                  {(item.productName || item.packageDescription) && <p className="mt-0.5 text-xs text-muted-foreground">{[item.productName, item.packageDescription].filter(Boolean).join(" · ")}</p>}
+                </TableCell>
+                <TableCell>{typeLabel}</TableCell>
+                <TableCell className="text-muted-foreground">{item.stockUnit}</TableCell>
+                <TableCell className={item.lowStock ? "text-right font-bold text-warning-ink" : "text-right font-semibold"}>{Number(item.stockOnHand).toLocaleString()} <span className="font-normal text-muted-foreground">{item.stockUnit}</span></TableCell>
+                <TableCell className="text-right tabular-nums">{averageUnitCost == null ? <span className="text-muted-foreground">—</span> : `₱${averageUnitCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`}</TableCell>
+                <TableCell className="text-right tabular-nums">{inventoryValue == null ? <span className="text-muted-foreground">—</span> : `₱${inventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</TableCell>
+                <TableCell className="text-right">{item.lowStock ? <Badge variant="warning">Low stock</Badge> : item.valuationStatus === "UNVALUED" ? <Badge variant="outline">Cost needed</Badge> : <Badge variant="success">Tracked</Badge>}</TableCell>
+              </TableRow>;
+            })}
+          </TableBody>
+        </Table>
+      </div>}
       {pendingUses && pendingUses.length > 0 && <div className="rounded-xl border border-warning-border bg-warning-muted/70 p-3"><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold text-warning-ink">Stock review needed</p><span className="text-xs text-warning-ink">{pendingUses.length}</span></div><div className="mt-2 space-y-2">{pendingUses.slice(0, 3).map((item) => <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-warning-border bg-background/70 p-2 text-sm"><span className="min-w-0 truncate">{item.brandName} · {item.quantity ?? "?"} {item.unit ?? "unit"}</span><Button type="button" size="sm" variant="outline" onClick={() => void retryPending.mutateAsync(item.id)} disabled={retryPending.isPending}>Apply now</Button></div>)}</div></div>}
     </CardContent>
   </Card>;
