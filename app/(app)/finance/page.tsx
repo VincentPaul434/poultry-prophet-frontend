@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header";
 
 const CATEGORIES = [
   "Feed",
@@ -228,18 +229,7 @@ function FinancePageContent() {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <WalletCards className="size-6" aria-hidden="true" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-3xl font-bold tracking-tight">{t("finance.title")}</h1>
-            <p className="text-sm text-muted-foreground">{t("finance.notAccounting")}</p>
-          </div>
-        </div>
-        <Button type="button" className="w-full sm:w-auto" onClick={() => setFormOpen(true)}><WalletCards aria-hidden="true" />{t("finance.recordTransaction")}</Button>
-      </header>
+      <DashboardPageHeader icon={WalletCards} title={t("finance.title")} description={t("finance.notAccounting")} action={<Button type="button" className="w-full sm:w-auto" onClick={() => setFormOpen(true)}><WalletCards aria-hidden="true" />{t("finance.recordTransaction")}</Button>} />
 
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Summary label={t("finance.income")} value={summaryIncome == null ? (isAnalyticsLoading ? "…" : "—") : `₱${summaryIncome.toLocaleString()}`} tone="positive" />

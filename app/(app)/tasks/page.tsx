@@ -1,31 +1,35 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Clock3, Loader2, Plus, Search, SlidersHorizontal } from "lucide-react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, ClipboardList, Eye, Filter, Loader2, Plus, Search, SlidersHorizontal, Syringe, X } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { useHandlerTaskQueueSummary, useTaskPage, useTaskPageInfinite, useTaskQueue, useTaskSummary, useCreateTask, useUpdateTaskStatus } from "@/hooks/use-operations";
+import { useCloseTask, useHandlerTaskQueueSummary, useTaskHistory, useTaskPage, useTaskPageInfinite, useTaskQueue, useTaskSummary, useCreateTask, useUpdateTaskStatus } from "@/hooks/use-operations";
 import { useAuth } from "@/lib/auth-context";
 import { useHandlers } from "@/hooks/use-reference";
 import { useBatches } from "@/hooks/use-batches";
 import { ApiError } from "@/lib/api-client";
-import type { HandlerTask, HandlerTaskQueueBucket, HandlerTaskQueueSummary, PageResponse, TaskAssignmentMode, TaskDueBucket, TaskPageFilters, TaskPriority, TaskSummaryResponse, TaskView } from "@/lib/types";
+import type { HandlerTask, HandlerTaskQueueBucket, HandlerTaskQueueSummary, PageResponse, TaskAssignmentMode, TaskDueBucket, TaskKind, TaskPageFilters, TaskPriority, TaskStatusHistory, TaskSummaryResponse, TaskView } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useLocale } from "@/components/locale-provider";
-import { VaccinationTaskAction } from "@/components/vaccination-plan-card";
-import { cn } from "@/lib/utils";
+import { VaccinationManagerAction } from "@/components/vaccination-plan-card";
+import { HandlerTaskDetailDialog } from "@/components/tasks/handler-task-ui";
+import { CloseTaskDialog } from "@/components/tasks/close-task-dialog";
+import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const PAGE_SIZE = 20;
 const HANDLER_PAGE_SIZE = 10;
+const PAGE_SIZES = [10, 20, 50] as const;
 
 function readFilters(searchParams: ReturnType<typeof useSearchParams>): TaskPageFilters {
   const view = searchParams.get("view");
@@ -33,23 +37,29 @@ function readFilters(searchParams: ReturnType<typeof useSearchParams>): TaskPage
   const batch = searchParams.get("batch");
   const handler = searchParams.get("handler");
   const priority = searchParams.get("priority");
+  const kind = searchParams.get("kind");
+  const requestedSize = Number(searchParams.get("size"));
   return {
     page: Math.max(0, Number(searchParams.get("page") ?? 0) || 0),
-    size: PAGE_SIZE,
-    view: ["OPEN", "COMPLETED", "ALL"].includes(view ?? "") ? view as TaskView : "OPEN",
+    size: PAGE_SIZES.includes(requestedSize as typeof PAGE_SIZES[number]) ? requestedSize : PAGE_SIZE,
+    view: ["OPEN", "COMPLETED", "CANCELLED", "ALL"].includes(view ?? "") ? view as TaskView : "OPEN",
     dueBucket: ["ALL", "LATE", "TODAY", "UPCOMING", "NO_DUE"].includes(dueBucket ?? "") ? dueBucket as TaskDueBucket : "ALL",
+    kind: ["WORK", "VACCINATION"].includes(kind ?? "") ? kind as TaskKind : undefined,
     batchId: batch && batch !== "farm" ? Number(batch) || undefined : undefined,
     farmWide: batch === "farm" ? true : undefined,
     assignedHandlerId: handler ? Number(handler) || undefined : undefined,
     priority: ["LOW", "NORMAL", "HIGH", "URGENT"].includes(priority ?? "") ? priority as TaskPriority : undefined,
+    search: searchParams.get("q")?.trim() || undefined,
   };
 }
 
 function formatFilters(filters: TaskPageFilters) {
   const params = new URLSearchParams();
   if (filters.page > 0) params.set("page", String(filters.page));
+  if (filters.size !== PAGE_SIZE) params.set("size", String(filters.size));
   if (filters.view !== "OPEN") params.set("view", filters.view);
   if (filters.dueBucket !== "ALL") params.set("due", filters.dueBucket);
+  if (filters.kind) params.set("kind", filters.kind);
   if (filters.farmWide) params.set("batch", "farm");
   else if (filters.batchId != null) params.set("batch", String(filters.batchId));
   if (filters.assignedHandlerId != null) params.set("handler", String(filters.assignedHandlerId));
@@ -79,8 +89,7 @@ function TasksPageContent() {
   const [handlerQueueBucket, setHandlerQueueBucket] = useState<HandlerTaskQueueBucket>("NOW");
   const [searchInput, setSearchInput] = useState(() => searchParams.get("q") ?? "");
   const [selectedTask, setSelectedTask] = useState<HandlerTask | null>(null);
-  const [assignmentOpen, setAssignmentOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [closeTarget, setCloseTarget] = useState<HandlerTask | null>(null);
   const [assignmentMode, setAssignmentMode] = useState<TaskAssignmentMode>("ALL_HANDLERS");
   const [title, setTitle] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -89,36 +98,44 @@ function TasksPageContent() {
   const [due, setDue] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("NORMAL");
   const [formError, setFormError] = useState("");
+  const [assignmentOpen, setAssignmentOpen] = useState(false);
   const mobileTaskLoadMoreRef = useRef<HTMLDivElement>(null);
 
-  const filters = useMemo<TaskPageFilters>(() => ({ page: 0, size: isManager ? PAGE_SIZE : HANDLER_PAGE_SIZE, view: isManager ? managerFilters.view : "OPEN", dueBucket: isManager ? managerFilters.dueBucket : "ALL", batchId: managerFilters.batchId, farmWide: managerFilters.farmWide, assignedHandlerId: managerFilters.assignedHandlerId, priority: managerFilters.priority, search: managerFilters.search }), [isManager, managerFilters]);
+  const filters = useMemo<TaskPageFilters>(() => ({ page: 0, size: isManager ? managerFilters.size : HANDLER_PAGE_SIZE, view: isManager ? managerFilters.view : "OPEN", dueBucket: isManager ? managerFilters.dueBucket : "ALL", kind: isManager ? managerFilters.kind : undefined, batchId: managerFilters.batchId, farmWide: managerFilters.farmWide, assignedHandlerId: managerFilters.assignedHandlerId, priority: managerFilters.priority, search: managerFilters.search }), [isManager, managerFilters]);
   const managerPageQuery = useTaskPage(managerFilters, isManager && !isMobile);
   const mobileManagerPageQuery = useTaskPageInfinite({ ...managerFilters, page: 0, size: PAGE_SIZE }, isManager && isMobile);
-  const mobileHasNextPage = mobileManagerPageQuery.hasNextPage;
-  const mobileIsFetchingNextPage = mobileManagerPageQuery.isFetchingNextPage;
-  const fetchMobileNextPage = mobileManagerPageQuery.fetchNextPage;
   const handlerQueueQuery = useTaskQueue(handlerQueueBucket, !isManager);
-  const handlerPages = handlerQueueQuery.data?.pages ?? [];
+  const handlerPages = useMemo(() => handlerQueueQuery.data?.pages ?? [], [handlerQueueQuery.data?.pages]);
   const handlerPage = handlerPages.at(-1);
   const mobileManagerPages = mobileManagerPageQuery.data?.pages ?? [];
   const mobileManagerLastPage = mobileManagerPages.at(-1);
-  const mobileManagerPage = mobileManagerLastPage ? { ...mobileManagerLastPage, items: mobileManagerPages.flatMap((item) => item.items), hasPrevious: false } : undefined;
-  const page = isManager ? (isMobile ? mobileManagerPage : managerPageQuery.data) : handlerPage ? { ...handlerPage, items: handlerPages.flatMap((item) => item.items) } : undefined;
+  const mobileManagerPage = mobileManagerLastPage
+    ? { ...mobileManagerLastPage, items: mobileManagerPages.flatMap((item) => item.items), hasPrevious: false }
+    : undefined;
+  const page = useMemo(
+    () => isManager ? (isMobile ? mobileManagerPage : managerPageQuery.data) : handlerPage ? { ...handlerPage, items: handlerPages.flatMap((item) => item.items) } : undefined,
+    [handlerPage, handlerPages, isManager, isMobile, managerPageQuery.data, mobileManagerPage],
+  );
   const isLoading = isManager ? (isMobile ? mobileManagerPageQuery.isLoading : managerPageQuery.isLoading) : handlerQueueQuery.isLoading;
   const isFetching = isManager ? (isMobile ? mobileManagerPageQuery.isFetching : managerPageQuery.isFetching) : handlerQueueQuery.isFetching;
   const error = isManager ? (isMobile ? mobileManagerPageQuery.error : managerPageQuery.error) : handlerQueueQuery.error;
+  const mobileHasNextPage = mobileManagerPageQuery.hasNextPage;
+  const mobileIsFetchingNextPage = mobileManagerPageQuery.isFetchingNextPage;
   const summaryFilters = useMemo(() => ({
     batchId: isManager ? managerFilters.batchId : undefined,
     farmWide: isManager ? managerFilters.farmWide : undefined,
     assignedHandlerId: isManager ? managerFilters.assignedHandlerId : undefined,
     priority: isManager ? managerFilters.priority : undefined,
-  }), [isManager, managerFilters.assignedHandlerId, managerFilters.batchId, managerFilters.farmWide, managerFilters.priority]);
+    kind: isManager ? managerFilters.kind : undefined,
+    search: isManager ? managerFilters.search : undefined,
+  }), [isManager, managerFilters.assignedHandlerId, managerFilters.batchId, managerFilters.farmWide, managerFilters.kind, managerFilters.priority, managerFilters.search]);
   const { data: summary } = useTaskSummary(summaryFilters, isManager);
   const handlerSummaryQuery = useHandlerTaskQueueSummary(!isManager);
   const { data: handlers } = useHandlers(isManager);
   const { data: batches } = useBatches();
   const create = useCreateTask();
   const update = useUpdateTaskStatus();
+  const close = useCloseTask();
   const batchNames = useMemo(() => new Map((batches ?? []).map((item) => [item.id, item.name])), [batches]);
   const handlerNames = useMemo(() => new Map((handlers ?? []).map((item) => [item.id, item.fullName])), [handlers]);
 
@@ -138,11 +155,11 @@ function TasksPageContent() {
   useEffect(() => {
     if (!isManager || !isMobile || !mobileTaskLoadMoreRef.current || !mobileHasNextPage) return;
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !mobileIsFetchingNextPage) void fetchMobileNextPage();
+      if (entry.isIntersecting && !mobileIsFetchingNextPage) void mobileManagerPageQuery.fetchNextPage();
     }, { rootMargin: "480px" });
     observer.observe(mobileTaskLoadMoreRef.current);
     return () => observer.disconnect();
-  }, [fetchMobileNextPage, isManager, isMobile, mobileHasNextPage, mobileIsFetchingNextPage]);
+  }, [isManager, isMobile, mobileHasNextPage, mobileIsFetchingNextPage, mobileManagerPageQuery.fetchNextPage]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -157,8 +174,8 @@ function TasksPageContent() {
         dueAt: due ? new Date(due).toISOString() : null, priority,
       });
       toast.success("Task assigned");
-      setAssignmentOpen(false);
       setTitle(""); setInstructions(""); setHandler(""); setBatch(""); setDue(""); setPriority("NORMAL"); setAssignmentMode("ALL_HANDLERS");
+      setAssignmentOpen(false);
     } catch (submitError) {
       setFormError(submitError instanceof ApiError ? submitError.message : "Could not save the task.");
     }
@@ -174,146 +191,68 @@ function TasksPageContent() {
     }
   }
 
-  function changeStatusFilter(value: string) {
-    changeFilters({ view: value as TaskView, dueBucket: "ALL" });
-  }
-
-  function changeBatchFilter(value: string) {
-    if (value === "all") return changeFilters({ batchId: undefined, farmWide: undefined });
-    if (value === "farm") return changeFilters({ batchId: undefined, farmWide: true });
-    changeFilters({ batchId: Number(value) || undefined, farmWide: undefined });
-  }
-
-  function changeHandlerFilter(value: string) {
-    changeFilters({ assignedHandlerId: value === "all" ? undefined : Number(value) || undefined });
-  }
-
-  function clearTaskFilters() {
-    setSearchInput("");
-    changeFilters({ view: "OPEN", dueBucket: "ALL", priority: undefined, batchId: undefined, farmWide: undefined, assignedHandlerId: undefined, search: undefined });
-  }
-
   function changeHandlerQueue(bucket: HandlerTaskQueueBucket) {
     setHandlerQueueBucket(bucket);
     setSelectedTask(null);
   }
 
-  const activeFilterCount = [filters.view !== "OPEN", filters.dueBucket !== "ALL", filters.batchId != null || filters.farmWide, filters.assignedHandlerId != null, !!filters.priority].filter(Boolean).length;
-  const hasAnyTaskFilter = activeFilterCount > 0 || !!filters.search;
-  const visibleItems = page?.items ?? [];
+  const activeFilterCount = [filters.view !== "OPEN", filters.dueBucket !== "ALL", filters.batchId != null || filters.farmWide, filters.assignedHandlerId != null, !!filters.priority, !!filters.kind, !!filters.search].filter(Boolean).length;
+  const visibleItems = useMemo(() => page?.items ?? [], [page]);
+  const requestedTaskId = Number(searchParams.get("taskId"));
+  const requestedTask = Number.isSafeInteger(requestedTaskId) && requestedTaskId > 0
+    ? visibleItems.find((item) => item.id === requestedTaskId) ?? null
+    : null;
+  const activeTask = selectedTask ?? requestedTask;
+  const { data: taskHistory } = useTaskHistory(activeTask?.id, isManager && activeTask != null);
+
+  function closeTaskDetails(open: boolean) {
+    if (open) return;
+    setSelectedTask(null);
+    if (searchParams.has("taskId")) {
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("taskId");
+      router.replace(next.toString() ? `${pathname}?${next}` : pathname, { scroll: false });
+    }
+  }
+
+  function requestClose(task: HandlerTask) {
+    closeTaskDetails(false);
+    setCloseTarget(task);
+  }
+
+  async function submitClose(reasonCode: string, reason: string | null) {
+    if (!closeTarget) return;
+    try {
+      await close.mutateAsync({ id: closeTarget.id, body: { reasonCode, reason } });
+      setCloseTarget(null);
+      toast.success(t("tasks.closedStatus"));
+    } catch (error) {
+      toast.error(error instanceof ApiError ? error.message : "Could not close the task.");
+    }
+  }
 
   return (
-    <div className="ledger-page mx-auto w-full max-w-6xl space-y-6 sm:space-y-8">
-      {isManager ? <section className="space-y-6 sm:space-y-8">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-            <h1 className="ledger-heading text-3xl leading-none sm:text-5xl">{t("tasks.title")}</h1>
-            <p className="mt-2 hidden max-w-[42rem] text-sm text-muted-foreground sm:block">Assign, monitor, and complete farm work.</p>
-            </div>
-            <Button type="button" variant="outline" aria-label={t("tasks.assign")} className="size-10 shrink-0 rounded-full p-0 sm:hidden" onClick={() => setAssignmentOpen(true)}>
-              <Plus className="size-4" aria-hidden="true" />
-            </Button>
-          </div>
-          <Button type="button" className="hidden h-11 rounded-full px-5 font-semibold sm:flex sm:w-auto" onClick={() => setAssignmentOpen(true)}>
-            <Plus className="size-4" aria-hidden="true" />
-            {t("tasks.assign")}
-          </Button>
-        </header>
-
-        <TaskSummaryBar summary={summary} filters={filters} onFilter={changeFilters} />
-
-        <Sheet open={assignmentOpen} onOpenChange={setAssignmentOpen}>
-          <SheetContent side="bottom" showCloseButton={false} className="max-h-[92dvh] w-full max-w-none gap-0 rounded-t-[2rem] bg-background p-0 sm:data-[side=bottom]:inset-x-auto sm:data-[side=bottom]:inset-y-0 sm:data-[side=bottom]:top-0 sm:data-[side=bottom]:right-0 sm:data-[side=bottom]:bottom-auto sm:data-[side=bottom]:left-auto sm:data-[side=bottom]:h-full sm:data-[side=bottom]:w-[24rem] sm:data-[side=bottom]:max-w-[24rem] sm:data-[side=bottom]:rounded-none sm:data-[side=bottom]:rounded-l-2xl sm:data-[side=bottom]:border-l sm:data-[side=bottom]:border-t-0">
-            <SheetHeader className="border-b px-4 pb-4 pt-3 sm:px-6 sm:py-6 sm:pr-16">
-              <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-muted sm:hidden" aria-hidden="true" />
-              <SheetTitle className="ledger-heading text-2xl">{t("tasks.assign")}</SheetTitle>
-              <SheetDescription className="hidden sm:block">Choose one handler or make the task visible to all handlers.</SheetDescription>
-            </SheetHeader>
-            <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col" noValidate>
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-6">
-                <div className="space-y-1.5"><Label htmlFor="task-title">Task <span className="text-destructive">*</span></Label><Input id="task-title" required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Check waterers and record concerns" /></div>
-                <div className="space-y-1.5"><Label htmlFor="task-assignment">Who should see it?</Label><NativeSelect id="task-assignment" value={assignmentMode} onChange={(event) => { const mode = event.target.value as TaskAssignmentMode; setAssignmentMode(mode); if (mode === "ALL_HANDLERS") setHandler(""); }}><option value="ALL_HANDLERS">All handlers</option><option value="SPECIFIC_HANDLER">Specific handler</option></NativeSelect></div>
-                {assignmentMode === "SPECIFIC_HANDLER" && <div className="space-y-1.5"><Label htmlFor="task-handler">Handler</Label><NativeSelect id="task-handler" value={handler} onChange={(event) => setHandler(event.target.value)}><option value="">Select a handler</option>{handlers?.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</NativeSelect></div>}
-                <div className="space-y-1.5"><Label htmlFor="task-batch">Batch <span className="font-normal text-muted-foreground">(optional)</span></Label><NativeSelect id="task-batch" value={batch} onChange={(event) => setBatch(event.target.value)}><option value="">Farm-wide</option>{batches?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></div>
-                <div className="space-y-1.5"><Label htmlFor="task-due">Due <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="task-due" type="datetime-local" value={due} onChange={(event) => setDue(event.target.value)} /></div>
-                <details className="rounded-xl border px-3"><summary className="flex min-h-10 cursor-pointer items-center text-sm font-semibold">More options <span className="ml-1 font-normal text-muted-foreground">(optional)</span></summary><div className="space-y-2 pb-3"><NativeSelect id="task-priority" aria-label="Priority" value={priority} onChange={(event) => setPriority(event.target.value as TaskPriority)}><option value="LOW">Low priority</option><option value="NORMAL">Normal priority</option><option value="HIGH">High priority</option><option value="URGENT">Urgent priority</option></NativeSelect><Textarea id="task-instructions" value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Instructions for the handler" /></div></details>
-                {formError && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>}
-              </div>
-              <div className="border-t px-6 py-4"><Button disabled={create.isPending} type="submit" className="h-11 w-full rounded-full">{create.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}{t("tasks.assign")}</Button></div>
-            </form>
-          </SheetContent>
-        </Sheet>
-
-        <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}>
-          <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle className="ledger-heading text-2xl">Filter tasks</DialogTitle>
-              <DialogDescription>Refine the task records by status, priority, batch, or handler.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="task-filter-status">Status</Label>
-                <NativeSelect id="task-filter-status" value={filters.view} onChange={(event) => changeStatusFilter(event.target.value)}>
-                  <option value="OPEN">Open</option>
-                  <option value="COMPLETED">Completed</option>
-                  <option value="ALL">All tasks</option>
-                </NativeSelect>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="task-filter-priority">Priority</Label>
-                <NativeSelect id="task-filter-priority" value={filters.priority ?? "all"} onChange={(event) => changeFilters({ priority: event.target.value === "all" ? undefined : event.target.value as TaskPriority })}>
-                  <option value="all">All priorities</option>
-                  <option value="URGENT">Urgent</option>
-                  <option value="HIGH">High</option>
-                  <option value="NORMAL">Normal</option>
-                  <option value="LOW">Low</option>
-                </NativeSelect>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="task-filter-batch">Batch</Label>
-                <NativeSelect id="task-filter-batch" value={filters.farmWide ? "farm" : filters.batchId != null ? String(filters.batchId) : "all"} onChange={(event) => changeBatchFilter(event.target.value)}>
-                  <option value="all">All batches</option>
-                  <option value="farm">Farm-wide</option>
-                  {batches?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                </NativeSelect>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="task-filter-handler">Handler</Label>
-                <NativeSelect id="task-filter-handler" value={filters.assignedHandlerId != null ? String(filters.assignedHandlerId) : "all"} onChange={(event) => changeHandlerFilter(event.target.value)}>
-                  <option value="all">All handlers</option>
-                  {handlers?.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}
-                </NativeSelect>
-              </div>
-            </div>
-            <DialogFooter className="gap-2 sm:justify-between">
-              <Button type="button" variant="ghost" onClick={clearTaskFilters} disabled={!hasAnyTaskFilter}>Clear filters</Button>
-              <Button type="button" onClick={() => setFiltersOpen(false)}>Show tasks</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Card className="ledger-task-list flex min-h-0 flex-col overflow-hidden border-0 bg-transparent shadow-none ring-0">
-          <CardHeader className="space-y-4 p-0 pb-3">
-            <div className="hidden flex-wrap items-start justify-between gap-3 sm:flex">
-              <div><CardTitle className="ledger-card-title text-2xl">{t("tasks.allTasks")}</CardTitle><CardDescription className="mt-1">Click a task to view its details.</CardDescription></div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input aria-label="Search tasks" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search tasks" className="min-h-11 rounded-full border border-border/40 bg-muted/60 pl-11 shadow-none focus-visible:ring-2 focus-visible:ring-ring/40" /></div>
-              <div className="flex shrink-0 gap-2">
-                <Button type="button" variant="outline" aria-label="Filter tasks" className="size-11 shrink-0 rounded-full bg-background/70 px-0 sm:h-11 sm:w-auto sm:px-4" onClick={() => setFiltersOpen(true)}>
-                  <SlidersHorizontal className="size-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">Filters</span>
-                  {activeFilterCount > 0 && <span className="inline-flex size-5 items-center justify-center rounded-full bg-primary text-[0.7rem] text-primary-foreground">{activeFilterCount}</span>}
-                </Button>
-                {hasAnyTaskFilter && <Button type="button" variant="ghost" className="hidden h-11 shrink-0 rounded-full px-3 sm:inline-flex" onClick={clearTaskFilters}>Clear</Button>}
-              </div>
-            </div>
-            <div className="hidden min-h-5 items-center gap-2 px-1 text-xs text-muted-foreground sm:flex" aria-live="polite">{activeFilterCount > 0 ? `${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"} applied` : "Showing open tasks"}</div>
-          </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col p-0 pt-2"><div className="min-h-[18rem] min-w-0 flex-1 space-y-2 overflow-visible overscroll-contain pr-1 sm:max-h-[min(62dvh,44rem)] sm:overflow-y-auto">{isLoading && <TaskSkeleton />}{error && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error instanceof ApiError ? error.message : "Could not load tasks."}</p>}{!isLoading && !error && page?.items.length ? <ManagerTaskList items={page.items} batchNames={batchNames} onOpen={setSelectedTask} /> : null}{!isLoading && !error && page?.items.length === 0 && <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No tasks match this view.</div>}{isManager && isMobile && mobileHasNextPage && <div ref={mobileTaskLoadMoreRef} className="h-2" aria-hidden="true">{mobileIsFetchingNextPage && <span className="sr-only">Loading more tasks</span>}</div>}</div><div className="mt-3 hidden w-full items-center justify-center text-xs text-muted-foreground sm:flex"><div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!page?.hasPrevious || isFetching} onClick={() => changeFilters({ page: Math.max(0, filters.page - 1) })}><ChevronLeft className="size-4" />Previous</Button><span>Page {(page?.page ?? filters.page) + 1} of {Math.max(1, page?.totalPages ?? 1)}</span><Button type="button" variant="outline" size="sm" disabled={!page?.hasNext || isFetching} onClick={() => changeFilters({ page: filters.page + 1 })}>Next<ChevronRight className="size-4" /></Button></div></div></CardContent>
+    <div className="mx-auto w-full max-w-[96rem] space-y-4">
+      {isManager ? <>
+      <DashboardPageHeader icon={ClipboardList} title={t("tasks.title")} description="Assign, monitor, and complete farm work." />
+      <TaskSummaryBar summary={summary} filters={filters} onFilter={changeFilters} />
+      <div className="task-workspace grid gap-4">
+        <div className="task-assignment-trigger">
+          <Button type="button" className="w-full" onClick={() => setAssignmentOpen(true)}><Plus aria-hidden="true" />{t("tasks.assign")}</Button>
+        </div>
+        <Card className="task-assignment-panel h-fit shadow-none">
+          <CardHeader className="p-4 pb-2"><CardTitle className="text-base">{t("tasks.assign")}</CardTitle><CardDescription>Choose one handler or make the task visible to all handlers.</CardDescription></CardHeader>
+          <CardContent className="p-4 pt-2"><TaskAssignmentForm idPrefix="panel" handlers={handlers} batches={batches} assignmentMode={assignmentMode} onAssignmentModeChange={setAssignmentMode} title={title} onTitleChange={setTitle} instructions={instructions} onInstructionsChange={setInstructions} handler={handler} onHandlerChange={setHandler} batch={batch} onBatchChange={setBatch} due={due} onDueChange={setDue} priority={priority} onPriorityChange={setPriority} formError={formError} pending={create.isPending} onSubmit={submit} /></CardContent>
         </Card>
-      </section> : <HandlerTaskQueue
+      <TaskRecordsCard summary={summary} filters={filters} searchInput={searchInput} onSearchInputChange={setSearchInput} activeFilterCount={activeFilterCount} batches={batches} handlers={handlers} page={page} isLoading={isLoading} isFetching={isFetching} error={error} batchNames={batchNames} handlerNames={handlerNames} onFilter={changeFilters} onClearFilters={() => { setSearchInput(""); changeFilters({ view: "OPEN", dueBucket: "ALL", kind: undefined, batchId: undefined, farmWide: undefined, assignedHandlerId: undefined, priority: undefined, search: undefined }); }} onOpen={setSelectedTask} mobileLoadMoreRef={isManager && isMobile ? mobileTaskLoadMoreRef : undefined} mobileHasNextPage={isManager && isMobile ? mobileHasNextPage : false} mobileIsFetchingNextPage={isManager && isMobile ? mobileIsFetchingNextPage : false} />
+      </div>
+      <Sheet open={assignmentOpen} onOpenChange={setAssignmentOpen}>
+        <SheetContent side="right" className="w-full max-w-md overflow-y-auto">
+          <SheetHeader><SheetTitle>{t("tasks.assign")}</SheetTitle><SheetDescription>Choose one handler or make the task visible to all handlers.</SheetDescription></SheetHeader>
+          <div className="px-4 pb-4"><TaskAssignmentForm idPrefix="sheet" handlers={handlers} batches={batches} assignmentMode={assignmentMode} onAssignmentModeChange={setAssignmentMode} title={title} onTitleChange={setTitle} instructions={instructions} onInstructionsChange={setInstructions} handler={handler} onHandlerChange={setHandler} batch={batch} onBatchChange={setBatch} due={due} onDueChange={setDue} priority={priority} onPriorityChange={setPriority} formError={formError} pending={create.isPending} onSubmit={submit} /></div>
+        </SheetContent>
+      </Sheet>
+      </> : <HandlerTaskQueue
         summary={handlerSummaryQuery.data}
         summaryLoading={handlerSummaryQuery.isLoading}
         summaryError={handlerSummaryQuery.error}
@@ -330,10 +269,177 @@ function TasksPageContent() {
         onRetry={() => { void handlerQueueQuery.refetch(); void handlerSummaryQuery.refetch(); }}
       />}
       {isManager
-        ? <TaskDetailDialog task={selectedTask} open={selectedTask != null} isManager handlerNames={handlerNames} pending={update.isPending} onOpenChange={(open) => { if (!open) setSelectedTask(null); }} onDone={markDone} />
-        : <HandlerTaskDetailDialog task={selectedTask} open={selectedTask != null} batchName={selectedTask?.batchId == null ? "Farm-wide" : batchNames.get(selectedTask?.batchId ?? -1) ?? `Batch ${selectedTask?.batchId}`} pending={update.isPending} onOpenChange={(open) => { if (!open) setSelectedTask(null); }} onDone={markDone} />}
+        ? <TaskDetailDialog task={activeTask} open={activeTask != null} isManager handlerNames={handlerNames} history={taskHistory} pending={update.isPending} onOpenChange={closeTaskDetails} onDone={markDone} onCloseTask={requestClose} />
+        : <HandlerTaskDetailDialog task={activeTask} open={activeTask != null} batchName={activeTask?.batchId == null ? "Farm-wide" : batchNames.get(activeTask?.batchId ?? -1) ?? `Batch ${activeTask?.batchId}`} pending={update.isPending} onOpenChange={closeTaskDetails} onDone={markDone} />}
+      <CloseTaskDialog key={`${closeTarget?.id ?? "none"}-${closeTarget?.sourceType === "VACCINATION_PLAN" ? "vaccination" : "task"}`} task={closeTarget} open={closeTarget != null} pending={close.isPending} vaccinationOrphan={closeTarget?.sourceType === "VACCINATION_PLAN"} onOpenChange={(open) => { if (!open) setCloseTarget(null); }} onSubmit={submitClose} />
     </div>
   );
+}
+
+type BatchOption = { id: number; name: string };
+type HandlerOption = { id: number; fullName: string };
+
+function TaskAssignmentForm({
+  idPrefix,
+  handlers,
+  batches,
+  assignmentMode,
+  onAssignmentModeChange,
+  title,
+  onTitleChange,
+  instructions,
+  onInstructionsChange,
+  handler,
+  onHandlerChange,
+  batch,
+  onBatchChange,
+  due,
+  onDueChange,
+  priority,
+  onPriorityChange,
+  formError,
+  pending,
+  onSubmit,
+}: {
+  idPrefix: string;
+  handlers?: HandlerOption[];
+  batches?: BatchOption[];
+  assignmentMode: TaskAssignmentMode;
+  onAssignmentModeChange: (value: TaskAssignmentMode) => void;
+  title: string;
+  onTitleChange: (value: string) => void;
+  instructions: string;
+  onInstructionsChange: (value: string) => void;
+  handler: string;
+  onHandlerChange: (value: string) => void;
+  batch: string;
+  onBatchChange: (value: string) => void;
+  due: string;
+  onDueChange: (value: string) => void;
+  priority: TaskPriority;
+  onPriorityChange: (value: TaskPriority) => void;
+  formError: string;
+  pending: boolean;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const { t } = useLocale();
+  return <form onSubmit={onSubmit} className="space-y-3" noValidate>
+    <div className="space-y-1.5"><Label htmlFor={`${idPrefix}-task-title`}>Task <span className="text-destructive">*</span></Label><Input id={`${idPrefix}-task-title`} required value={title} onChange={(event) => onTitleChange(event.target.value)} placeholder="Check waterers and record concerns" /></div>
+    <div className="space-y-1.5"><Label htmlFor={`${idPrefix}-task-assignment`}>Who should see it?</Label><NativeSelect id={`${idPrefix}-task-assignment`} value={assignmentMode} onChange={(event) => { const mode = event.target.value as TaskAssignmentMode; onAssignmentModeChange(mode); if (mode === "ALL_HANDLERS") onHandlerChange(""); }}><option value="ALL_HANDLERS">All handlers</option><option value="SPECIFIC_HANDLER">Specific handler</option></NativeSelect></div>
+    {assignmentMode === "SPECIFIC_HANDLER" && <div className="space-y-1.5"><Label htmlFor={`${idPrefix}-task-handler`}>Handler</Label><NativeSelect id={`${idPrefix}-task-handler`} value={handler} onChange={(event) => onHandlerChange(event.target.value)}><option value="">Select a handler</option>{handlers?.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</NativeSelect></div>}
+    <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-1"><div className="space-y-1.5"><Label htmlFor={`${idPrefix}-task-batch`}>Batch <span className="font-normal text-muted-foreground">(optional)</span></Label><NativeSelect id={`${idPrefix}-task-batch`} value={batch} onChange={(event) => onBatchChange(event.target.value)}><option value="">Farm-wide</option>{batches?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></div><div className="space-y-1.5"><Label htmlFor={`${idPrefix}-task-due`}>Due <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id={`${idPrefix}-task-due`} type="datetime-local" value={due} onChange={(event) => onDueChange(event.target.value)} /></div></div>
+    <details className="rounded-lg border px-3"><summary className="flex min-h-10 cursor-pointer items-center text-sm font-semibold">More options <span className="ml-1 font-normal text-muted-foreground">(optional)</span></summary><div className="space-y-2 pb-3"><NativeSelect id={`${idPrefix}-task-priority`} aria-label="Priority" value={priority} onChange={(event) => onPriorityChange(event.target.value as TaskPriority)}><option value="LOW">Low priority</option><option value="NORMAL">Normal priority</option><option value="HIGH">High priority</option><option value="URGENT">Urgent priority</option></NativeSelect><Textarea id={`${idPrefix}-task-instructions`} value={instructions} onChange={(event) => onInstructionsChange(event.target.value)} placeholder="Instructions for the handler" /></div></details>
+    {formError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>}
+    <Button disabled={pending} type="submit" className="h-11 w-full">{pending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Plus aria-hidden="true" />}{t("tasks.assign")}</Button>
+  </form>;
+}
+
+function TaskRecordsCard({
+  summary,
+  filters,
+  searchInput,
+  onSearchInputChange,
+  activeFilterCount,
+  batches,
+  handlers,
+  page,
+  isLoading,
+  isFetching,
+  error,
+  batchNames,
+  handlerNames,
+  onFilter,
+  onClearFilters,
+  onOpen,
+  mobileLoadMoreRef,
+  mobileHasNextPage,
+  mobileIsFetchingNextPage,
+}: {
+  summary?: TaskSummaryResponse;
+  filters: TaskPageFilters;
+  searchInput: string;
+  onSearchInputChange: (value: string) => void;
+  activeFilterCount: number;
+  batches?: BatchOption[];
+  handlers?: HandlerOption[];
+  page?: PageResponse<HandlerTask>;
+  isLoading: boolean;
+  isFetching: boolean;
+  error: unknown;
+  batchNames: Map<number, string>;
+  handlerNames: Map<number, string>;
+  onFilter: (patch: Partial<TaskPageFilters>) => void;
+  onClearFilters: () => void;
+  onOpen: (task: HandlerTask) => void;
+  mobileLoadMoreRef?: RefObject<HTMLDivElement | null>;
+  mobileHasNextPage: boolean;
+  mobileIsFetchingNextPage: boolean;
+}) {
+  const { t } = useLocale();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const advancedFilterCount = [filters.dueBucket !== "ALL", filters.batchId != null || filters.farmWide, filters.assignedHandlerId != null, !!filters.priority, !!filters.kind, !!filters.search].filter(Boolean).length;
+  const total = page?.totalItems ?? 0;
+  const pageSize = filters.size || PAGE_SIZE;
+  const start = total === 0 ? 0 : (page?.page ?? filters.page) * pageSize + 1;
+  const end = total === 0 ? 0 : Math.min(start + (page?.items.length ?? 0) - 1, total);
+  const errorMessage = taskLoadErrorMessage(error, "Could not load tasks.");
+
+  function setBatch(value: string) {
+    if (value === "farm") onFilter({ batchId: undefined, farmWide: true });
+    else if (value) onFilter({ batchId: Number(value) || undefined, farmWide: undefined });
+    else onFilter({ batchId: undefined, farmWide: undefined });
+  }
+
+  function clearSearch() {
+    onSearchInputChange("");
+    onFilter({ search: undefined });
+  }
+
+  return <Card className="flex min-h-0 min-w-0 flex-col overflow-hidden shadow-none">
+    <CardHeader className="space-y-3 p-4 pb-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-base">{t("tasks.allTasks")}</CardTitle><CardDescription>Use the filters to find a task, then open it for the full record.</CardDescription></div><Badge variant="outline">{summary?.open ?? 0} {t("tasks.open")}</Badge></div>
+      <div className="flex flex-col gap-2 sm:flex-row"><div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input aria-label={t("tasks.searchPlaceholder")} value={searchInput} onChange={(event) => onSearchInputChange(event.target.value)} placeholder={t("tasks.searchPlaceholder")} className="pl-9" /></div><Button type="button" variant="outline" className="shrink-0" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="size-4" />{t("tasks.filters")}{advancedFilterCount > 0 ? ` (${advancedFilterCount})` : ""}</Button></div>
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Task status filters"><FilterPill active={filters.view === "OPEN" && filters.dueBucket === "ALL"} onClick={() => onFilter({ view: "OPEN", dueBucket: "ALL" })}>Open</FilterPill><FilterPill active={filters.view === "COMPLETED"} onClick={() => onFilter({ view: "COMPLETED", dueBucket: "ALL" })}>Completed</FilterPill><FilterPill active={filters.view === "CANCELLED"} onClick={() => onFilter({ view: "CANCELLED", dueBucket: "ALL" })}>{t("tasks.closedStatus")} {summary?.cancelled != null ? `(${summary.cancelled})` : ""}</FilterPill><FilterPill active={filters.view === "ALL"} onClick={() => onFilter({ view: "ALL", dueBucket: "ALL" })}>All</FilterPill><span className="ml-auto text-xs text-muted-foreground">{activeFilterCount > 0 ? `${activeFilterCount} active` : "All visible tasks"}</span></div>
+      {advancedFilterCount > 0 && <div className="flex flex-wrap items-center gap-1.5" aria-label={t("tasks.activeFilters")}><span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground"><Filter className="size-3.5" aria-hidden="true" />{t("tasks.activeFilters")}</span>{filters.search && <ActiveTaskFilter label={`Search: ${filters.search}`} onClear={clearSearch} />}{filters.dueBucket !== "ALL" && <ActiveTaskFilter label={filters.dueBucket.replace("_", " ")} onClear={() => onFilter({ dueBucket: "ALL" })} />}{filters.priority && <ActiveTaskFilter label={filters.priority} onClear={() => onFilter({ priority: undefined })} />}{filters.kind && <ActiveTaskFilter label={filters.kind === "VACCINATION" ? t("tasks.vaccination") : t("tasks.work")} onClear={() => onFilter({ kind: undefined })} />}{(filters.batchId != null || filters.farmWide) && <ActiveTaskFilter label={filters.farmWide ? t("tasks.farmWide") : batchNames.get(filters.batchId ?? -1) ?? t("common.batch")} onClear={() => onFilter({ batchId: undefined, farmWide: undefined })} />}{filters.assignedHandlerId != null && <ActiveTaskFilter label={handlerNames.get(filters.assignedHandlerId) ?? t("tasks.anyHandler")} onClear={() => onFilter({ assignedHandlerId: undefined })} />}<button type="button" className="min-h-8 px-2 text-xs font-semibold text-primary underline-offset-4 hover:underline" onClick={onClearFilters}>{t("tasks.clearFilters")}</button></div>}
+    </CardHeader>
+    <CardContent className="flex min-h-0 flex-1 flex-col p-4 pt-0">
+      <div data-testid="manager-task-records" className="min-h-[18rem] min-w-0 flex-1 md:max-h-[min(62dvh,44rem)] md:overflow-y-auto md:overscroll-contain md:pr-1">{isLoading && <TaskSkeleton />}{errorMessage && !isLoading && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{errorMessage}</p>}{!isLoading && !errorMessage && page?.items.length === 0 && <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground"><p>{t("tasks.noMatches")}</p><Button type="button" variant="link" className="mt-1" onClick={onClearFilters}>{t("tasks.clearFilters")}</Button></div>}{!isLoading && !errorMessage && page?.items.length ? <ManagerTaskRecords items={page.items} batchNames={batchNames} handlerNames={handlerNames} onOpen={onOpen} /> : null}{mobileHasNextPage && mobileLoadMoreRef && <div ref={mobileLoadMoreRef} className="h-3" aria-hidden="true">{mobileIsFetchingNextPage && <span className="sr-only">Loading more tasks</span>}</div>}</div>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-xs text-muted-foreground"><div className="flex items-center gap-2"><span>{start}–{end} of {total} task{total === 1 ? "" : "s"}</span>{isFetching && !isLoading ? <span>· Updating…</span> : null}</div><div className="flex flex-wrap items-center justify-end gap-2"><label className="hidden items-center gap-1.5 sm:flex">{t("tasks.rows")}<NativeSelect aria-label={t("tasks.rows")} className="h-9 min-w-16 text-xs" value={String(pageSize)} onChange={(event) => onFilter({ size: Number(event.target.value), page: 0 })}>{PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}</NativeSelect></label><Button type="button" variant="outline" size="sm" disabled={!page?.hasPrevious || isFetching} onClick={() => onFilter({ page: Math.max(0, filters.page - 1) })}><ChevronLeft className="size-4" /><span className="hidden sm:inline">Previous</span></Button><span>Page {(page?.page ?? filters.page) + 1} of {Math.max(1, page?.totalPages ?? 1)}</span><Button type="button" variant="outline" size="sm" disabled={!page?.hasNext || isFetching} onClick={() => onFilter({ page: filters.page + 1 })}><span className="hidden sm:inline">Next</span><ChevronRight className="size-4" /></Button></div></div>
+    </CardContent>
+    <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}><SheetContent side="right" className="w-full max-w-md overflow-y-auto"><SheetHeader><SheetTitle>{t("tasks.filterTitle")}</SheetTitle><SheetDescription>{t("tasks.filterDescription")}</SheetDescription></SheetHeader><div className="space-y-4 px-4"><TaskFilterField label={t("tasks.due")}><NativeSelect value={filters.dueBucket} onChange={(event) => onFilter({ dueBucket: event.target.value as TaskDueBucket })}><option value="ALL">{t("tasks.anyDue")}</option><option value="LATE">{t("tasks.late")}</option><option value="TODAY">{t("tasks.today")}</option><option value="UPCOMING">{t("tasks.next")}</option><option value="NO_DUE">{t("tasks.noDue")}</option></NativeSelect></TaskFilterField><TaskFilterField label={t("tasks.priority")}><NativeSelect value={filters.priority ?? ""} onChange={(event) => onFilter({ priority: (event.target.value || undefined) as TaskPriority | undefined })}><option value="">{t("tasks.allPriorities")}</option>{(["URGENT", "HIGH", "NORMAL", "LOW"] as TaskPriority[]).map((value) => <option key={value} value={value}>{value[0] + value.slice(1).toLowerCase()}</option>)}</NativeSelect></TaskFilterField><TaskFilterField label={t("common.type")}><NativeSelect value={filters.kind ?? ""} onChange={(event) => onFilter({ kind: (event.target.value || undefined) as TaskKind | undefined })}><option value="">{t("tasks.allTypes")}</option><option value="WORK">{t("tasks.work")}</option><option value="VACCINATION">{t("tasks.vaccination")}</option></NativeSelect></TaskFilterField><TaskFilterField label={t("common.batch")}><NativeSelect value={filters.farmWide ? "farm" : filters.batchId?.toString() ?? ""} onChange={(event) => setBatch(event.target.value)}><option value="">{t("tasks.allBatches")}</option><option value="farm">{t("tasks.farmWide")}</option>{batches?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></TaskFilterField><TaskFilterField label={t("tasks.who")}><NativeSelect value={filters.assignedHandlerId?.toString() ?? ""} onChange={(event) => onFilter({ assignedHandlerId: event.target.value ? Number(event.target.value) : undefined })}><option value="">{t("tasks.allHandlers")}</option>{handlers?.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</NativeSelect></TaskFilterField></div><SheetFooter><Button type="button" variant="outline" onClick={onClearFilters}>{t("tasks.clearFilters")}</Button><Button type="button" onClick={() => setFiltersOpen(false)}>{t("common.close")}</Button></SheetFooter></SheetContent></Sheet>
+  </Card>;
+}
+
+function TaskFilterField({ label, children }: { label: string; children: ReactNode }) {
+  return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
+}
+
+function ActiveTaskFilter({ label, onClear }: { label: string; onClear: () => void }) {
+  return <button type="button" className="inline-flex min-h-8 max-w-full items-center gap-1 rounded-full border bg-muted px-2.5 text-xs font-medium hover:bg-muted/70" onClick={onClear}><span className="truncate">{label}</span><X className="size-3.5 shrink-0" aria-hidden="true" /><span className="sr-only">Clear {label}</span></button>;
+}
+
+function ManagerTaskRecords({ items, batchNames, handlerNames, onOpen }: { items: HandlerTask[]; batchNames: Map<number, string>; handlerNames: Map<number, string>; onOpen: (task: HandlerTask) => void }) {
+  return <>
+    <div className="hidden md:block">
+      <div data-testid="manager-task-table"><Table aria-label="Farm tasks" className="table-fixed">
+        <TableHeader className="sticky top-0 z-10 bg-card"><TableRow><TableHead className="w-[34%] whitespace-normal">Task</TableHead><TableHead className="w-[22%] whitespace-normal">Batch</TableHead><TableHead className="hidden w-[14%] whitespace-normal xl:table-cell">Assigned to</TableHead><TableHead className="w-[17%] whitespace-normal">Due</TableHead><TableHead className="hidden w-[10%] whitespace-normal xl:table-cell">Priority</TableHead><TableHead className="w-[12%] whitespace-normal">Status</TableHead><TableHead className="w-14 text-right"><span className="sr-only">Action</span></TableHead></TableRow></TableHeader>
+        <TableBody>{items.map((task) => { const batchName = task.batchId == null ? "Farm-wide" : batchNames.get(task.batchId) ?? `Batch ${task.batchId}`; const assignedTo = task.assignmentScope === "HANDLER" ? handlerNames.get(task.assignedHandlerId ?? -1) ?? `Handler #${task.assignedHandlerId}` : "All handlers"; return <TableRow key={task.id} className={task.overdue && task.status !== "COMPLETED" ? "bg-warning-muted/20" : undefined}><TableCell className="whitespace-normal"><button type="button" className="block max-w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onOpen(task)}><span className="block line-clamp-2 font-semibold">{task.title}</span><span className="mt-1 block truncate text-xs text-muted-foreground">#{task.id}{task.sourceType === "VACCINATION_PLAN" ? " · Vaccination" : task.sourceType ? ` · ${task.sourceType}` : ""}</span></button></TableCell><TableCell className="whitespace-normal"><span className="block truncate font-medium">{batchName}</span><span className="mt-1 block truncate text-xs text-muted-foreground xl:hidden">{assignedTo}</span></TableCell><TableCell className="hidden whitespace-normal xl:table-cell"><span className="block truncate">{assignedTo}</span></TableCell><TableCell className="whitespace-normal"><span className={task.overdue && task.status !== "COMPLETED" ? "font-semibold text-warning-ink" : ""}>{formatManagerDue(task)}</span></TableCell><TableCell className="hidden xl:table-cell"><Badge variant={task.priority === "URGENT" || task.priority === "HIGH" ? "warning" : "secondary"}>{task.priority}</Badge></TableCell><TableCell><TaskStatusBadge task={task} /></TableCell><TableCell className="text-right"><Button type="button" variant="ghost" size="icon-sm" aria-label={`View task ${task.title}`} onClick={() => onOpen(task)}><Eye className="size-4" /></Button></TableCell></TableRow>; })}</TableBody>
+      </Table></div>
+    </div>
+    <div data-testid="manager-task-mobile-list" className="space-y-2 md:hidden">{items.map((task) => { const batchName = task.batchId == null ? "Farm-wide" : batchNames.get(task.batchId) ?? `Batch ${task.batchId}`; const assignedTo = task.assignmentScope === "HANDLER" ? handlerNames.get(task.assignedHandlerId ?? -1) ?? `Handler #${task.assignedHandlerId}` : "All handlers"; return <button key={task.id} type="button" className={`block min-h-24 w-full rounded-xl border p-3 text-left outline-none transition-colors hover:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary ${task.overdue && task.status !== "COMPLETED" ? "border-warning-border bg-warning-muted/20" : "bg-card"}`} onClick={() => onOpen(task)}><div className="flex items-start justify-between gap-3"><span className="min-w-0 flex-1"><span className="block line-clamp-2 font-semibold">{task.title}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{batchName} · {assignedTo}</span></span><TaskStatusBadge task={task} /></div><div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>{formatManagerDue(task)}</span><span>{task.priority}</span><span>#{task.id}</span><ChevronRight className="ml-auto size-4" aria-hidden="true" /></div></button>; })}</div>
+  </>;
+}
+
+function formatManagerDue(task: HandlerTask) {
+  if (task.status === "COMPLETED" && task.completedAt) return `Done · ${new Date(task.completedAt).toLocaleDateString([], { month: "short", day: "numeric" })}`;
+  if (task.status === "CANCELLED") return `Closed · ${new Date(task.updatedAt).toLocaleDateString([], { month: "short", day: "numeric" })}`;
+  if (!task.dueAt) return "No due date";
+  return `${task.overdue ? "Late · " : ""}${new Date(task.dueAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
+function TaskStatusBadge({ task }: { task: HandlerTask }) {
+  const { t } = useLocale();
+  const variant = task.status === "COMPLETED" ? "success" : task.status === "CANCELLED" ? "secondary" : task.status === "BLOCKED" || task.overdue ? "warning" : "outline";
+  return <Badge variant={variant}>{task.status === "COMPLETED" ? t("tasks.done") : task.status === "CANCELLED" ? t("tasks.closedStatus") : task.status === "IN_PROGRESS" ? t("tasks.inProgressStatus") : task.status === "BLOCKED" ? t("tasks.blockedStatus") : t("tasks.todoStatus")}</Badge>;
 }
 
 function HandlerTaskQueue({
@@ -368,49 +474,80 @@ function HandlerTaskQueue({
   onRetry: () => void;
 }) {
   const { t } = useLocale();
-  const showingNow = bucket === "NOW";
-  const count = summary?.now ?? (showingNow ? page?.totalItems : undefined);
   const errorMessage = taskLoadErrorMessage(error, "Could not load tasks.");
   const summaryMessage = taskLoadErrorMessage(summaryError, "Could not load the task count.");
   const combinedError = errorMessage || summaryMessage;
-  const grouped = groupHandlerTasks(items, bucket);
-  const countReady = !summaryLoading || page != null;
-  return <section className="space-y-5">
-    <header className="space-y-1">
-      <div className="flex items-center gap-3"><div className="flex size-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><ClipboardList className="size-5" aria-hidden="true" /></div><div><h1 className="text-2xl font-bold tracking-tight">{t("tasks.myTasks")}</h1><p className="text-sm text-muted-foreground">{t("tasks.handlerSubtitle")}</p></div></div>
-      {!countReady && <p className="pt-2 text-lg font-semibold text-muted-foreground">{t("common.loading")}</p>}
-      {countReady && showingNow && count === 0 && <p className="pt-2 text-lg font-semibold">{t("tasks.handlerNoTasks")}</p>}
-      {countReady && showingNow && typeof count === "number" && count > 0 && <p className="pt-2 text-lg font-semibold">{count} {t("tasks.handlerRemaining")}</p>}
-      {countReady && !showingNow && typeof count === "number" && <p className="pt-2 text-lg font-semibold">{count} {t("tasks.handlerScheduledCount")}</p>}
-      {showingNow && summary && summary.upcoming > 0 && <p className="text-sm text-muted-foreground">{t("tasks.handlerUpcomingHint").replace("{count}", String(summary.upcoming))}</p>}
-      {summaryMessage && !errorMessage && <p className="text-xs text-muted-foreground">{summaryMessage}</p>}
-    </header>
-    <div className="flex gap-2" role="tablist" aria-label={t("tasks.title")}>
-      <button type="button" role="tab" aria-selected={bucket === "NOW"} onClick={() => onBucketChange("NOW")} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold transition-colors ${bucket === "NOW" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}>{t("tasks.handlerNowTab")} {summary ? `(${summary.now})` : ""}</button>
-      <button type="button" role="tab" aria-selected={bucket === "UPCOMING"} onClick={() => onBucketChange("UPCOMING")} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold transition-colors ${bucket === "UPCOMING" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}>{t("tasks.handlerUpcomingTab")} {summary ? `(${summary.upcoming})` : ""}</button>
-      <button type="button" role="tab" aria-selected={bucket === "COMPLETED"} onClick={() => onBucketChange("COMPLETED")} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold transition-colors ${bucket === "COMPLETED" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}>{t("tasks.handlerDoneTab")} {summary ? `(${summary.completed})` : ""}</button>
+  const vaccinationTasks = bucket === "NOW" ? items.filter((task) => task.sourceType === "VACCINATION_PLAN") : [];
+  const workItems = bucket === "NOW" ? items.filter((task) => task.sourceType !== "VACCINATION_PLAN") : items;
+  const grouped = groupHandlerTasks(workItems, bucket, {
+    completed: t("tasks.handlerDoneTab"),
+    noDeadline: t("tasks.noDue"),
+    late: t("tasks.overdue"),
+    today: t("tasks.handlerNowTab"),
+  });
+  const tabCount = (value: number | undefined) => summaryLoading && value == null ? "…" : String(value ?? 0);
+  return <section className="space-y-4 pb-2">
+    <DashboardPageHeader icon={ClipboardList} title={t("tasks.myTasks")} description={t("tasks.handlerSubtitle")} />
+    <div className="grid grid-cols-3 gap-1 rounded-2xl bg-muted/50 p-1" role="tablist" aria-label={t("tasks.title")}>
+      <HandlerQueueTab active={bucket === "NOW"} label={t("tasks.handlerNowTab")} count={tabCount(summary?.now)} onClick={() => onBucketChange("NOW")} />
+      <HandlerQueueTab active={bucket === "UPCOMING"} label={t("tasks.handlerUpcomingTab")} count={tabCount(summary?.upcoming)} onClick={() => onBucketChange("UPCOMING")} />
+      <HandlerQueueTab active={bucket === "COMPLETED"} label={t("tasks.handlerDoneTab")} count={tabCount(summary?.completed)} onClick={() => onBucketChange("COMPLETED")} />
     </div>
+    {summaryMessage && !errorMessage && <p className="text-xs text-muted-foreground">{summaryMessage}</p>}
     {isLoading && <TaskSkeleton />}
     {combinedError && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive"><p>{combinedError}</p><Button type="button" variant="outline" className="mt-3 min-h-10" onClick={onRetry}>Try again</Button></div>}
     {!isLoading && !error && items.length === 0 && <div className="rounded-2xl border border-dashed p-8 text-center"><CheckCircle2 className="mx-auto size-8 text-primary" aria-hidden="true" /><p className="mt-2 font-semibold">{bucket === "COMPLETED" ? t("tasks.handlerNoCompleted") : bucket === "UPCOMING" ? t("tasks.handlerNoUpcoming") : t("tasks.handlerNoTasks")}</p><p className="mt-1 text-sm text-muted-foreground">{bucket === "COMPLETED" ? t("tasks.handlerNoCompletedHint") : t("tasks.handlerNoTasksHint")}</p></div>}
-    {!isLoading && !error && items.length > 0 && <div className="space-y-4" aria-live="polite">{Array.from(grouped.entries()).map(([label, tasks]) => <section key={label} className="space-y-2"><h2 className="border-b border-border px-0 py-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">{label}</h2><div className="space-y-2">{tasks.map((task) => <HandlerTaskRow key={task.id} task={task} batchName={task.batchId == null ? t("tasks.handlerFarmWide") : batchNames.get(task.batchId) ?? `Batch ${task.batchId}`} onOpen={onOpen} />)}</div></section>)}</div>}
+    {!isLoading && !error && items.length > 0 && <div className="space-y-5" aria-live="polite">
+      {Array.from(grouped.entries()).map(([label, tasks]) => <section key={label} className="space-y-2"><h2 className="px-1 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">{label}</h2><div className="space-y-2">{tasks.map((task) => <HandlerTaskRow key={task.id} task={task} batchName={task.batchId == null ? t("tasks.handlerFarmWide") : batchNames.get(task.batchId) ?? `Batch ${task.batchId}`} onOpen={onOpen} />)}</div></section>)}
+      {vaccinationTasks.length > 0 && <VaccinationReminderGroup tasks={vaccinationTasks} batchNames={batchNames} onOpen={onOpen} />}
+    </div>}
     {!isLoading && !error && page?.hasNext && <Button type="button" variant="outline" className="min-h-11 w-full" disabled={isFetching} onClick={onLoadMore}>{isFetching ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}{t("tasks.handlerLoadMore")}</Button>}
   </section>;
 }
 
-function groupHandlerTasks(items: HandlerTask[], bucket: HandlerTaskQueueBucket) {
+function HandlerQueueTab({ active, label, count, onClick }: { active: boolean; label: string; count: string; onClick: () => void }) {
+  return <button type="button" role="tab" aria-selected={active} onClick={onClick} className={`flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-xl px-2 text-sm font-semibold transition-colors ${active ? "bg-card text-primary shadow-sm ring-1 ring-border" : "text-muted-foreground hover:bg-card/60"}`}><span className="truncate">{label}</span><span className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${active ? "bg-primary/10 text-primary" : "bg-background/60"}`}>{count}</span></button>;
+}
+
+function groupHandlerTasks(items: HandlerTask[], bucket: HandlerTaskQueueBucket, labels: { completed: string; noDeadline: string; late: string; today: string }) {
   const groups = new Map<string, HandlerTask[]>();
   for (const task of items) {
     let label: string;
-    if (bucket === "COMPLETED") label = "Completed";
-    else if (task.sourceType === "VACCINATION_PLAN") label = "Vaccination reminders";
-    else if (!task.dueAt) label = "No deadline";
-    else if (task.overdue) label = "Late";
-    else if (bucket === "NOW") label = "Today";
+    if (bucket === "COMPLETED") label = labels.completed;
+    else if (!task.dueAt) label = labels.noDeadline;
+    else if (task.overdue) label = labels.late;
+    else if (bucket === "NOW") label = labels.today;
     else label = new Date(task.dueAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
     groups.set(label, [...(groups.get(label) ?? []), task]);
   }
   return groups;
+}
+
+function VaccinationReminderGroup({ tasks, batchNames, onOpen }: { tasks: HandlerTask[]; batchNames: Map<number, string>; onOpen: (task: HandlerTask) => void }) {
+  const { t } = useLocale();
+  const [expanded, setExpanded] = useState(false);
+  const visibleTasks = expanded ? tasks : tasks.slice(0, 2);
+  const remaining = tasks.length - visibleTasks.length;
+
+  return <section className="overflow-hidden rounded-2xl border bg-card shadow-sm">
+    <div className="flex items-center gap-3 px-4 py-3.5">
+      <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"><Syringe className="size-4" aria-hidden="true" /></span>
+      <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h2 className="truncate font-bold">{t("tasks.handlerVaccinationTitle")}</h2><Badge variant="secondary" className="shrink-0">{tasks.length}</Badge></div><p className="truncate text-xs text-muted-foreground">{t("tasks.handlerVaccinationHint")}</p></div>
+    </div>
+    <div className="divide-y border-t">
+      {visibleTasks.map((task) => {
+        const batchName = task.batchId == null ? t("tasks.handlerFarmWide") : batchNames.get(task.batchId) ?? `Batch ${task.batchId}`;
+        const deadline = formatTaskDeadline(task, t("tasks.overdue"), t("tasks.today"), t("tasks.noDue"));
+        const title = task.title.replace(/^Vaccination:\s*/i, "");
+        return <button key={task.id} type="button" className="grid min-h-16 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary" onClick={() => onOpen(task)}>
+          <span className={`size-2.5 rounded-full ${task.overdue ? "bg-destructive" : "bg-primary"}`} aria-hidden="true" />
+          <span className="min-w-0"><span className="block truncate text-sm font-semibold">{title}</span><span className={`mt-0.5 block truncate text-xs ${task.overdue ? "font-medium text-destructive" : "text-muted-foreground"}`}>{batchName} · {deadline}</span></span>
+          <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+        </button>;
+      })}
+    </div>
+    {tasks.length > 2 && <button type="button" className="flex min-h-11 w-full items-center justify-center gap-2 border-t px-4 text-sm font-semibold text-primary hover:bg-primary/5" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>{expanded ? <><ChevronUp className="size-4" />{t("tasks.handlerHideReminders")}</> : <><ChevronDown className="size-4" />{t("tasks.handlerShowReminders").replace("{count}", String(remaining))}</>}</button>}
+  </section>;
 }
 
 function HandlerTaskRow({ task, batchName, onOpen }: { task: HandlerTask; batchName: string; onOpen: (task: HandlerTask) => void }) {
@@ -418,8 +555,8 @@ function HandlerTaskRow({ task, batchName, onOpen }: { task: HandlerTask; batchN
   const urgent = task.priority === "URGENT" || task.priority === "HIGH";
   const deadline = formatTaskDeadline(task, t("tasks.overdue"), t("tasks.today"), t("tasks.noDue"));
   function onKeyDown(event: KeyboardEvent<HTMLElement>) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(task); } }
-  return <article role="button" tabIndex={0} aria-label={`${t("tasks.handlerViewDetails")}: ${task.title}`} onClick={() => onOpen(task)} onKeyDown={onKeyDown} className={`group cursor-pointer rounded-2xl border p-4 outline-none transition-colors hover:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary ${task.overdue && task.status !== "COMPLETED" ? "border-destructive/40 bg-destructive/5" : "bg-card"}`}>
-    <div className="flex items-start gap-3"><div className="min-w-0 flex-1 space-y-1.5"><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold leading-snug">{task.title}</h2>{urgent && <Badge variant="destructive">{task.priority === "URGENT" ? "Urgent" : "High priority"}</Badge>}{task.sourceType === "VACCINATION_PLAN" && <Badge variant="secondary">Reminder</Badge>}{task.pendingSync && <Badge variant="outline">{t("tasks.handlerPending")}</Badge>}</div><p className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground"><span>{batchName}</span><span aria-hidden="true">·</span><span className={task.overdue && task.status !== "COMPLETED" ? "font-semibold text-destructive" : ""}>{deadline}</span></p></div><ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" /></div>
+  return <article role="button" tabIndex={0} aria-label={`${t("tasks.handlerViewDetails")}: ${task.title}`} onClick={() => onOpen(task)} onKeyDown={onKeyDown} className={`group cursor-pointer rounded-2xl border p-3.5 outline-none transition-colors hover:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary ${task.overdue && task.status !== "COMPLETED" ? "border-destructive/40 bg-destructive/5" : "bg-card"}`}>
+    <div className="flex items-start gap-3"><div className="min-w-0 flex-1 space-y-1.5"><div className="flex flex-wrap items-center gap-2"><h2 className="font-semibold leading-snug">{task.title}</h2>{urgent && <Badge variant="destructive">{task.priority === "URGENT" ? "Urgent" : "High priority"}</Badge>}{task.sourceType === "VACCINATION_PLAN" && task.status !== "COMPLETED" && <Badge variant="secondary">Reminder</Badge>}{task.pendingSync && <Badge variant="outline">{t("tasks.handlerPending")}</Badge>}</div><p className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground"><span>{batchName}</span><span aria-hidden="true">·</span><span className={task.overdue && task.status !== "COMPLETED" ? "font-semibold text-destructive" : ""}>{deadline}</span></p></div><ChevronRight className="mt-1 size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden="true" /></div>
   </article>;
 }
 
@@ -432,69 +569,26 @@ function formatTaskDeadline(task: HandlerTask, lateLabel: string, todayLabel: st
   return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
-function HandlerTaskDetailDialog({ task, open, batchName, pending, onOpenChange, onDone }: { task: HandlerTask | null; open: boolean; batchName: string; pending: boolean; onOpenChange: (open: boolean) => void; onDone: (task: HandlerTask) => void }) {
-  const { t } = useLocale();
-  if (!task) return null;
-  const completed = task.status === "COMPLETED";
-  const deadline = formatTaskDeadline(task, t("tasks.overdue"), t("tasks.today"), t("tasks.noDue"));
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-1rem)] overflow-y-auto sm:max-w-lg"><DialogHeader><DialogTitle>{task.title}</DialogTitle><DialogDescription>{t("tasks.handlerDetailHint")}</DialogDescription></DialogHeader><div className="space-y-4"><div className="rounded-xl border bg-muted/20 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("tasks.instructions")}</p><p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{task.instructions || t("tasks.handlerNoInstructions")}</p></div><dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2"><div><dt className="text-xs text-muted-foreground">{t("tasks.whichBatch")}</dt><dd className="font-medium">{batchName}</dd></div><div><dt className="text-xs text-muted-foreground">{t("tasks.due")}</dt><dd className="font-medium">{deadline}</dd></div></dl>{task.pendingSync && <p className="rounded-xl border border-warning-border bg-warning-muted/60 px-3 py-2 text-sm text-warning-ink">{t("tasks.handlerPendingHint")}</p>}</div><DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>{!completed && task.sourceType === "VACCINATION_PLAN" && <VaccinationTaskAction task={task} />}{!completed && task.sourceType !== "VACCINATION_PLAN" && <Button type="button" className="min-h-11" disabled={pending || task.pendingSync} onClick={() => onDone(task)}><CheckCircle2 className="size-4" />{t("tasks.markDone")}</Button>}</DialogFooter></DialogContent></Dialog>;
-}
-
 function TaskSummaryBar({ summary, filters, onFilter }: { summary?: TaskSummaryResponse; filters: TaskPageFilters; onFilter: (patch: Partial<TaskPageFilters>) => void }) {
   const items: { label: string; value: number; view: TaskView; dueBucket: TaskDueBucket }[] = [
     { label: "Late", value: summary?.late ?? 0, view: "OPEN", dueBucket: "LATE" }, { label: "Today", value: summary?.today ?? 0, view: "OPEN", dueBucket: "TODAY" }, { label: "Upcoming", value: summary?.upcoming ?? 0, view: "OPEN", dueBucket: "UPCOMING" }, { label: "No due date", value: summary?.noDueDate ?? 0, view: "OPEN", dueBucket: "NO_DUE" }, { label: "Completed", value: summary?.completed ?? 0, view: "COMPLETED", dueBucket: "ALL" },
   ];
-  const openItem = { label: "Open", value: summary?.open ?? 0, view: "OPEN" as TaskView, dueBucket: "ALL" as TaskDueBucket };
-  const renderMobileItem = (item: typeof openItem | (typeof items)[number]) => {
-    const active = filters.view === item.view && filters.dueBucket === item.dueBucket;
-    return <button key={item.label} type="button" aria-pressed={active} onClick={() => onFilter(active ? { view: "ALL", dueBucket: "ALL" } : { view: item.view, dueBucket: item.dueBucket })} className={cn("ledger-summary-mobile shrink-0 rounded-full px-4 py-2 text-left", active && "ledger-summary-mobile-active")}><span className="text-sm font-semibold">{item.label} {item.value}</span></button>;
-  };
-  const renderDesktopItem = (item: (typeof items)[number]) => {
-    const active = filters.view === item.view && filters.dueBucket === item.dueBucket;
-    return <button key={item.label} type="button" aria-pressed={active} onClick={() => onFilter(active ? { view: "ALL", dueBucket: "ALL" } : { view: item.view, dueBucket: item.dueBucket })} className={cn("ledger-summary-card min-h-20 rounded-xl border-0 p-3 text-left", active && "ledger-summary-card-active")}><p className="text-xs font-medium opacity-70">{item.label}</p><p className="mt-1 text-xl font-bold tabular-nums">{item.value}</p></button>;
-  };
-  return <><div className="ledger-task-summary flex gap-2 overflow-x-auto pb-1 sm:hidden">{renderMobileItem(openItem)}{items.map(renderMobileItem)}</div><div className="ledger-task-summary hidden grid-cols-2 gap-2 sm:grid sm:grid-cols-5">{items.map(renderDesktopItem)}</div></>;
+  return <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">{items.map((item) => { const active = filters.view === item.view && filters.dueBucket === item.dueBucket; return <button key={item.label} type="button" aria-pressed={active} onClick={() => onFilter(active ? { view: "ALL", dueBucket: "ALL" } : { view: item.view, dueBucket: item.dueBucket })} className={`min-h-20 rounded-xl border p-3 text-left transition-colors hover:border-primary/50 ${active ? "border-primary bg-primary/5" : "bg-card"}`}><p className="text-xs font-medium text-muted-foreground">{item.label}</p><p className="mt-1 text-xl font-bold tabular-nums">{item.value}</p></button>; })}</div>;
 }
 
-function ManagerTaskList({ items, batchNames, onOpen }: { items: HandlerTask[]; batchNames: Map<number, string>; onOpen: (task: HandlerTask) => void }) {
-  const groups = groupManagerTasks(items);
-  return <div className="space-y-6" aria-live="polite">{Array.from(groups.entries()).map(([label, tasks]) => <section key={label} className="space-y-2"><h2 className="text-sm font-semibold text-muted-foreground">{label} <span className="font-normal">· {tasks.length}</span></h2><div className="space-y-2">{tasks.map((task) => <TaskCard key={task.id} task={task} batchName={task.batchId == null ? "Farm-wide" : batchNames.get(task.batchId) ?? `Batch ${task.batchId}`} onOpen={onOpen} />)}</div></section>)}</div>;
+function FilterPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return <button type="button" aria-pressed={active} onClick={onClick} className={`min-h-10 shrink-0 rounded-lg border px-3 text-sm font-semibold transition-colors ${active ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}>{children}</button>;
 }
 
-function groupManagerTasks(items: HandlerTask[]) {
-  const groups = new Map<string, HandlerTask[]>();
-  for (const task of items) {
-    let label = "Upcoming";
-    if (task.status === "COMPLETED") label = "Completed";
-    else if (task.overdue) label = "Late";
-    else if (!task.dueAt) label = "No due date";
-    else if (new Date(task.dueAt).toDateString() === new Date().toDateString()) label = "Today";
-    groups.set(label, [...(groups.get(label) ?? []), task]);
-  }
-  return groups;
-}
-
-function TaskCard({ task, batchName, onOpen }: { task: HandlerTask; batchName: string; onOpen: (task: HandlerTask) => void }) {
-  function onKeyDown(event: KeyboardEvent<HTMLElement>) { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen(task); } }
-  const due = task.dueAt ? new Date(task.dueAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "No due date";
-  return <article role="button" tabIndex={0} aria-label={`Open task ${task.title}`} onClick={() => onOpen(task)} onKeyDown={onKeyDown} className={cn("ledger-task-row group cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary", task.overdue && task.status !== "COMPLETED" && "ledger-task-row-overdue")}>
-    <div className="flex items-start gap-3">
-      <span className={cn("ledger-task-check mt-0.5", task.status === "COMPLETED" && "ledger-task-check-complete")} aria-hidden="true">{task.status === "COMPLETED" && <CheckCircle2 className="size-4" />}</span>
-      <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex flex-wrap items-center gap-2"><h4 className="font-semibold leading-snug">{task.title}</h4>{(task.priority === "URGENT" || task.priority === "HIGH") && <Badge variant="destructive" className="rounded-full">{task.priority === "URGENT" ? "Urgent" : "High priority"}</Badge>}{task.pendingSync && <Badge variant="outline" className="rounded-full">Waiting to sync</Badge>}</div>
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>{batchName}</span><span className="inline-flex items-center gap-1"><Clock3 className="size-3.5" aria-hidden="true" />{task.overdue ? "Late · " : ""}{due}</span>{task.sourceType && <span>{task.sourceType === "VACCINATION_PLAN" ? "Vaccination" : task.sourceType}</span>}</div>
-      </div>
-      <Badge variant={task.status === "COMPLETED" ? "secondary" : task.status === "BLOCKED" ? "destructive" : "outline"} className="shrink-0 rounded-full">{task.status.replace("_", " ")}</Badge>
-    </div>
-  </article>;
-}
-
-function TaskDetailDialog({ task, open, isManager, handlerNames, pending, onOpenChange, onDone }: { task: HandlerTask | null; open: boolean; isManager: boolean; handlerNames: Map<number, string>; pending: boolean; onOpenChange: (open: boolean) => void; onDone: (task: HandlerTask) => void }) {
+function TaskDetailDialog({ task, open, isManager, handlerNames, history, pending, onOpenChange, onDone, onCloseTask }: { task: HandlerTask | null; open: boolean; isManager: boolean; handlerNames: Map<number, string>; history?: TaskStatusHistory[]; pending: boolean; onOpenChange: (open: boolean) => void; onDone: (task: HandlerTask) => void; onCloseTask: (task: HandlerTask) => void }) {
+  const { t } = useLocale();
   if (!task) return null;
   const due = task.dueAt ? new Date(task.dueAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "No due date";
   const completed = task.status === "COMPLETED";
+  const cancelled = task.status === "CANCELLED";
   const assignedTo = task.assignmentScope === "HANDLER" ? handlerNames.get(task.assignedHandlerId ?? -1) ?? `Handler #${task.assignedHandlerId}` : "All handlers";
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg"><DialogHeader><DialogTitle>{task.title}</DialogTitle><DialogDescription>Task information and completion history.</DialogDescription></DialogHeader><div className="space-y-4"><div className="flex flex-wrap gap-2"><Badge variant={task.overdue ? "destructive" : "outline"}>{task.overdue ? "Late" : task.status.replace("_", " ")}</Badge><Badge variant="secondary">{task.priority}</Badge>{task.pendingSync && <Badge variant="outline">Waiting to sync</Badge>}</div><dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">Assigned to</dt><dd className="font-medium">{assignedTo}</dd></div><div><dt className="text-xs text-muted-foreground">Due</dt><dd className="font-medium">{due}</dd></div><div><dt className="text-xs text-muted-foreground">Scope</dt><dd className="font-medium">{task.batchId == null ? "Farm-wide" : `Batch #${task.batchId}`}</dd></div><div><dt className="text-xs text-muted-foreground">Created</dt><dd className="font-medium">{new Date(task.createdAt).toLocaleString()}</dd></div>{task.completedAt && <div><dt className="text-xs text-muted-foreground">Completed</dt><dd className="font-medium">{new Date(task.completedAt).toLocaleString()}{task.completedBy != null ? ` · ${handlerNames.get(task.completedBy) ?? `Handler #${task.completedBy}`}` : ""}</dd></div>}<div><dt className="text-xs text-muted-foreground">Source</dt><dd className="font-medium">{task.sourceType === "VACCINATION_PLAN" ? "Vaccination schedule" : task.sourceType ?? "Manual task"}</dd></div></dl>{task.instructions && <div className="rounded-xl border bg-muted/20 p-3 text-sm whitespace-pre-wrap"><p className="mb-1 text-xs font-semibold text-muted-foreground">Instructions</p>{task.instructions}</div>}{task.completionNote && <div className="rounded-xl border bg-muted/20 p-3 text-sm whitespace-pre-wrap"><p className="mb-1 text-xs font-semibold text-muted-foreground">Completion note</p>{task.completionNote}</div>}</div><DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Close</Button>{!isManager && !completed && task.sourceType === "VACCINATION_PLAN" && <VaccinationTaskAction task={task} />}{!isManager && !completed && task.sourceType !== "VACCINATION_PLAN" && <Button type="button" disabled={pending || task.pendingSync} onClick={() => onDone(task)}><CheckCircle2 className="size-4" />Done</Button>}</DialogFooter></DialogContent></Dialog>;
+  const closure = history?.slice().reverse().find((item) => item.status === "CANCELLED");
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto sm:max-w-lg"><DialogHeader><DialogTitle>{task.title}</DialogTitle><DialogDescription>Task information and completion history.</DialogDescription></DialogHeader><div className="space-y-4"><div className="flex flex-wrap gap-2"><Badge variant={cancelled ? "secondary" : task.overdue ? "warning" : completed ? "success" : "outline"}>{cancelled ? t("tasks.closedStatus") : task.overdue ? `${t("tasks.overdueSince")} ${task.dueAt ? new Date(task.dueAt).toLocaleDateString([], { dateStyle: "medium" }) : ""}` : completed ? t("tasks.done") : task.status.replace("_", " ")}</Badge><Badge variant="secondary">{task.priority}</Badge>{task.pendingSync && <Badge variant="outline">Waiting to sync</Badge>}</div><dl className="grid grid-cols-2 gap-3 text-sm"><div><dt className="text-xs text-muted-foreground">Assigned to</dt><dd className="font-medium">{assignedTo}</dd></div><div><dt className="text-xs text-muted-foreground">Due</dt><dd className="font-medium">{due}</dd></div><div><dt className="text-xs text-muted-foreground">Scope</dt><dd className="font-medium">{task.batchId == null ? "Farm-wide" : `Batch #${task.batchId}`}</dd></div><div><dt className="text-xs text-muted-foreground">Created</dt><dd className="font-medium">{new Date(task.createdAt).toLocaleString()}</dd></div>{task.completedAt && <div><dt className="text-xs text-muted-foreground">Completed</dt><dd className="font-medium">{new Date(task.completedAt).toLocaleString()}{task.completedBy != null ? ` · ${handlerNames.get(task.completedBy) ?? `Handler #${task.completedBy}`}` : ""}</dd></div>}{cancelled && <div><dt className="text-xs text-muted-foreground">Closed</dt><dd className="font-medium">{new Date(task.updatedAt).toLocaleString()}{closure?.changedBy != null ? ` · Manager #${closure.changedBy}` : ""}</dd></div>}<div><dt className="text-xs text-muted-foreground">Source</dt><dd className="font-medium">{task.sourceType === "VACCINATION_PLAN" ? "Vaccination schedule" : task.sourceType ?? "Manual task"}</dd></div></dl>{task.instructions && <div className="rounded-xl border bg-muted/20 p-3 text-sm whitespace-pre-wrap"><p className="mb-1 text-xs font-semibold text-muted-foreground">Instructions</p>{task.instructions}</div>}{task.completionNote && <div className="rounded-xl border bg-muted/20 p-3 text-sm whitespace-pre-wrap"><p className="mb-1 text-xs font-semibold text-muted-foreground">{cancelled ? t("tasks.closeReason") : "Completion note"}</p>{task.completionNote}</div>}</div><DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("common.back")}</Button>{isManager && !completed && !cancelled && task.sourceType === "VACCINATION_PLAN" && <VaccinationManagerAction task={task} onOrphanClose={() => { onOpenChange(false); onCloseTask(task); }} />}{isManager && !completed && !cancelled && task.sourceType !== "VACCINATION_PLAN" && <Button type="button" disabled={pending} onClick={() => { onOpenChange(false); onCloseTask(task); }}>{t("tasks.closeAction")}</Button>}{!isManager && !completed && !cancelled && task.sourceType !== "VACCINATION_PLAN" && <Button type="button" disabled={pending || task.pendingSync} onClick={() => onDone(task)}><CheckCircle2 className="size-4" />{t("tasks.markDone")}</Button>}</DialogFooter></DialogContent></Dialog>;
 }
 
 function TaskSkeleton() { return <div className="space-y-2">{[1, 2, 3].map((item) => <div key={item} className="h-24 animate-pulse rounded-xl bg-muted/50" />)}</div>; }

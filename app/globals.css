@@ -356,6 +356,37 @@
   }
 }
 
+/* The manager task page shares space with the desktop sidebar, so its
+   two-column layout responds to the available content width rather than the
+   browser viewport alone. */
+.task-workspace {
+  container: task-workspace / inline-size;
+}
+
+.task-assignment-panel {
+  display: none;
+}
+
+.task-assignment-trigger {
+  display: flex;
+}
+
+@container task-workspace (min-width: 80rem) {
+  .task-workspace {
+    grid-template-columns: minmax(20rem, 22rem) minmax(0, 1fr);
+  }
+
+  .task-assignment-panel {
+    display: block;
+    position: sticky;
+    top: 1rem;
+  }
+
+  .task-assignment-trigger {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

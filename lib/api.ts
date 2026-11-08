@@ -3,7 +3,7 @@
 // through the shared axios instance (api-client) which injects the JWT and
 // normalises errors. These are consumed by the React Query hooks in /hooks.
 
-import { apiClient } from "./api-client";
+import { ApiError, apiClient } from "./api-client";
 import type { BatchComparison, FarmSummaryAnalytics } from "./farm-summary-types";
 import type {
   Alert,
@@ -68,7 +68,11 @@ import type {
   TaskPageFilters,
   TaskSummaryResponse,
   IncubationCycle,
+  IncubationSummary,
+  IncubationView,
   UpdateTaskStatusRequest,
+  CancelTaskRequest,
+  TaskStatusHistory,
   GenerateTestBatchRequest,
   GenerateTestBatchResponse,
   TestLabStatus,
@@ -334,8 +338,92 @@ export const inviteApi = {
 };
 
 // ---- Incubation, inputs, tasks, finance, and descriptive analytics ----
+const ACTIVE_INCUBATION_STATUSES = new Set<IncubationCycle["status"]>(["LOADED", "INCUBATING", "HATCHING"]);
+let legacyIncubationEndpointsDetected = false;
+let legacyIncubationListRequest: Promise<IncubationCycle[]> | null = null;
+
+function loadLegacyIncubationList() {
+  if (!legacyIncubationListRequest) {
+    legacyIncubationListRequest = apiClient.get<IncubationCycle[]>("/incubation-cycles")
+      .then((response) => response.data)
+      .finally(() => { legacyIncubationListRequest = null; });
+  }
+  return legacyIncubationListRequest;
+}
+
+function canUseLegacyIncubationList(error: unknown) {
+  // One-release compatibility for a frontend deployed or restarted before the
+  // backend that introduced /page and /summary. On the old controller these
+  // words are interpreted as the numeric /{id} path and surface as 400/500.
+  return error instanceof ApiError && [400, 404, 405, 500].includes(error.status);
+}
+
+function legacyIncubationPage(cycles: IncubationCycle[], params: { view: IncubationView; page: number; size: number }): PageResponse<IncubationCycle> {
+  const filtered = cycles.filter((cycle) => {
+    const active = ACTIVE_INCUBATION_STATUSES.has(cycle.status);
+    if (params.view === "ACTIVE") return active;
+    if (params.view === "CLOSED") return !active;
+    return true;
+  });
+  const page = Math.max(0, params.page);
+  const size = Math.max(1, Math.min(params.size, 50));
+  const totalItems = filtered.length;
+  const totalPages = Math.ceil(totalItems / size);
+  const start = page * size;
+  return {
+    items: filtered.slice(start, start + size),
+    page,
+    size,
+    totalItems,
+    totalPages,
+    hasPrevious: page > 0,
+    hasNext: page + 1 < totalPages,
+  };
+}
+
+function legacyIncubationSummary(cycles: IncubationCycle[]): IncubationSummary {
+  const today = new Date();
+  const localToday = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return cycles.reduce<IncubationSummary>((summary, cycle) => {
+    if (ACTIVE_INCUBATION_STATUSES.has(cycle.status)) {
+      summary.active += 1;
+      summary.activeEggs += cycle.eggsLoaded;
+      if (cycle.expectedHatchDate && cycle.expectedHatchDate <= localToday) summary.dueForReview += 1;
+    } else if (cycle.status === "COMPLETED") {
+      summary.completed += 1;
+    } else if (cycle.status === "CANCELLED") {
+      summary.cancelled += 1;
+    }
+    return summary;
+  }, { active: 0, completed: 0, cancelled: 0, dueForReview: 0, activeEggs: 0 });
+}
+
 export const incubationApi = {
   list: () => apiClient.get<IncubationCycle[]>("/incubation-cycles").then((r) => r.data),
+  page: async (params: { view: IncubationView; page: number; size: number }) => {
+    if (legacyIncubationEndpointsDetected) {
+      return legacyIncubationPage(await loadLegacyIncubationList(), params);
+    }
+    try {
+      return await apiClient.get<PageResponse<IncubationCycle>>("/incubation-cycles/page", { params }).then((r) => r.data);
+    } catch (error) {
+      if (!canUseLegacyIncubationList(error)) throw error;
+      legacyIncubationEndpointsDetected = true;
+      return legacyIncubationPage(await loadLegacyIncubationList(), params);
+    }
+  },
+  summary: async () => {
+    if (legacyIncubationEndpointsDetected) {
+      return legacyIncubationSummary(await loadLegacyIncubationList());
+    }
+    try {
+      return await apiClient.get<IncubationSummary>("/incubation-cycles/summary").then((r) => r.data);
+    } catch (error) {
+      if (!canUseLegacyIncubationList(error)) throw error;
+      legacyIncubationEndpointsDetected = true;
+      return legacyIncubationSummary(await loadLegacyIncubationList());
+    }
+  },
   create: (body: CreateIncubationCycleRequest) => apiClient.post<IncubationCycle>("/incubation-cycles", body).then((r) => r.data),
   complete: (id: number, body: CompleteIncubationRequest) => apiClient.post<IncubationCycle>(`/incubation-cycles/${id}/complete`, body).then((r) => r.data),
   createBatch: (id: number, body: CreateBatchFromIncubationRequest) => apiClient.post<Batch>(`/incubation-cycles/${id}/create-batch`, body).then((r) => r.data),
@@ -368,6 +456,8 @@ export const taskApi = {
   handlerQueueSummary: () => apiClient.get<HandlerTaskQueueSummary>("/tasks/handler-queue/summary").then((r) => r.data),
   create: (body: CreateTaskRequest) => apiClient.post<HandlerTask>("/tasks", body).then((r) => r.data),
   updateStatus: (id: number, body: UpdateTaskStatusRequest) => apiClient.post<HandlerTask>(`/tasks/${id}/status`, body).then((r) => r.data),
+  close: (id: number, body: CancelTaskRequest) => apiClient.post<HandlerTask>(`/tasks/${id}/close`, body).then((r) => r.data),
+  history: (id: number) => apiClient.get<TaskStatusHistory[]>(`/tasks/${id}/history`).then((r) => r.data),
 };
 
 function taskParams(filters: Partial<TaskPageFilters>) {
@@ -376,6 +466,7 @@ function taskParams(filters: Partial<TaskPageFilters>) {
   if (filters.size != null) params.size = filters.size;
   if (filters.view && filters.view !== "ALL") params.view = filters.view;
   if (filters.dueBucket && filters.dueBucket !== "ALL") params.dueBucket = filters.dueBucket;
+  if (filters.kind && filters.kind !== "ALL") params.kind = filters.kind;
   if (filters.batchId != null) params.batchId = filters.batchId;
   if (filters.farmWide != null) params.farmWide = filters.farmWide;
   if (filters.assignedHandlerId != null) params.assignedHandlerId = filters.assignedHandlerId;

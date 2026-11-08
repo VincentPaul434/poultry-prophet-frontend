@@ -191,7 +191,7 @@ export function SelectionSessionDialog({ batchId, batchName, currentPopulation }
             : { tone: "error", text: `Remove ${Math.abs(remaining ?? 0)} from the outcome counts.` };
 
   return <>
-    <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+    <div className="rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] via-card to-card p-4 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0"><p className="text-sm font-bold">Selection review</p><p className="mt-0.5 truncate text-xs text-muted-foreground">{latestText}</p></div>
         <div className="flex shrink-0 items-center gap-2">

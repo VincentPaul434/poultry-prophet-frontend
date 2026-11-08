@@ -2,8 +2,9 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { CalendarCheck, Check, CheckCircle2, Loader2, Plus, Syringe, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { useAssignVaccinationProgram, useCreateVaccinationProgram, useFarmInputs, useFarmProducts, useRecordVaccination, useReplaceVaccinationProgram, useVaccinationPlan, useVaccinationPrograms } from "@/hooks/use-operations";
+import { useAssignVaccinationProgram, useCreateVaccinationProgram, useFarmInputs, useFarmProducts, useRecordVaccination, useReplaceVaccinationProgram, useSkipVaccination, useVaccinationPlan, useVaccinationPrograms } from "@/hooks/use-operations";
 import { ApiError } from "@/lib/api-client";
 import { formatDate } from "@/lib/format";
 import type { Batch, FarmInputLog, HandlerTask, VaccinationPlanItem } from "@/lib/types";
@@ -13,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { useLocale } from "@/components/locale-provider";
 
 type AgeUnit = "DAY" | "WEEK";
 type DraftStep = { key: string; vaccineName: string; age: string; unit: AgeUnit };
@@ -148,7 +151,40 @@ export function VaccinationConfirmButton({ item, compact = false }: { item: Vacc
   const record = useRecordVaccination(); const { data: products } = useFarmProducts(false); const selectedProduct = products?.find((product) => product.id === item.farmProductId); const [open, setOpen] = useState(false); const [quantity, setQuantity] = useState(item.farmProductId ? "1" : ""); const [notes, setNotes] = useState(""); const [error, setError] = useState("");
   async function submit(event: FormEvent) { event.preventDefault(); setError(""); try { const result = await record.mutateAsync({ plan: item, body: { recordedAt: new Date().toISOString(), quantity: quantity ? Number(quantity) : null, unit: selectedProduct?.stockUnit ?? null, notes: notes || null } }); toast.success("queued" in result && result.queued ? "Saved on this phone; it will sync when online." : `${item.vaccineName} recorded`); setOpen(false); } catch (err) { setError(err instanceof ApiError ? err.message : "Could not record vaccination."); } }
   if (item.status !== "SCHEDULED") return <Badge variant={item.status === "COMPLETED" ? "default" : "secondary"}>{item.status === "COMPLETED" ? "Done" : item.status}</Badge>;
-  return <><Button size="sm" className={compact ? "h-7 rounded-md px-2 text-[10px]" : "h-9"} aria-label={`Mark ${item.vaccineName} done`} onClick={() => setOpen(true)}><CheckCircle2 className="size-3" /> Done</Button><Dialog open={open} onOpenChange={setOpen}><DialogContent className="w-[calc(100%-2rem)] sm:max-w-md"><DialogHeader><DialogTitle>Record {item.vaccineName}</DialogTitle><DialogDescription>{itemStage(item)} · Day {item.ageDay} · Due {formatDate(item.dueDate)}</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-3"><p className="rounded-lg bg-muted/50 px-3 py-2 text-sm">Confirm only after this vaccine was given. The vaccine name comes from the schedule.</p>{selectedProduct ? <div className="space-y-1"><Label htmlFor={`quantity-${item.id}`}>Units used ({selectedProduct.stockUnit})</Label><Input id={`quantity-${item.id}`} required type="number" min="0.001" step="0.001" value={quantity} onChange={(event) => setQuantity(event.target.value)} /><p className="text-xs text-muted-foreground">Available: {selectedProduct.stockOnHand} {selectedProduct.stockUnit}. Cost is calculated automatically.</p></div> : <p className="rounded-lg border border-warning-border bg-warning-muted/60 px-3 py-2 text-sm text-warning-ink">This vaccine is not linked to farm inventory. It will be recorded without stock deduction or batch cost.</p>}<div className="space-y-1"><Label htmlFor={`notes-${item.id}`}>Notes <span className="font-normal text-muted-foreground">optional</span></Label><Input id={`notes-${item.id}`} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Anything to remember" /></div>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<Button type="submit" className="h-11 w-full" disabled={record.isPending}>{record.isPending && <Loader2 className="size-4 animate-spin" />} Confirm done</Button></form></DialogContent></Dialog></>;
+  return <><Button size="sm" className={compact ? "h-7 rounded-md px-2 text-[10px]" : "h-9"} aria-label={`${compact ? "Record" : "Record vaccination"} ${item.vaccineName}`} onClick={() => setOpen(true)}><CheckCircle2 className="size-3" />{compact ? "Record" : "Record vaccination"}</Button><Dialog open={open} onOpenChange={setOpen}><DialogContent className="w-[calc(100%-2rem)] sm:max-w-md"><DialogHeader><DialogTitle>Record {item.vaccineName}</DialogTitle><DialogDescription>{itemStage(item)} · Day {item.ageDay} · Due {formatDate(item.dueDate)}</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-3"><p className="rounded-lg bg-muted/50 px-3 py-2 text-sm">Confirm only after this vaccine was given. The vaccine name comes from the schedule.</p>{selectedProduct ? <div className="space-y-1"><Label htmlFor={`quantity-${item.id}`}>Units used ({selectedProduct.stockUnit})</Label><Input id={`quantity-${item.id}`} required type="number" min="0.001" step="0.001" value={quantity} onChange={(event) => setQuantity(event.target.value)} /><p className="text-xs text-muted-foreground">Available: {selectedProduct.stockOnHand} {selectedProduct.stockUnit}. Cost is calculated automatically.</p></div> : <p className="rounded-lg border border-warning-border bg-warning-muted/60 px-3 py-2 text-sm text-warning-ink">This vaccine is not linked to farm inventory. It will be recorded without stock deduction or batch cost.</p>}<div className="space-y-1"><Label htmlFor={`notes-${item.id}`}>Notes <span className="font-normal text-muted-foreground">optional</span></Label><Input id={`notes-${item.id}`} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Anything to remember" /></div>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<Button type="submit" className="h-11 w-full" disabled={record.isPending}>{record.isPending && <Loader2 className="size-4 animate-spin" />} Record vaccination</Button></form></DialogContent></Dialog></>;
 }
 
-export function VaccinationTaskAction({ task }: { task: HandlerTask }) { const { data: plan } = useVaccinationPlan(task.batchId ?? 0, Boolean(task.batchId && task.sourceId)); const item = plan?.find((entry) => entry.id === task.sourceId); return item ? <VaccinationConfirmButton item={item} /> : <Badge variant="outline">Open batch</Badge>; }
+export function VaccinationTaskAction({ task }: { task: HandlerTask }) {
+  const router = useRouter();
+  const { t } = useLocale();
+  const { data: plan, isLoading } = useVaccinationPlan(task.batchId ?? 0, Boolean(task.batchId && task.sourceId));
+  const item = plan?.find((entry) => entry.id === task.sourceId);
+  if (item) return <VaccinationConfirmButton item={item} />;
+  if (isLoading) return <Button type="button" variant="outline" disabled>Checking schedule…</Button>;
+  return <div className="flex flex-col items-end gap-1"><span className="text-[11px] text-warning-ink">{t("tasks.needsManagerReview")}</span><Button type="button" variant="outline" onClick={() => task.batchId && router.push(`/batches/${task.batchId}`)}>Open batch</Button></div>;
+}
+
+export function VaccinationManagerAction({ task, onOrphanClose }: { task: HandlerTask; onOrphanClose: () => void }) {
+  const { t } = useLocale();
+  const { data: plan, isLoading } = useVaccinationPlan(task.batchId ?? 0, Boolean(task.batchId && task.sourceId));
+  const item = plan?.find((entry) => entry.id === task.sourceId);
+  const skip = useSkipVaccination();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  if (isLoading) return <Button type="button" variant="outline" disabled>Checking schedule…</Button>;
+  if (!item || item.status === "SKIPPED" || item.status === "CANCELLED") return <Button type="button" variant="outline" onClick={onOrphanClose}>{t("tasks.closeOrphanAction")}</Button>;
+  if (item.status !== "SCHEDULED") return <Badge variant="outline">{item.status}</Badge>;
+  const scheduledItem = item;
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!reason.trim()) return setError("Add a reason before skipping this reminder.");
+    setError("");
+    try {
+      await skip.mutateAsync({ id: scheduledItem.id, batchId: scheduledItem.batchId, reason: reason.trim() });
+      toast.success("Vaccination reminder skipped");
+      setOpen(false);
+    } catch (err) { setError(err instanceof ApiError ? err.message : "Could not skip vaccination reminder."); }
+  }
+  return <><Button type="button" variant="outline" onClick={() => setOpen(true)}>{t("tasks.skipVaccination")}</Button><Dialog open={open} onOpenChange={setOpen}><DialogContent className="w-[calc(100%-2rem)] sm:max-w-md"><DialogHeader><DialogTitle>{t("tasks.skipVaccination")}</DialogTitle><DialogDescription>Use this only when the scheduled vaccine was not administered.</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-3"><Label htmlFor={`skip-vaccine-${scheduledItem.id}`}>Reason</Label><Textarea id={`skip-vaccine-${scheduledItem.id}`} value={reason} onChange={(event) => { setReason(event.target.value); setError(""); }} placeholder="Why was this reminder skipped?" rows={3} />{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<Button type="submit" className="h-11 w-full" disabled={skip.isPending}>{skip.isPending && <Loader2 className="size-4 animate-spin" />} {t("tasks.skipVaccination")}</Button></form></DialogContent></Dialog></>;
+}

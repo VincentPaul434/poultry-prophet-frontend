@@ -2,6 +2,7 @@
 
 import { Suspense, use, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ChevronDown, ClipboardList, Info } from "lucide-react";
 import { useBatch } from "@/hooks/use-batches";
 import { useBatchEvents, useBatchEventPage, useBatchEventReport } from "@/hooks/use-events";
 import { useHandlers } from "@/hooks/use-reference";
@@ -96,12 +97,21 @@ function eventLabel(value: string) {
   return value.replaceAll("_", " ").toLowerCase().replace(/(^|\s)\S/g, (character) => character.toUpperCase());
 }
 
+function daysElapsed(startDate: string) {
+  return Math.max(0, Math.round((Date.now() - new Date(startDate).getTime()) / 86_400_000));
+}
+
+function stageLabel(stageName?: string) {
+  const value = stageName?.replaceAll("-", " ").trim();
+  return value ? value.replace(/(^|\s)\S/g, (character) => character.toUpperCase()) : null;
+}
+
 export default function EventHistoryPage({
   params,
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ from?: string | string[] }>;
+  searchParams: Promise<{ from?: string | string[]; view?: string | string[] }>;
 }) {
   return <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading event history…</div>}><EventHistoryPageContent params={params} searchParams={searchParams} /></Suspense>;
 }
@@ -111,94 +121,107 @@ function EventHistoryPageContent({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ from?: string | string[] }>;
+  searchParams: Promise<{ from?: string | string[]; view?: string | string[] }>;
 }) {
   const { batchId } = use(params);
-  const { from } = use(searchParams);
+  const { from, view } = use(searchParams);
   const { isManager } = useAuth();
   const { t } = useLocale();
   const { data: batch } = useBatch(batchId);
-  const { data: events, isLoading, isError } = useBatchEvents(batchId, 100, !isManager);
+  const { data: events, isLoading, isError, refetch } = useBatchEvents(batchId, 100, !isManager);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const population = batch?.currentPopulation ?? 0;
   const origin = parseLoggingOrigin(from);
+  const isHistoryView = (Array.isArray(view) ? view[0] : view) === "history";
   const destination =
-    origin === LOGGING_ORIGINS.dashboard
-      ? LOGGING_ORIGINS.dashboard
-      : origin === LOGGING_ORIGINS.batch
-        ? LOGGING_ORIGINS.batch
-        : isManager
-          ? LOGGING_ORIGINS.batch
-          : LOGGING_ORIGINS.dashboard;
+    isManager || origin === LOGGING_ORIGINS.batch
+      ? LOGGING_ORIGINS.batch
+      : origin ?? LOGGING_ORIGINS.dashboard;
+
+  const batchStage = stageLabel(batch?.stageName);
+  const batchDay = batch ? daysElapsed(batch.hatchDate ?? batch.startDate) : null;
 
   return (
-    <div className={isManager ? "mx-auto flex h-full min-h-0 w-full max-w-[90rem] flex-col space-y-6" : "mx-auto max-w-xl space-y-6"}>
+    <div className={isManager ? "mx-auto flex h-full min-h-0 w-full max-w-[90rem] flex-col space-y-6" : "mx-auto max-w-3xl space-y-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))]"}>
 
       {/* Header */}
       <div>
-        {destination === LOGGING_ORIGINS.dashboard ? (
-          <PageBackLink destination="dashboard" className="mb-3 rounded-xl" />
-        ) : (
+        {destination === LOGGING_ORIGINS.batch ? (
           <PageBackLink destination="batch" batchId={batchId} className="mb-3 rounded-xl" />
+        ) : (
+          <PageBackLink destination={destination} className="mb-3 rounded-xl" />
         )}
-        <h1 className="text-2xl font-bold">{isManager ? "Event Log" : t("record.title")}</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          {isManager
-            ? `${batch?.name ?? "Batch"} — full history of logged events`
-            : `${batch?.name ?? "Batch"} — choose what happened below`}
-        </p>
+        {isManager || isHistoryView ? (
+          <>
+            <h1 className="text-2xl font-bold">Event Log</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">{batch?.name ?? "Batch"} — full history of logged events</p>
+          </>
+        ) : (
+          <div className="flex items-start gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary" aria-hidden="true">
+              <ClipboardList className="size-5" />
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-[22px] font-bold leading-tight">{t("record.title")}</h1>
+              <p className="mt-1 truncate text-xs font-medium text-muted-foreground" title={batch?.name ?? "Batch"}>
+                {batch?.name ?? "Batch"}{batchStage ? ` · ${batchStage}` : ""}{batchDay !== null ? ` · Day ${batchDay}` : ""}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Log section — handlers only */}
-      {!isManager && (
-        <section id="log-event" className="scroll-mt-6 space-y-2">
-          <div className="flex items-center justify-between">
-            <div><h2 className="text-base font-bold">{t("record.choose")}</h2><p className="mt-1 text-sm text-muted-foreground">{t("record.optionalMeasurements")}</p></div>
-          </div>
+      {/* Archived batches remain browseable, but never accept new records. */}
+      {!isManager && batch?.status === "ARCHIVED" && (
+        <div role="status" className="rounded-2xl border border-warning-border bg-warning-muted px-4 py-3 text-sm text-warning-ink">
+          This batch is archived and read-only. Restore it before adding a new record.
+        </div>
+      )}
+
+      {/* Log section — handlers only, for active batches */}
+      {!isManager && !isHistoryView && batch != null && batch.status !== "ARCHIVED" && (
+        <section id="record-event" data-testid="record-event-section" className="scroll-mt-6 space-y-3">
+          <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t("record.recordEvent")}</h2>
           <BatchLogSection batchId={batchId} population={population} batchName={batch?.name} stageName={batch?.stageName} />
         </section>
       )}
 
       {/* Secondary guidance uses progressive disclosure to keep the task focused. */}
-      {!isManager && (
-        <details className="group rounded-2xl bg-muted/50 p-4">
-          <summary className="cursor-pointer list-none text-xs font-bold text-muted-foreground marker:content-none">
-            <span className="flex items-center justify-between gap-3">
-              How records work
-              <span aria-hidden="true" className="transition-transform group-open:rotate-180">⌄</span>
-            </span>
-          </summary>
-          <div className="mt-3 space-y-2 border-t pt-3 text-xs text-muted-foreground">
-            {[
-              { icon: "💀", text: "Population events → current / initial count and separate cause history" },
-              { icon: "🤒", text: "Health concerns → factual health-event timeline; no diagnosis" },
-              { icon: "💊", text: "Medicine and product use → recorded intervention history" },
-              { icon: "👁️", text: "Behavior signs → observable notes that the manager can review" },
-              { icon: "📋", text: "Optional readings → retained only when genuinely measured or estimated" },
-            ].map((f) => (
-              <div key={f.text} className="flex gap-2">
-                <span className="shrink-0">{f.icon}</span>
-                <span className="leading-snug">{f.text}</span>
-              </div>
-            ))}
-          </div>
-        </details>
+      {!isManager && !isHistoryView && (
+        <div className="rounded-2xl border bg-card">
+          <button
+            type="button"
+            aria-expanded={helpOpen}
+            aria-controls="recording-help"
+            onClick={() => setHelpOpen((open) => !open)}
+            className="flex min-h-12 w-full items-center justify-between gap-3 px-3.5 py-2.5 text-left text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+          >
+            <span className="flex items-center gap-2"><Info className="size-4 text-primary" aria-hidden="true" />{t("record.howRecordsWork")}</span>
+            <ChevronDown className={`size-4 text-muted-foreground transition-transform ${helpOpen ? "rotate-180" : ""}`} aria-hidden="true" />
+          </button>
+          {helpOpen && <p id="recording-help" className="border-t px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">{t("record.howRecordsWorkDescription")}</p>}
+        </div>
       )}
 
       {/* Manager analytics and event list; handlers retain the offline field timeline. */}
       {isManager ? <ManagerEventReport batchId={batchId} /> : <section className="space-y-3">
-        <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">All events</h2>
-        <div className="rounded-2xl border bg-card p-4">
-          {isLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
-            </div>
-          ) : isError && !events ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Event history could not be loaded. Reconnect and try again.</p>
-          ) : (
-            <EventTimeline events={events ?? []} />
-          )}
+        <div className="flex items-end justify-between gap-3">
+          <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t("record.activityHistory")}</h2>
+          <span className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{events ? `${events.length} ${t("record.recordsCount")}` : ""}</span>
         </div>
+        {isLoading ? (
+          <div className="space-y-2" aria-label="Loading activity history">
+            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-2xl" />)}
+          </div>
+        ) : isError && !events ? (
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-warning-border bg-warning-muted/50 px-3.5 py-3 text-sm">
+            <p className="text-warning-ink">{t("record.historyLoadError")}</p>
+            <Button type="button" size="sm" variant="outline" onClick={() => void refetch()}>{t("record.tryAgain")}</Button>
+          </div>
+        ) : (
+          <EventTimeline events={events ?? []} />
+        )}
       </section>}
 
     </div>

@@ -10,7 +10,11 @@
     "build": "next build --webpack",
     "build:webpack": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:e2e": "playwright test",
+    "test:e2e:mobile": "playwright test --project=mobile-chromium-360 --project=mobile-chromium-390",
+    "test:e2e:mobile:360": "playwright test --project=mobile-chromium-360",
+    "test:e2e:mobile:390": "playwright test --project=mobile-chromium-390"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

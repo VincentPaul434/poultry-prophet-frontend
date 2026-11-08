@@ -61,7 +61,7 @@ async function getQueuedEvents(batchId: number, user: NonNullable<ReturnType<typ
 function mergeEvents(events: BatchEvent[], queued: BatchEvent[], limit: number) {
   const operationIds = new Set(events.map((event) => event.operationId).filter((id): id is string => Boolean(id)));
   return [...events, ...queued.filter((event) => !event.operationId || !operationIds.has(event.operationId))]
-    .sort((a, b) => b.eventDate.localeCompare(a.eventDate) || b.createdAt.localeCompare(a.createdAt))
+    .sort((a, b) => b.eventDate.localeCompare(a.eventDate) || b.createdAt.localeCompare(a.createdAt) || b.id - a.id)
     .slice(0, limit);
 }
 

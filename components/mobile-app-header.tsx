@@ -25,7 +25,7 @@ type MobileAppHeaderProps = {
 
 export function MobileAppHeader({ farmName, roleLabel, isManager, fullName, onProfileClick }: MobileAppHeaderProps) {
   return (
-    <header className="relative flex min-h-12 shrink-0 items-center justify-center border-b bg-card px-4 py-2 md:hidden">
+    <header data-testid="mobile-app-header" className="relative flex min-h-12 shrink-0 items-center justify-center border-b bg-card px-4 py-2 md:hidden">
       {isManager ? (
         <SidebarTrigger className="absolute left-4 top-1/2 size-11 -translate-y-1/2" />
       ) : (

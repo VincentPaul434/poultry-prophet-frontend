@@ -8,7 +8,7 @@ import { shouldUseOfflineSnapshot } from "@/lib/api-client";
 import { getFarmProductSnapshots, getOfflineBootstrap, getQueuedInventoryDelta, listOutbox, saveFarmProductSnapshots } from "@/lib/offline-db";
 import { useAuth } from "@/lib/auth-context";
 import { qk } from "@/lib/query-keys";
-import type { AssignVaccinationProgramRequest, CompleteIncubationRequest, CreateBatchFromIncubationRequest, CreateFarmInputRequest, CreateFarmProductRequest, CreateFinancialTransactionRequest, CreateIncubationCycleRequest, CreateSexCompositionRequest, CreateTaskRequest, CreateVaccinationProgramRequest, FarmInputPageFilters, FinancePageFilters, HandlerTask, HandlerTaskQueueBucket, HandlerTaskQueueSummary, InventoryAdjustmentRequest, PageResponse, RecordVaccinationRequest, ReplaceVaccinationPlanRequest, SexComposition, StockInRequest, TaskPageFilters, TaskSummaryResponse, UpdateTaskStatusRequest } from "@/lib/types";
+import type { AssignVaccinationProgramRequest, CancelTaskRequest, CompleteIncubationRequest, CreateBatchFromIncubationRequest, CreateFarmInputRequest, CreateFarmProductRequest, CreateFinancialTransactionRequest, CreateIncubationCycleRequest, CreateSexCompositionRequest, CreateTaskRequest, CreateVaccinationProgramRequest, FarmInputPageFilters, FinancePageFilters, HandlerTask, HandlerTaskQueueBucket, HandlerTaskQueueSummary, IncubationView, InventoryAdjustmentRequest, PageResponse, RecordVaccinationRequest, ReplaceVaccinationPlanRequest, SexComposition, StockInRequest, TaskPageFilters, TaskSummaryResponse, UpdateTaskStatusRequest } from "@/lib/types";
 
 async function applyPendingTaskOperations(userId: number, farmId: number, tasks: HandlerTask[]) {
   const operations = await listOutbox(userId, farmId);
@@ -39,9 +39,11 @@ async function applyPendingTaskOperations(userId: number, farmId: number, tasks:
 }
 
 export function useIncubationCycles(enabled = true) { return useQuery({ queryKey: qk.incubation, queryFn: incubationApi.list, enabled }); }
-export function useCreateIncubationCycle() { const qc = useQueryClient(); return useMutation({ mutationFn: (body: CreateIncubationCycleRequest) => incubationApi.create(body), onSuccess: () => qc.invalidateQueries({ queryKey: qk.incubation }) }); }
-export function useCompleteIncubation() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, body }: { id: number; body: CompleteIncubationRequest }) => incubationApi.complete(id, body), onSuccess: () => qc.invalidateQueries({ queryKey: qk.incubation }) }); }
-export function useCreateIncubationBatch() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, body }: { id: number; body: CreateBatchFromIncubationRequest }) => incubationApi.createBatch(id, body), onSuccess: () => qc.invalidateQueries({ queryKey: qk.batches.all }) }); }
+export function useIncubationPage(params: { view: IncubationView; page: number; size: number }, enabled = true) { return useQuery({ queryKey: qk.incubationPage(params), queryFn: () => incubationApi.page(params), enabled, placeholderData: (previous) => previous }); }
+export function useIncubationSummary(enabled = true) { return useQuery({ queryKey: qk.incubationSummary, queryFn: incubationApi.summary, enabled, staleTime: 30_000 }); }
+export function useCreateIncubationCycle() { const qc = useQueryClient(); return useMutation({ mutationFn: (body: CreateIncubationCycleRequest) => incubationApi.create(body), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.incubationSummary }); qc.invalidateQueries({ queryKey: qk.incubation }); } }); }
+export function useCompleteIncubation() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, body }: { id: number; body: CompleteIncubationRequest }) => incubationApi.complete(id, body), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.incubationSummary }); qc.invalidateQueries({ queryKey: qk.incubation }); } }); }
+export function useCreateIncubationBatch() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, body }: { id: number; body: CreateBatchFromIncubationRequest }) => incubationApi.createBatch(id, body), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.batches.all }); qc.invalidateQueries({ queryKey: qk.incubationSummary }); qc.invalidateQueries({ queryKey: qk.incubation }); } }); }
 export function useFarmInputs(batchId?: number, cycleId?: number, enabled = true) {
   const { user } = useAuth();
   return useQuery({
@@ -160,8 +162,9 @@ function taskMatchesFilters(task: HandlerTask, filters: TaskPageFilters) {
   if (filters.view === "OPEN" && !["TODO", "IN_PROGRESS", "BLOCKED"].includes(task.status)) return false;
   if (filters.view === "COMPLETED" && task.status !== "COMPLETED") return false;
   if (filters.view === "CANCELLED" && task.status !== "CANCELLED") return false;
-  if (filters.view === "ALL" && task.status === "CANCELLED") return false;
   if (filters.batchId != null && task.batchId !== filters.batchId) return false;
+  if (filters.kind === "WORK" && task.sourceType?.toUpperCase() === "VACCINATION_PLAN") return false;
+  if (filters.kind === "VACCINATION" && task.sourceType?.toUpperCase() !== "VACCINATION_PLAN") return false;
   if (filters.farmWide && task.batchId != null) return false;
   if (filters.assignedHandlerId != null && task.assignedHandlerId !== filters.assignedHandlerId) return false;
   if (filters.priority && task.priority !== filters.priority) return false;
@@ -228,8 +231,18 @@ function offlineTaskPage(tasks: HandlerTask[], filters: TaskPageFilters): PageRe
   };
 }
 
-function offlineTaskSummary(tasks: HandlerTask[]): TaskSummaryResponse {
-  const open = tasks.filter((task) => ["TODO", "IN_PROGRESS", "BLOCKED"].includes(task.status));
+function offlineTaskSummary(tasks: HandlerTask[], filters: Partial<TaskPageFilters> = {}): TaskSummaryResponse {
+  const scoped = tasks.filter((task) => {
+    if (filters.batchId != null && task.batchId !== filters.batchId) return false;
+    if (filters.farmWide && task.batchId != null) return false;
+    if (filters.assignedHandlerId != null && task.assignedHandlerId !== filters.assignedHandlerId) return false;
+    if (filters.priority && task.priority !== filters.priority) return false;
+    if (filters.sourceType && task.sourceType !== filters.sourceType) return false;
+    if (filters.assignmentScope && task.assignmentScope !== filters.assignmentScope) return false;
+    if (filters.search && !task.title.toLowerCase().includes(filters.search.toLowerCase())) return false;
+    return !task.visibleFrom || new Date(task.visibleFrom).getTime() <= Date.now();
+  });
+  const open = scoped.filter((task) => ["TODO", "IN_PROGRESS", "BLOCKED"].includes(task.status));
   const now = Date.now();
   const tomorrow = new Date();
   tomorrow.setHours(24, 0, 0, 0);
@@ -237,7 +250,7 @@ function offlineTaskSummary(tasks: HandlerTask[]): TaskSummaryResponse {
   const today = open.filter((task) => task.dueAt && new Date(task.dueAt).getTime() >= now && new Date(task.dueAt).getTime() < tomorrow.getTime()).length;
   const upcoming = open.filter((task) => task.dueAt && new Date(task.dueAt).getTime() >= tomorrow.getTime()).length;
   const noDueDate = open.filter((task) => !task.dueAt).length;
-  return { open: late + today + upcoming + noDueDate, late, today, upcoming, noDueDate, completed: tasks.filter((task) => task.status === "COMPLETED").length, cancelled: tasks.filter((task) => task.status === "CANCELLED").length };
+  return { open: late + today + upcoming + noDueDate, late, today, upcoming, noDueDate, completed: scoped.filter((task) => task.status === "COMPLETED").length, cancelled: scoped.filter((task) => task.status === "CANCELLED").length };
 }
 
 function offlineHandlerQueuePage(tasks: HandlerTask[], bucket: HandlerTaskQueueBucket, page: number, size: number): PageResponse<HandlerTask> {
@@ -368,9 +381,17 @@ export function useTaskSummary(filters: Partial<Omit<TaskPageFilters, "page" | "
         if (!shouldUseOfflineSnapshot(error) || !user?.farmId) throw error;
         const cached = await getOfflineBootstrap(user.userId, user.farmId);
         if (!cached) throw error;
-        return offlineTaskSummary(await applyPendingTaskOperations(user.userId, user.farmId, cached.tasks));
+        return offlineTaskSummary(await applyPendingTaskOperations(user.userId, user.farmId, cached.tasks), filters);
       }
     },
+  });
+}
+
+export function useTaskHistory(taskId?: number, enabled = true) {
+  return useQuery({
+    queryKey: qk.taskHistory(taskId),
+    queryFn: () => taskApi.history(taskId as number),
+    enabled: enabled && taskId != null,
   });
 }
 
@@ -381,7 +402,26 @@ export function useTasks(mine = false) {
   return { ...page, data: page.data?.items };
 }
 
-export function useCreateTask() { const qc = useQueryClient(); return useMutation({ mutationFn: (body: CreateTaskRequest) => taskApi.create(body), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.tasks }); } }); }
+export function useCreateTask() { const qc = useQueryClient(); return useMutation({ mutationFn: (body: CreateTaskRequest) => taskApi.create(body), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.tasks }); qc.invalidateQueries({ queryKey: qk.batches.dashboard() }); } }); }
+export function useCloseTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: number; body: CancelTaskRequest }) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        throw new Error("Connect to the internet before closing an administrative task.");
+      }
+      return taskApi.close(id, body);
+    },
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: qk.tasks });
+      qc.invalidateQueries({ queryKey: qk.taskPage({}) });
+      qc.invalidateQueries({ queryKey: qk.taskSummary({}) });
+      qc.invalidateQueries({ queryKey: qk.batches.dashboard() });
+      qc.invalidateQueries({ queryKey: qk.handlerTaskQueueSummary });
+      qc.invalidateQueries({ queryKey: qk.taskHistory(variables.id) });
+    },
+  });
+}
 export function useUpdateTaskStatus() {
   const qc = useQueryClient();
   const { enqueue } = useOfflineSync();
@@ -413,6 +453,7 @@ export function useUpdateTaskStatus() {
         });
       }
       qc.invalidateQueries({ queryKey: qk.tasks });
+      qc.invalidateQueries({ queryKey: qk.batches.dashboard() });
       qc.invalidateQueries({ queryKey: qk.handlerTaskQueueSummary });
       return qc.invalidateQueries({ queryKey: ["handler-tasks", "queue"] });
     },
@@ -611,7 +652,7 @@ export function useRecordVaccination() {
     },
   });
 }
-export function useSkipVaccination() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, reason }: { id: number; batchId: number; reason: string }) => vaccinationApi.skip(id, reason), onSuccess: (_data, variables) => { qc.invalidateQueries({ queryKey: qk.batches.vaccinationPlan(variables.batchId) }); qc.invalidateQueries({ queryKey: qk.tasks }); } }); }
+export function useSkipVaccination() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, reason }: { id: number; batchId: number; reason: string }) => vaccinationApi.skip(id, reason), onSuccess: (_data, variables) => { qc.invalidateQueries({ queryKey: qk.batches.vaccinationPlan(variables.batchId) }); qc.invalidateQueries({ queryKey: qk.batches.dashboard() }); qc.invalidateQueries({ queryKey: qk.tasks }); qc.invalidateQueries({ queryKey: qk.taskSummary({}) }); } }); }
 export function useFinanceTransactionPage(filters: FinancePageFilters, enabled = true) { return useQuery({ queryKey: qk.financePage(filters as unknown as Record<string, unknown>), queryFn: () => financeApi.page(filters), enabled, placeholderData: (previous) => previous }); }
 export function useFinanceTransactions(enabled = true) { return useFinanceTransactionPage({ page: 0, size: 20 }, enabled); }
 export function useCreateFinanceTransaction() { const qc = useQueryClient(); return useMutation({ mutationFn: (body: CreateFinancialTransactionRequest) => financeApi.create(body), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.finance }); qc.invalidateQueries({ queryKey: qk.operationsAnalytics() }); } }); }

@@ -118,6 +118,24 @@ export interface BatchDashboardSummary {
   activeAlertCount: number;
   highestActiveAlertSeverity: Severity | null;
   lastEventDate: string | null;
+  mortalityRatePercent: number | null;
+  finance: BatchFinanceSnapshot | null;
+  /** Role-scoped open task counts for this batch. Optional for old backends. */
+  tasks?: BatchTaskSnapshot;
+}
+
+export interface BatchTaskSnapshot {
+  open: number;
+  overdue: number;
+}
+
+export interface BatchFinanceSnapshot {
+  recordedBatchCost: number;
+  hasCostRecords: boolean;
+  productCostComplete: boolean;
+  unvaluedUsageCount: number;
+  currency: string;
+  asOfDate: string;
 }
 
 export interface BatchDashboardItem {
@@ -230,6 +248,7 @@ export interface CreateRecordRequest {
 
 // ---- Stakeholder feedback workflows ----
 export type IncubationStatus = "LOADED" | "INCUBATING" | "HATCHING" | "COMPLETED" | "CANCELLED";
+export type IncubationView = "ACTIVE" | "CLOSED" | "ALL";
 export interface IncubationCycle {
   id: number;
   farmId: number;
@@ -250,6 +269,13 @@ export interface IncubationCycle {
   createdAt: string;
   hatchRatePercent: number | null;
   durationDays: number | null;
+}
+export interface IncubationSummary {
+  active: number;
+  completed: number;
+  cancelled: number;
+  dueForReview: number;
+  activeEggs: number;
 }
 export interface CreateIncubationCycleRequest {
   cycleName: string;
@@ -401,6 +427,7 @@ export type TaskStatus = "TODO" | "IN_PROGRESS" | "BLOCKED" | "COMPLETED" | "CAN
 export type TaskAssignmentMode = "SPECIFIC_HANDLER" | "ALL_HANDLERS";
 export type TaskView = "OPEN" | "COMPLETED" | "CANCELLED" | "ALL";
 export type TaskDueBucket = "ALL" | "LATE" | "TODAY" | "UPCOMING" | "NO_DUE";
+export type TaskKind = "ALL" | "WORK" | "VACCINATION";
 export type HandlerTaskQueueBucket = "NOW" | "UPCOMING" | "COMPLETED";
 export interface PageResponse<T> {
   items: T[];
@@ -435,11 +462,22 @@ export interface HandlerTask {
   completedBy: number | null;
   pendingSync?: boolean;
 }
+export interface TaskStatusHistory {
+  id: number;
+  taskId: number;
+  status: TaskStatus;
+  previousStatus: TaskStatus | null;
+  changedBy: number;
+  note: string | null;
+  occurredAt: string | null;
+  changedAt: string;
+}
 export interface TaskPageFilters {
   page: number;
   size: number;
   view: TaskView;
   dueBucket: TaskDueBucket;
+  kind?: TaskKind;
   batchId?: number;
   farmWide?: boolean;
   assignedHandlerId?: number;
@@ -474,6 +512,7 @@ export interface CreateTaskRequest {
   assignmentMode?: TaskAssignmentMode;
 }
 export interface UpdateTaskStatusRequest { status: TaskStatus; note?: string | null; operationId?: string; occurredAt?: string | null; }
+export interface CancelTaskRequest { reasonCode: string; reason?: string | null; operationId?: string; occurredAt?: string | null; }
 
 export type FinanceTransactionType = "INCOME" | "EXPENSE";
 export interface FinancialTransaction {

@@ -12,7 +12,7 @@ export function NetworkStatusBanner() {
 
   return (
     <div
-      className="mb-4 flex items-center gap-2 rounded-xl border border-warning-border bg-warning-muted px-3 py-2 text-xs text-warning-ink"
+      className="mt-3 mb-4 flex items-center gap-2 rounded-xl border border-warning-border bg-warning-muted px-3 py-2 text-xs text-warning-ink"
       role="status"
       aria-live="polite"
     >

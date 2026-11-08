@@ -156,8 +156,8 @@ async function openFinance(page: Page, view?: "report" | "transactions") {
 }
 
 test.describe("Finance layout", () => {
-  test("keeps the analytics card reachable without horizontal overflow on mobile", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+  test("keeps the analytics card reachable without horizontal overflow on mobile", async ({ page }, testInfo) => {
+    test.skip(!testInfo.project.name.startsWith("mobile-chromium-"), "This case is covered by the dedicated mobile Chromium projects.");
     await mockFinanceBackend(page, "single");
     await openFinance(page, "report");
 

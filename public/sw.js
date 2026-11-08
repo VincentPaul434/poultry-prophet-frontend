@@ -1,4 +1,4 @@
-const CACHE_NAME = "poultry-prophet-shell-v5";
+const CACHE_NAME = "poultry-prophet-shell-v6";
 const OFFLINE_URL = "/offline";
 
 async function cacheSuccessfulResponse(request, response) {

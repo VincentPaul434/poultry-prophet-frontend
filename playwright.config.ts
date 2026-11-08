@@ -15,6 +15,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://127.0.0.1:3000';
  */
 export default defineConfig({
   testDir: './e2e',
+  testIgnore: ['**/example.spec.ts'],
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -51,15 +52,29 @@ export default defineConfig({
       use: { ...devices['Desktop Safari'] },
     },
 
-    /* Test against mobile viewports. */
-    // {
-    //   name: 'Mobile Chrome',
-    //   use: { ...devices['Pixel 5'] },
-    // },
-    // {
-    //   name: 'Mobile Safari',
-    //   use: { ...devices['iPhone 12'] },
-    // },
+    {
+      name: 'mobile-chromium-360',
+      use: {
+        ...devices['Pixel 5'],
+        browserName: 'chromium',
+        viewport: { width: 360, height: 800 },
+        screen: { width: 360, height: 800 },
+        isMobile: true,
+        hasTouch: true,
+      },
+    },
+
+    {
+      name: 'mobile-chromium-390',
+      use: {
+        ...devices['Pixel 5'],
+        browserName: 'chromium',
+        viewport: { width: 390, height: 844 },
+        screen: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+      },
+    },
 
     /* Test against branded browsers. */
     // {

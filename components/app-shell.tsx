@@ -2,23 +2,23 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Bell, Bird, ClipboardList, Egg, LayoutDashboard, LineChart, LogOut, MoreHorizontal, Package, Plus, Settings, UserCircle2, WalletCards } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
-import { useBatches } from "@/hooks/use-batches";
 import { useFarmAlerts, useFarmAlertSummary } from "@/hooks/use-analytics";
 import { useFarmRealtime } from "@/hooks/use-farm-realtime";
 import { useFarm } from "@/hooks/use-farm";
 import { useReleaseVersion } from "@/hooks/use-version";
 import { getFarmDisplayName } from "@/lib/farm-display";
-import { getLoggingHref, LOGGING_ORIGINS } from "@/lib/logging-navigation";
+import { getBatchIdFromPathname, getLoggingHref, getLoggingOriginForPathname, LOGGING_ORIGINS } from "@/lib/logging-navigation";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/locale-provider";
 import type { TranslationKey } from "@/lib/i18n";
 import { NetworkStatusBanner } from "@/components/network-status-banner";
 import { SyncStatusIndicator } from "@/components/sync-status-indicator";
 import { MobileAppHeader } from "@/components/mobile-app-header";
+import { RecordBatchPicker } from "@/components/record-batch-picker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
@@ -48,7 +48,6 @@ import {
 } from "@/components/ui/sidebar";
 import {
   Sheet,
-  SheetClose,
   SheetContent,
   SheetDescription,
   SheetHeader,
@@ -93,6 +92,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const unread = alertSummary?.activeTotal ?? activeAlerts?.length ?? 0;
+  const isDashboardRoute = pathname === "/dashboard";
 
   useEffect(() => {
     if (!activeAlerts || user?.farmId == null) return;
@@ -279,12 +279,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <NetworkStatusBanner />
             <div className="mb-4 hidden justify-end md:flex"><SyncStatusIndicator /></div>
             {compatibilityMismatch && (
-              <div className="mb-6 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
+              <div className="mt-3 mb-6 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive md:mt-0" role="alert">
                 Frontend/backend version mismatch. Frontend {frontendVersion}; backend expects {" "}{release.data?.compatibleFrontendVersion}.
               </div>
             )}
           </div>
-          <div ref={contentScrollRef} className={cn("safe-pb min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10", pathname === "/tasks" && "pt-1 sm:pt-6")}>
+          <div
+            ref={contentScrollRef}
+            data-testid={isDashboardRoute ? "dashboard-scroll-container" : undefined}
+            className={cn(
+              "safe-pb min-h-0 min-w-0 flex-1 overflow-y-auto",
+              isDashboardRoute
+                ? "px-4 pb-4 pt-0 sm:px-6 sm:pb-6 md:p-6 lg:p-8 xl:p-10"
+                : "p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10",
+            )}
+          >
             {children}
             {pathname !== "/tasks" && <footer className="mt-10 border-t pt-4 text-xs text-muted-foreground">
               Poultry Prophet {release.data?.version ?? frontendVersion} · {backendEnvironment}
@@ -306,15 +315,30 @@ type MobileNavItem = {
 
 function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: number }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { toggleSidebar } = useSidebar();
   const { t } = useLocale();
   const [recordOpen, setRecordOpen] = useState(false);
+  const currentBatchId = getBatchIdFromPathname(pathname);
+  const loggingOrigin = getLoggingOriginForPathname(pathname);
+  const isLoggingPage = currentBatchId != null && pathname.startsWith(`/batches/${currentBatchId}/data-entry`);
   // Managers do not use the handler quick-log sheet. For handlers, fetch the
   // batch list only when the sheet is open instead of polling it globally from
   // every mounted application shell.
-  const { data: batches, isLoading: batchesLoading } = useBatches({
-    enabled: !isManager && recordOpen,
-  });
+
+  function openRecord() {
+    if (currentBatchId != null) {
+      if (isLoggingPage) {
+        const recordSection = document.getElementById("record-event") ?? document.getElementById("log-event");
+        recordSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+        (recordSection?.querySelector("button") as HTMLButtonElement | null)?.focus({ preventScroll: true });
+      } else {
+        router.push(getLoggingHref(currentBatchId, LOGGING_ORIGINS.batch, true));
+      }
+      return;
+    }
+    setRecordOpen(true);
+  }
 
   const items: MobileNavItem[] = isManager
     ? [
@@ -330,8 +354,6 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
         { href: "/alerts", labelKey: "nav.alerts", icon: Bell },
       ];
 
-  const activeBatches = (batches ?? []).filter((batch) => batch.status === "ACTIVE");
-
   return (
     <>
       <nav
@@ -344,7 +366,7 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
           {!isManager && (
             <button
               type="button"
-              onClick={() => setRecordOpen(true)}
+              onClick={openRecord}
               className="-mt-6 flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl bg-primary px-1 text-primary-foreground shadow-lg shadow-primary/25 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
               aria-label={t("record.title")}
             >
@@ -369,47 +391,7 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
         </div>
       </nav>
 
-      {!isManager && (
-        <Sheet open={recordOpen} onOpenChange={setRecordOpen}>
-          <SheetContent side="bottom" className="max-h-[82vh] rounded-t-3xl p-0">
-            <SheetHeader className="border-b px-5 py-5">
-              <SheetTitle>{t("record.title")}</SheetTitle>
-              <SheetDescription>{t("record.choose")}</SheetDescription>
-            </SheetHeader>
-            
-            <div className="safe-pb space-y-3 overflow-y-auto p-5">
-              {batchesLoading && (
-                <p className="rounded-2xl border border-dashed p-5 text-center text-sm text-muted-foreground">
-                  Loading batches…
-                </p>
-              )}
-              {!batchesLoading && activeBatches.length === 0 && (
-
-                <p className="rounded-2xl border border-dashed p-5 text-center text-sm text-muted-foreground">
-                  {t("common.noRecords")}
-                </p>
-              )}
-              {activeBatches.map((batch) => (
-                <SheetClose
-                  key={batch.id}
-                  render={
-                    <Link
-                      href={getLoggingHref(batch.id, LOGGING_ORIGINS.dashboard, true)}
-                      className="flex min-h-16 items-center justify-between gap-4 rounded-2xl border bg-background px-4 py-3 text-left transition-colors hover:border-primary/50 hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
-                    />
-                  }
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate font-semibold">{batch.name}</span>
-                    <span className="mt-1 block text-sm text-muted-foreground">{batch.populationStatus === "RECONCILIATION_REQUIRED" || batch.currentPopulation < 0 ? `Needs review · ${batch.initialPopulation} initial` : `${batch.currentPopulation} / ${batch.initialPopulation} ${t("dashboard.birdsInBatch")}`} · {batch.stageName.replaceAll("-", " ")}</span>
-                  </span>
-                  <ClipboardList className="size-5 shrink-0 text-primary" aria-hidden="true" />
-                </SheetClose>
-              ))}
-            </div>
-          </SheetContent>
-        </Sheet>
-      )}
+      {!isManager && <RecordBatchPicker open={recordOpen} onOpenChange={setRecordOpen} origin={loggingOrigin} />}
     </>
   );
 }

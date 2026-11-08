@@ -5,8 +5,22 @@
 // Import and drop onto any page that needs inline event logging.
 
 import { useRef, useState } from "react";
-import { CheckCircle2, Loader2 } from "lucide-react";
-import { AlertCircle } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeftRight,
+  CheckCircle2,
+  ClipboardList,
+  Eye,
+  HeartOff,
+  HeartPulse,
+  Loader2,
+  PackageCheck,
+  Thermometer,
+  TriangleAlert,
+  UserMinus,
+  UserPlus,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useCreateRecord, useRecords } from "@/hooks/use-records";
 import { useCreateEvent } from "@/hooks/use-events";
@@ -94,27 +108,31 @@ type DialogType =
 const ACTION_BUTTONS = [
   {
     type: "MORTALITY" as DialogType,
-    label: "Population change",
+    label: "Bird count change",
+    icon: ArrowLeftRight,
     cardCls:
-      "border-destructive/25 bg-destructive/5 hover:bg-destructive/10 active:scale-[0.97]",
+      "border-rose-300/70 bg-rose-50/70 text-rose-950 hover:bg-rose-100/80 dark:border-rose-400/25 dark:bg-rose-950/20 dark:text-rose-100 dark:hover:bg-rose-950/35",
   },
   {
     type: "HEALTH_CONCERN" as DialogType,
-    label: "Sickness",
+    label: "Health concern",
+    icon: HeartPulse,
     cardCls:
-      "border-warning-border bg-warning-muted/70 hover:bg-warning-muted active:scale-[0.97]",
+      "border-amber-300/70 bg-amber-50/75 text-amber-950 hover:bg-amber-100/80 dark:border-amber-400/25 dark:bg-amber-950/20 dark:text-amber-100 dark:hover:bg-amber-950/35",
   },
   {
     type: "VACCINE_MEDICINE" as DialogType,
-    label: "Product used",
+    label: "Feed or medicine used",
+    icon: PackageCheck,
     cardCls:
-      "border-success-border bg-success-muted/70 hover:bg-success-muted active:scale-[0.97]",
+      "border-emerald-300/70 bg-emerald-50/75 text-emerald-950 hover:bg-emerald-100/80 dark:border-emerald-400/25 dark:bg-emerald-950/20 dark:text-emerald-100 dark:hover:bg-emerald-950/35",
   },
   {
     type: "BEHAVIOR_OBSERVATION" as DialogType,
-    label: "Behavior",
+    label: "Behavior observed",
+    icon: Eye,
     cardCls:
-      "border-border bg-muted/40 hover:bg-muted active:scale-[0.97]",
+      "border-teal-300/50 bg-teal-50/55 text-teal-950 hover:bg-teal-100/70 dark:border-teal-400/20 dark:bg-teal-950/15 dark:text-teal-100 dark:hover:bg-teal-950/30",
   },
 ] as const;
 
@@ -213,10 +231,17 @@ function TagPill({ label, selected, onToggle }: { label: string; selected: boole
 }
 
 export function VitalsStatus({ batchId }: { batchId: string }) {
-  const { data: records } = useRecords(batchId, 1);
-  const last = records?.[0];
-  if (!last) return <span className="text-xs text-muted-foreground font-medium">No optional measurements yet</span>;
-  return <span className="text-xs text-muted-foreground font-medium">Last measured: {formatDate(last.recordDate)}</span>;
+  const { data: records } = useRecords(batchId, 14);
+  const latest = records?.[0];
+  const added = latest
+    ? [latest.temperatureC, latest.feedIntakeG, latest.waterIntakeMl].filter((value) => value !== null && value !== undefined).length
+    : 0;
+  const { t } = useLocale();
+  return (
+    <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+      {added > 0 ? `${added} ${t("record.measurementsAdded")}` : t("record.measurementsAdd")}
+    </span>
+  );
 }
 
 // ─── Form: population event ───────────────────────────────────────────────────
@@ -550,14 +575,22 @@ export function EventTimeline({ events }: { events: BatchEvent[] }) {
   const { t } = useLocale();
   if (events.length === 0) {
     return (
-      <div className="py-10 text-center space-y-2">
-        <p className="text-sm font-semibold text-muted-foreground">No events logged yet</p>
-        <p className="text-xs text-muted-foreground">Tap a quick-log button to record something</p>
+      <div className="flex flex-col items-center gap-2 py-8 text-center">
+        <span className="flex size-10 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
+          <ClipboardList className="size-5" aria-hidden="true" />
+        </span>
+        <p className="text-sm font-semibold">{t("record.noActivity")}</p>
+        <p className="text-xs text-muted-foreground">{t("record.noActivityHint")}</p>
       </div>
     );
   }
 
-  const byDate = events.reduce<Record<string, BatchEvent[]>>((acc, e) => {
+  const sortedEvents = [...events].sort((a, b) =>
+    b.eventDate.localeCompare(a.eventDate)
+    || b.createdAt.localeCompare(a.createdAt)
+    || b.id - a.id,
+  );
+  const byDate = sortedEvents.reduce<Record<string, BatchEvent[]>>((acc, e) => {
     if (!acc[e.eventDate]) acc[e.eventDate] = [];
     acc[e.eventDate].push(e);
     return acc;
@@ -565,55 +598,71 @@ export function EventTimeline({ events }: { events: BatchEvent[] }) {
 
   return (
     <div className="space-y-5">
-      {Object.entries(byDate).map(([date, dayEvents]) => (
-        <div key={date}>
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-            {formatDate(date)}
-          </p>
-          <div className="space-y-2">
-            {dayEvents.map((ev) => {
-              const tags = ev.tags ? ev.tags.split(",").filter((tag) => Boolean(tag) && !tag.startsWith("SALE_PURPOSE:")) : [];
-              return (
-                <div key={ev.id} className="flex gap-3 rounded-2xl border bg-card p-3.5">
-                  <span className="mt-2 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
-                  <div className="min-w-0 flex-1 space-y-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-bold">{ev.title}</span>
-                      {ev.severityLabel && <Badge variant="outline" className="text-xs font-semibold">{ev.severityLabel}</Badge>}
-                      {ev.syncStatus && (
-                        <Badge variant={ev.syncStatus === "CONFLICT" || ev.syncStatus === "REJECTED" || ev.syncStatus === "AUTH_REQUIRED" ? "warning" : "secondary"} className="text-xs">
-                          {ev.syncStatus === "CONFLICT" || ev.syncStatus === "REJECTED"
-                            ? t("status.needsReview")
-                            : ev.syncStatus === "AUTH_REQUIRED"
-                              ? t("status.signInToSync")
-                              : t("status.pendingSync")}
-                        </Badge>
-                      )}
-                      {ev.affectedCount > 0 && <span className="text-xs text-muted-foreground">{ev.affectedCount} bird{ev.affectedCount !== 1 ? "s" : ""}</span>}
-                      {(ev.maleDelta !== null && ev.maleDelta !== undefined || ev.femaleDelta !== null && ev.femaleDelta !== undefined || ev.unclassifiedDelta !== null && ev.unclassifiedDelta !== undefined) && <Badge variant="secondary" className="text-xs">{formatSexDelta(ev)}</Badge>}
-                      {ev.eventType === "SALE" && ev.salePurpose === "BREEDING" && <Badge variant="secondary" className="text-xs">Sold as breeder</Badge>}
-                    </div>
-                    {tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {tags.map((t) => <span key={t} className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{t}</span>)}
+      {Object.entries(byDate)
+        .sort(([a], [b]) => b.localeCompare(a))
+        .map(([date, dayEvents]) => (
+          <section key={date} aria-labelledby={`activity-date-${date}`}>
+            <h3 id={`activity-date-${date}`} className="mb-2 text-[11px] font-bold uppercase tracking-[0.16em] text-muted-foreground">
+              {formatDate(date)}
+            </h3>
+            <div className="overflow-hidden rounded-2xl border bg-card">
+              {dayEvents.map((ev) => {
+                const Icon = eventIcon(ev);
+                const sex = formatSexDelta(ev);
+                const quantity = ev.affectedCount > 0 ? `${ev.affectedCount} bird${ev.affectedCount !== 1 ? "s" : ""}` : null;
+                const syncNeedsReview = ev.syncStatus === "CONFLICT" || ev.syncStatus === "REJECTED" || ev.syncStatus === "AUTH_REQUIRED";
+                const tags = ev.tags ? ev.tags.split(",").filter((tag) => Boolean(tag) && !tag.startsWith("SALE_PURPOSE:")) : [];
+                const secondary = [sex, ev.handlerName, formatDateTime(ev.createdAt)].filter(Boolean).join(" · ");
+                return (
+                  <div key={ev.id} className="grid grid-cols-[2rem_minmax(0,1fr)_auto] gap-2.5 border-b px-3 py-3 last:border-b-0 sm:gap-3 sm:px-4">
+                    <span className="mt-0.5 flex size-8 items-center justify-center rounded-xl bg-muted text-muted-foreground" aria-hidden="true">
+                      <Icon className="size-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 items-start gap-2">
+                        <p className="min-w-0 flex-1 text-sm font-semibold leading-snug">{ev.title}</p>
+                        {syncNeedsReview && <Badge variant="warning" className="shrink-0 px-1.5 text-[10px]">{ev.syncStatus === "AUTH_REQUIRED" ? t("status.signInToSync") : t("status.needsReview")}</Badge>}
+                        {!syncNeedsReview && ev.syncStatus && <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">{t("record.pendingSync")}</span>}
                       </div>
-                    )}
-                    {ev.details && <p className="text-xs text-muted-foreground">{ev.details}</p>}
-                    {ev.eventType === "SALE" && ev.saleAmount != null && <p className="text-xs font-semibold text-success">Sale proceeds: ₱{Number(ev.saleAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{ev.saleBuyer ? ` · Buyer: ${ev.saleBuyer}` : ""}{ev.saleReference ? ` · Ref: ${ev.saleReference}` : ""}</p>}
-                    <div className="flex items-center gap-1.5 pt-0.5">
-                      <span className="text-xs font-semibold text-primary/70">{ev.handlerName}</span>
-                      <span className="text-xs text-muted-foreground">·</span>
-                      <span className="text-xs text-muted-foreground">{formatDateTime(ev.createdAt)}</span>
+                      <p className="mt-1 break-words text-[11px] leading-snug text-muted-foreground" title={secondary}>{secondary || "—"}</p>
+                      {(ev.details || tags.length > 0 || ev.severityLabel || (ev.eventType === "SALE" && ev.saleAmount != null)) && (
+                        <p className="mt-1 break-words text-[11px] leading-snug text-muted-foreground" title={ev.details ?? undefined}>
+                          {ev.details ?? tags.join(" · ") ?? ""}
+                          {ev.severityLabel ? `${ev.details || tags.length ? " · " : ""}${ev.severityLabel}` : ""}
+                          {ev.eventType === "SALE" && ev.saleAmount != null ? `${ev.details || tags.length || ev.severityLabel ? " · " : ""}₱${Number(ev.saleAmount).toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ""}
+                        </p>
+                      )}
                     </div>
+                    <span className="pt-0.5 text-right text-xs font-semibold tabular-nums text-foreground">{quantity ?? ""}</span>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+                );
+              })}
+            </div>
+          </section>
+        ))}
     </div>
   );
+}
+
+function eventIcon(event: BatchEvent): LucideIcon {
+  switch (event.eventType) {
+    case "TRANSFER_IN": return UserPlus;
+    case "TRANSFER_OUT":
+    case "SALE":
+    case "MISSING":
+    case "CULLING": return UserMinus;
+    case "HEALTH_CONCERN": return HeartPulse;
+    case "HEALTH_DEATH": return HeartOff;
+    case "ACCIDENTAL_DEATH":
+    case "SUSPECTED_PREDATION":
+    case "CONFIRMED_PREDATION": return TriangleAlert;
+    case "VACCINE_MEDICINE": return PackageCheck;
+    case "BEHAVIOR_OBSERVATION": return Eye;
+    case "MORTALITY":
+    case "COUNT_CORRECTION":
+    case "FOUND_RETURNED":
+    default: return ArrowLeftRight;
+  }
 }
 
 function formatSexDelta(event: BatchEvent) {
@@ -660,22 +709,30 @@ export function BatchLogSection({
             ref={(node) => { triggerRefs.current[btn.type] = node; }}
             onClick={() => setActiveDialog(btn.type)}
             className={cn(
-              "flex min-h-14 items-center rounded-xl border px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
+              "flex min-h-[4.5rem] items-center gap-2.5 rounded-2xl border px-3 py-3 text-left text-sm font-semibold transition-colors active:scale-[0.98] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
               btn.cardCls
             )}
           >
-            <span className="text-sm font-bold leading-tight">{t(ACTION_LABEL_KEYS[btn.type])}</span>
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-background/60" aria-hidden="true">
+              <btn.icon className="size-[18px]" />
+            </span>
+            <span className="leading-tight">{t(ACTION_LABEL_KEYS[btn.type])}</span>
           </button>
         ))}
       </div>
 
-      <details className="group mt-2 rounded-xl border border-dashed border-success-border bg-success-muted/70">
-        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">
-          <span><span className="block text-sm font-bold">{t("record.optionalMeasurements")}</span><span className="block text-xs text-muted-foreground">{t("record.measurementHint")}</span></span>
-          <span className="text-right"><VitalsStatus batchId={batchId} /><span className="mt-1 block text-xs font-semibold text-primary group-open:hidden">{t("record.open")}</span></span>
-        </summary>
-        <div className="border-t border-success-border/70 px-3 pb-3 pt-2.5"><button type="button" ref={(node) => { triggerRefs.current.DAILY_VITALS = node; }} onClick={() => setActiveDialog("DAILY_VITALS")} className="min-h-10 w-full rounded-lg border bg-background px-3 text-left text-sm font-semibold transition-colors hover:border-primary/50 hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">{t("record.addMeasurement")}</button></div>
-      </details>
+      <button
+        type="button"
+        ref={(node) => { triggerRefs.current.DAILY_VITALS = node; }}
+        onClick={() => setActiveDialog("DAILY_VITALS")}
+        className="mt-2 flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl border bg-card px-3.5 py-2.5 text-left transition-colors hover:border-primary/50 hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+      >
+        <span className="flex min-w-0 items-center gap-2.5">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-success-muted text-success" aria-hidden="true"><Thermometer className="size-4" /></span>
+          <span className="truncate text-sm font-semibold">{t("record.measurements")}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2 text-xs font-semibold text-muted-foreground"><VitalsStatus batchId={batchId} /><span aria-hidden="true" className="text-base leading-none">›</span></span>
+      </button>
 
       {/* Dialogs */}
       <Dialog open={activeDialog !== null} onOpenChange={(o) => !o && close()}>

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 
 export type PageBackLinkProps =
   | {
-      destination: "dashboard" | "settings";
+      destination: "dashboard" | "settings" | "tasks" | "incubation" | "alerts";
       className?: string;
     }
   | {
@@ -17,6 +17,9 @@ export type PageBackLinkProps =
 const DESTINATIONS = {
   dashboard: { href: "/dashboard", label: "dashboard" },
   settings: { href: "/settings", label: "settings" },
+  tasks: { href: "/tasks", label: "tasks" },
+  incubation: { href: "/incubation", label: "incubation" },
+  alerts: { href: "/alerts", label: "alerts" },
 } as const;
 
 /** A deterministic back link for pages inside the authenticated app. */
