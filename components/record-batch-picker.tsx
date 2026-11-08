@@ -40,7 +40,7 @@ function PickerEmptyState({ icon: Icon, title, hint }: { icon: typeof Bird; titl
   </div>;
 }
 
-function RecordBatchOption({ batch, origin }: { batch: Batch; origin: LoggingOrigin }) {
+function RecordBatchOption({ batch, origin, onSelected }: { batch: Batch; origin: LoggingOrigin; onSelected: () => void }) {
   const { t } = useLocale();
   const needsReview = needsPopulationReview(batch);
   const stage = stageLabel(batch);
@@ -52,6 +52,7 @@ function RecordBatchOption({ batch, origin }: { batch: Batch; origin: LoggingOri
     nativeButton={false}
     render={<Link
       href={getLoggingHref(batch.id, origin, true)}
+      onClick={onSelected}
       aria-label={accessibleDescription}
       className={cn(
         "group grid min-h-[72px] grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-primary/10 bg-card px-3.5 py-3 text-left shadow-sm transition-all hover:border-primary/30 hover:shadow-md active:scale-[0.99] active:bg-primary/[0.04] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/30",
@@ -127,7 +128,7 @@ export function RecordBatchPicker({ open, onOpenChange, origin }: { open: boolea
         {!isLoading && isError && <div className="flex min-h-44 flex-col items-center justify-center rounded-2xl border border-warning-border bg-warning-muted/70 px-5 text-center text-warning-ink shadow-sm"><TriangleAlert className="size-6" aria-hidden="true" /><p className="mt-3 text-sm font-bold">{t("record.loadBatchesError")}</p><Button type="button" variant="outline" size="sm" className="mt-3 border-warning-border bg-card text-warning-ink hover:bg-warning-muted" onClick={() => void refetch()}><RefreshCw className="size-3.5" />{t("record.tryAgain")}</Button></div>}
         {!isLoading && !isError && activeBatches.length === 0 && <PickerEmptyState icon={Bird} title={t("record.noActiveBatches")} />}
         {!isLoading && !isError && activeBatches.length > 0 && filteredBatches.length === 0 && <PickerEmptyState icon={Search} title={t("record.noMatchingBatches")} />}
-        {!isLoading && !isError && filteredBatches.length > 0 && <div className="space-y-2.5">{filteredBatches.map((batch) => <RecordBatchOption key={batch.id} batch={batch} origin={origin} />)}</div>}
+        {!isLoading && !isError && filteredBatches.length > 0 && <div className="space-y-2.5">{filteredBatches.map((batch) => <RecordBatchOption key={batch.id} batch={batch} origin={origin} onSelected={() => onOpenChange(false)} />)}</div>}
       </div>
     </SheetContent>
   </Sheet>;

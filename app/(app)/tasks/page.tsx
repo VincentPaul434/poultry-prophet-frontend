@@ -104,14 +104,18 @@ function TasksPageContent() {
   const filters = useMemo<TaskPageFilters>(() => ({ page: 0, size: isManager ? managerFilters.size : HANDLER_PAGE_SIZE, view: isManager ? managerFilters.view : "OPEN", dueBucket: isManager ? managerFilters.dueBucket : "ALL", kind: isManager ? managerFilters.kind : undefined, batchId: managerFilters.batchId, farmWide: managerFilters.farmWide, assignedHandlerId: managerFilters.assignedHandlerId, priority: managerFilters.priority, search: managerFilters.search }), [isManager, managerFilters]);
   const managerPageQuery = useTaskPage(managerFilters, isManager && !isMobile);
   const mobileManagerPageQuery = useTaskPageInfinite({ ...managerFilters, page: 0, size: PAGE_SIZE }, isManager && isMobile);
+  const { fetchNextPage: fetchMobileNextPage } = mobileManagerPageQuery;
   const handlerQueueQuery = useTaskQueue(handlerQueueBucket, !isManager);
   const handlerPages = useMemo(() => handlerQueueQuery.data?.pages ?? [], [handlerQueueQuery.data?.pages]);
   const handlerPage = handlerPages.at(-1);
-  const mobileManagerPages = mobileManagerPageQuery.data?.pages ?? [];
+  const mobileManagerPages = useMemo(() => mobileManagerPageQuery.data?.pages ?? [], [mobileManagerPageQuery.data?.pages]);
   const mobileManagerLastPage = mobileManagerPages.at(-1);
-  const mobileManagerPage = mobileManagerLastPage
-    ? { ...mobileManagerLastPage, items: mobileManagerPages.flatMap((item) => item.items), hasPrevious: false }
-    : undefined;
+  const mobileManagerPage = useMemo(
+    () => mobileManagerLastPage
+      ? { ...mobileManagerLastPage, items: mobileManagerPages.flatMap((item) => item.items), hasPrevious: false }
+      : undefined,
+    [mobileManagerLastPage, mobileManagerPages],
+  );
   const page = useMemo(
     () => isManager ? (isMobile ? mobileManagerPage : managerPageQuery.data) : handlerPage ? { ...handlerPage, items: handlerPages.flatMap((item) => item.items) } : undefined,
     [handlerPage, handlerPages, isManager, isMobile, managerPageQuery.data, mobileManagerPage],
@@ -155,11 +159,11 @@ function TasksPageContent() {
   useEffect(() => {
     if (!isManager || !isMobile || !mobileTaskLoadMoreRef.current || !mobileHasNextPage) return;
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !mobileIsFetchingNextPage) void mobileManagerPageQuery.fetchNextPage();
+      if (entry.isIntersecting && !mobileIsFetchingNextPage) void fetchMobileNextPage();
     }, { rootMargin: "480px" });
     observer.observe(mobileTaskLoadMoreRef.current);
     return () => observer.disconnect();
-  }, [isManager, isMobile, mobileHasNextPage, mobileIsFetchingNextPage, mobileManagerPageQuery.fetchNextPage]);
+  }, [fetchMobileNextPage, isManager, isMobile, mobileHasNextPage, mobileIsFetchingNextPage]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
