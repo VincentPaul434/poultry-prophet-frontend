@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import {
   AlertCircle,
+  ArrowRight,
   ArchiveRestore,
   CheckCircle2,
   ClipboardList,
@@ -31,7 +32,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -60,10 +60,10 @@ function daysElapsed(startDate: string) {
 
 function stageColor(stageName: string): string {
   const s = stageName.toLowerCase();
-  if (s.includes("brood")) return "bg-warning";
-  if (s.includes("rang") || s.includes("grow")) return "bg-success";
-  if (s.includes("select") || s.includes("pre")) return "bg-primary";
-  return "bg-primary";
+  if (s.includes("brood")) return "ledger-stage-warning";
+  if (s.includes("rang") || s.includes("grow")) return "ledger-stage-success";
+  if (s.includes("select") || s.includes("pre")) return "ledger-stage-primary";
+  return "ledger-stage-primary";
 }
 
 function stageDisplayName(stageName: string): string {
@@ -90,7 +90,6 @@ export default function DashboardPage() {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
-  const [showBatchControls, setShowBatchControls] = useState(false);
   const filteredBatches = (dashboardItems ?? []).filter(({ batch }) => {
     const query = search.trim().toLowerCase();
     const matchesSearch = !query || [batch.name, batch.bloodline, batch.source]
@@ -107,24 +106,51 @@ export default function DashboardPage() {
   });
   const openTasks = taskPage?.items ?? [];
   const activeBatchCount = (dashboardItems ?? []).filter(({ batch }) => batch.status === "ACTIVE").length;
-  const controlsVisible = showBatchControls || Boolean(search) || stageFilter !== "all";
+  const needsAttention = visibleBatches.filter(({ batch, summary }) =>
+    batch.populationStatus === "RECONCILIATION_REQUIRED" || summary.activeAlertCount > 0
+  );
+  const allGood = visibleBatches.filter(({ batch, summary }) =>
+    batch.populationStatus !== "RECONCILIATION_REQUIRED" && summary.activeAlertCount === 0
+  );
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 sm:space-y-8">
+    <div className="ledger-page mx-auto w-full max-w-6xl space-y-8 sm:space-y-10">
       <FarmOnboardingBanner />
       <PendingInvitesBanner />
 
       {/* Header */}
-      <div className="sticky top-0 z-30 isolate -mx-4 flex flex-col gap-4 border-b bg-background px-4 py-3 shadow-[0_8px_18px_rgb(0_0_0_/_0.05)] sm:-mx-6 sm:px-6 md:static md:mx-0 md:border-0 md:bg-transparent md:px-0 md:py-0 md:shadow-none lg:-mx-8 lg:px-8 xl:-mx-10 xl:px-10">
+      <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{t("dashboard.pageTitle")}</h1>
-          <p className="text-sm font-medium text-muted-foreground">{farmName}</p>
-          <p className="text-sm text-muted-foreground">
-            {dashboardItems ? `${activeBatchCount} ${activeBatchCount === 1 ? t("dashboard.activeBatch") : t("dashboard.activeBatchesPlural")}` : t("dashboard.loadingBatches")}
-          </p>
+          <h1 className="ledger-heading text-4xl leading-none sm:text-5xl">{t("dashboard.pageTitle")}</h1>
+          <p className="text-sm text-muted-foreground">{farmName} · {dashboardItems ? `${activeBatchCount} ${activeBatchCount === 1 ? t("dashboard.activeBatch") : t("dashboard.activeBatchesPlural")}` : t("dashboard.loadingBatches")}</p>
         </div>
-        <div className="w-full sm:w-auto">
-          <CreateBatchDialog />
+        <div className="ledger-toolbar grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 sm:flex sm:w-auto sm:flex-nowrap">
+          <CreateBatchDialog className="order-first col-span-2 w-full justify-self-stretch sm:order-last sm:col-span-1 sm:w-auto sm:justify-self-auto" />
+          {dashboardItems && dashboardItems.length > 0 && (
+            <div className="ledger-search relative min-w-0 sm:w-52 sm:flex-none">
+              <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                aria-label={t("dashboard.searchLabel")}
+                value={search}
+                onChange={(event) => { setSearch(event.target.value); setVisibleCount(PAGE_SIZE); }}
+                placeholder={t("dashboard.searchLabel")}
+                className="min-h-11 rounded-full border-0 bg-transparent pl-11 pr-4 shadow-none focus-visible:ring-2 focus-visible:ring-ring/40"
+              />
+            </div>
+          )}
+          {dashboardItems && dashboardItems.length > 0 && (
+            <NativeSelect
+              aria-label={t("dashboard.filterLabel")}
+              value={stageFilter}
+              onChange={(event) => { setStageFilter(event.target.value); setVisibleCount(PAGE_SIZE); }}
+              className="ledger-filter min-h-11 w-32 rounded-full border-0 bg-transparent px-3 text-xs shadow-none sm:w-36"
+            >
+              <option value="all">{t("dashboard.allStages")}</option>
+              {Array.from(new Set(dashboardItems.map(({ batch }) => batch.stageName))).map((stage) => (
+                <option key={stage} value={stage}>{stageDisplayName(stage)}</option>
+              ))}
+            </NativeSelect>
+          )}
         </div>
       </div>
 
@@ -212,47 +238,6 @@ export default function DashboardPage() {
       {/* Batch cards */}
       {dashboardItems && dashboardItems.length > 0 && (
         <div className="space-y-5">
-          {dashboardItems.length > 3 && (
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-foreground">{t("dashboard.batchesHeading")}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="min-h-11 rounded-xl"
-                onClick={() => setShowBatchControls((value) => !value)}
-                aria-expanded={controlsVisible}
-              >
-                <Search className="size-4" aria-hidden="true" />
-                {controlsVisible ? t("dashboard.hideSearch") : t("dashboard.searchOrFilter")}
-              </Button>
-            </div>
-          )}
-          {controlsVisible && (
-            <div className="flex flex-col gap-3 rounded-2xl border bg-card p-3 sm:flex-row sm:items-center">
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                <Input
-                  aria-label={t("dashboard.searchLabel")}
-                  value={search}
-                  onChange={(event) => { setSearch(event.target.value); setVisibleCount(PAGE_SIZE); }}
-                  placeholder={t("dashboard.searchPlaceholder")}
-                  className="min-h-11 pl-10"
-                />
-              </div>
-              <NativeSelect
-                aria-label={t("dashboard.filterLabel")}
-                value={stageFilter}
-                onChange={(event) => { setStageFilter(event.target.value); setVisibleCount(PAGE_SIZE); }}
-                className="sm:w-56"
-              >
-                <option value="all">{t("dashboard.allStages")}</option>
-                {Array.from(new Set(dashboardItems.map(({ batch }) => batch.stageName))).map((stage) => (
-                  <option key={stage} value={stage}>{stageDisplayName(stage)}</option>
-                ))}
-              </NativeSelect>
-            </div>
-          )}
           {visibleBatches.length === 0 && (
             <Card className="border-dashed shadow-none">
               <CardContent className="p-8 text-center text-sm text-muted-foreground">
@@ -260,11 +245,32 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           )}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {visibleBatches.map((item) => (
-              <BatchCard key={item.batch.id} item={item} isManager={isManager} />
-            ))}
-          </div>
+          {needsAttention.length > 0 && (
+            <section aria-labelledby="needs-attention-heading" className="space-y-4">
+              <div className="flex items-baseline gap-2">
+                <h2 id="needs-attention-heading" className="ledger-section-heading">Needs attention</h2>
+                <span className="ledger-section-count">· {needsAttention.length}</span>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {needsAttention.map((item) => (
+                  <BatchCard key={item.batch.id} item={item} isManager={isManager} />
+                ))}
+              </div>
+            </section>
+          )}
+          {allGood.length > 0 && (
+            <section aria-labelledby="all-good-heading" className="space-y-4">
+              <div className="flex items-baseline gap-2">
+                <h2 id="all-good-heading" className="ledger-section-heading">All good</h2>
+                <span className="ledger-section-count">· {allGood.length}</span>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {allGood.map((item) => (
+                  <BatchCard key={item.batch.id} item={item} isManager={isManager} />
+                ))}
+              </div>
+            </section>
+          )}
           {visibleCount < filteredBatches.length && (
             <div className="flex justify-center border-t pt-4">
               <Button
@@ -303,81 +309,84 @@ function BatchCard({
   const { t } = useLocale();
   const { batch, summary } = item;
   const days = daysElapsed(batch.hatchDate ?? batch.startDate);
-  const stageBar = stageColor(batch.stageName);
+  const stageTone = stageColor(batch.stageName);
   const stageLabel = stageDisplayName(batch.stageName);
+  const needsReview = batch.populationStatus === "RECONCILIATION_REQUIRED";
+  const needsAttention = needsReview || summary.activeAlertCount > 0;
 
   const overviewHref = `/batches/${batch.id}`;
   const logHref = getLoggingHref(batch.id, LOGGING_ORIGINS.dashboard, true);
 
   return (
-    <Card className="flex h-full flex-col overflow-hidden rounded-2xl border shadow-none transition-colors hover:border-primary/30">
-      <div className={cn("h-1.5 w-full", stageBar)} />
-
-      <CardHeader className="space-y-2 p-4 pb-2">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <CardTitle className="truncate text-base">{batch.name}</CardTitle>
-              {batch.status !== "ACTIVE" && <Badge variant="secondary" className="shrink-0 text-xs">{batch.status}</Badge>}
-              {summary.activeAlertCount > 0 && (
-                <Badge variant="warning" className="shrink-0 text-xs">
-                  {summary.activeAlertCount} {summary.activeAlertCount === 1 ? "alert" : "alerts"}
-                </Badge>
-              )}
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground">{stageLabel}</span>
-              <span aria-hidden="true">·</span>
-              <span>{t("dashboard.day")} {days}</span>
-              {batch.bloodline && <><span aria-hidden="true">·</span><span className="truncate">{batch.bloodline}</span></>}
-            </div>
+    <Card className={cn("ledger-batch-card flex h-full flex-col", needsAttention && "ledger-batch-card-attention")}>
+      <CardHeader className="space-y-4 p-5 pb-0 sm:p-6 sm:pb-0">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2 text-xs font-semibold">
+            <span className={cn("ledger-stage-dot", stageTone)} aria-hidden="true" />
+            <span className="truncate">{stageLabel}</span>
+            {batch.status !== "ACTIVE" && <span className="truncate text-muted-foreground">· {batch.status}</span>}
           </div>
+          <Link
+            href={overviewHref}
+            className="ledger-card-arrow hidden size-9 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60 sm:flex"
+            aria-label={`${t("dashboard.viewBatch")}: ${batch.name}`}
+          >
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </Link>
+        </div>
+        <div className="min-w-0">
+          <CardTitle className="ledger-card-title truncate text-2xl leading-tight">
+            <Link href={overviewHref} className="rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">{batch.name}</Link>
+          </CardTitle>
+          <p className="mt-1 truncate text-xs text-muted-foreground">
+            {t("dashboard.day")} {days}{batch.bloodline ? ` · ${batch.bloodline}` : batch.source ? ` · ${batch.source}` : ""}
+          </p>
         </div>
       </CardHeader>
 
-      <CardContent className="grid grid-cols-2 gap-2 px-4 pb-4 pt-2">
-        <div className="rounded-xl bg-muted/40 px-3 py-2.5">
-          <p className="text-[11px] font-medium text-muted-foreground">{t("dashboard.currentCount")}</p>
-          <p className="mt-0.5 text-lg font-bold tabular-nums">{batch.populationStatus === "RECONCILIATION_REQUIRED" ? "Needs review" : `${batch.currentPopulation} / ${batch.initialPopulation}`}</p>
-          {batch.populationStatus === "RECONCILIATION_REQUIRED" && <p className="mt-1 text-[11px] font-medium text-warning-ink">Initial: {batch.initialPopulation}</p>}
+      <CardContent className="flex flex-1 flex-col justify-end gap-4 p-5 pt-8 sm:p-6 sm:pt-10">
+        <div>
+          <p className="text-xs text-muted-foreground">{t("dashboard.currentCount")}</p>
+          {needsReview ? (
+            <p className="ledger-review-value mt-1 text-2xl">Needs review</p>
+          ) : (
+            <p className="mt-1 flex items-baseline gap-2 text-4xl leading-none tabular-nums">
+              <span className="ledger-number text-4xl">{batch.currentPopulation}</span>
+              <span className="text-xl text-muted-foreground">/ {batch.initialPopulation}</span>
+            </p>
+          )}
         </div>
-        <div className="rounded-xl bg-muted/40 px-3 py-2.5">
-          <p className="text-[11px] font-medium text-muted-foreground">Total deaths</p>
-          <p className="mt-0.5 text-lg font-bold tabular-nums">{summary.totalDeaths}</p>
-          <p className="mt-1 truncate text-[11px] text-muted-foreground">{summary.healthRelatedDeaths} health · {summary.accidentalDeaths} accidental</p>
-        </div>
-        <div className="rounded-xl bg-muted/40 px-3 py-2.5">
-          <p className="text-[11px] font-medium text-muted-foreground">Other changes</p>
-          <p className="mt-0.5 text-lg font-bold tabular-nums">{summary.otherPopulationChanges}</p>
-        </div>
-        <div className="rounded-xl bg-muted/40 px-3 py-2.5">
-          <p className="text-[11px] font-medium text-muted-foreground">Health events</p>
-          <p className="mt-0.5 text-lg font-bold tabular-nums">{summary.recordedHealthEvents}</p>
-        </div>
-      </CardContent>
-
-      <CardFooter className="mt-auto flex flex-col gap-2 p-4 pt-0 sm:flex-row">
-        {isManager ? (
-          <Link href={overviewHref} className={cn(buttonVariants({ size: "lg" }), "h-12 w-full rounded-xl text-base font-semibold")}>
+        {(needsReview || summary.activeAlertCount > 0) && (
+          <p className="text-xs font-medium text-warning-ink">
+            {needsReview ? `Initial: ${batch.initialPopulation}` : `${summary.activeAlertCount} health event${summary.activeAlertCount === 1 ? "" : "s"}`}
+          </p>
+        )}
+        {isManager && (
+          <Link
+            href={overviewHref}
+            className={cn(buttonVariants({ variant: "outline", size: "default" }), "w-full rounded-full border-current/15 bg-transparent sm:hidden")}
+            aria-label={`View overview for ${batch.name}`}
+          >
             {t("dashboard.viewBatch")}
           </Link>
-        ) : (
-          <>
-            <Link href={logHref} className={cn(buttonVariants({ size: "lg" }), "h-12 w-full rounded-xl text-base font-semibold sm:min-w-0 sm:flex-1")} aria-label={`Log an event for ${batch.name}`}>
-              <ClipboardList className="size-4" />
+        )}
+        {isManager === false && (
+          <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+            <Link href={logHref} className={cn(buttonVariants({ size: "sm" }), "rounded-full px-4")} aria-label={`Log an event for ${batch.name}`}>
+              <ClipboardList className="size-3.5" />
               {t("dashboard.logNow")}
             </Link>
-            <Link href={overviewHref} className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-12 w-full rounded-xl text-base font-semibold sm:min-w-0 sm:flex-1")} aria-label={`View overview for ${batch.name}`}>
+            <Link href={overviewHref} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full rounded-full border-current/15 bg-transparent px-4 sm:w-auto")} aria-label={`View overview for ${batch.name}`}>
               {t("dashboard.viewBatch")}
             </Link>
-          </>
+          </div>
         )}
-      </CardFooter>
+      </CardContent>
     </Card>
   );
 }
 
-function CreateBatchDialog({ variant }: { variant?: "inline" }) {
+function CreateBatchDialog({ variant, className }: { variant?: "inline"; className?: string }) {
   const { user } = useAuth();
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
@@ -439,11 +448,11 @@ function CreateBatchDialog({ variant }: { variant?: "inline" }) {
       <DialogTrigger
         render={
           variant === "inline" ? (
-            <Button className="h-11 w-full rounded-xl px-5 font-semibold sm:w-auto">
+            <Button className={cn("h-11 w-full rounded-xl px-5 font-semibold sm:w-auto", className)}>
               <Plus className="size-4" /> {t("dashboard.createFirstBatch")}
             </Button>
           ) : (
-            <Button className="h-12 w-full rounded-xl px-4 font-semibold sm:w-auto">
+            <Button className={cn("h-12 w-full rounded-xl px-4 font-semibold sm:w-auto", className)}>
               <Plus className="size-4" /> {t("dashboard.createBatch")}
             </Button>
           )
