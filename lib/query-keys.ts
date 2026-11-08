@@ -24,6 +24,7 @@ export const qk = {
   inventoryPending: ["inventory", "pending-review"] as const,
   tasks: ["handler-tasks"] as const,
   taskPage: (filters: Record<string, unknown>) => ["handler-tasks", "page", filters] as const,
+  taskPageInfinite: (filters: Record<string, unknown>) => ["handler-tasks", "page-infinite", filters] as const,
   taskSummary: (filters: Record<string, unknown> = {}) => ["handler-tasks", "summary", filters] as const,
   handlerTaskQueue: (bucket: string, size = 10) => ["handler-tasks", "queue", bucket, size] as const,
   handlerTaskQueueSummary: ["handler-tasks", "queue-summary"] as const,

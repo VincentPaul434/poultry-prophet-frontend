@@ -289,6 +289,27 @@ export function useTaskPage(filters: TaskPageFilters = DEFAULT_TASK_PAGE, enable
   });
 }
 
+export function useTaskPageInfinite(filters: TaskPageFilters = DEFAULT_TASK_PAGE, enabled = true) {
+  const { user } = useAuth();
+  return useInfiniteQuery({
+    queryKey: qk.taskPageInfinite(filters as unknown as Record<string, unknown>),
+    initialPageParam: 0,
+    enabled,
+    queryFn: async ({ pageParam }) => {
+      const pageFilters = { ...filters, page: pageParam };
+      try {
+        return await taskApi.list(pageFilters);
+      } catch (error) {
+        if (!shouldUseOfflineSnapshot(error) || !user?.farmId) throw error;
+        const cached = await getOfflineBootstrap(user.userId, user.farmId);
+        if (!cached) throw error;
+        return offlineTaskPage(await applyPendingTaskOperations(user.userId, user.farmId, cached.tasks), pageFilters);
+      }
+    },
+    getNextPageParam: (lastPage) => lastPage.hasNext ? lastPage.page + 1 : undefined,
+  });
+}
+
 export function useTaskQueue(bucket: HandlerTaskQueueBucket, enabled = true) {
   const { user } = useAuth();
   const size = 10;
