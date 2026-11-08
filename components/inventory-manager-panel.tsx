@@ -7,7 +7,6 @@ import { useCreateFarmProduct, useFarmProducts, usePendingInventoryReview, useRe
 import type { InputProductType } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +25,7 @@ export function InventoryManagerPanel() {
   const { data: pendingUses } = usePendingInventoryReview();
   const retryPending = useRetryPendingInventory();
   const [showCreate, setShowCreate] = useState(false);
+  const [showStock, setShowStock] = useState(false);
   const [type, setType] = useState<InputProductType>("MEDICINE");
   const [brand, setBrand] = useState("");
   const [name, setName] = useState("");
@@ -69,15 +69,23 @@ export function InventoryManagerPanel() {
     if (!selectedId || !stockQuantity || purchaseQuantity <= 0 || blockedByUnvaluedStock || (!freeOfCharge && (!stockUnitCost || purchaseUnitCost <= 0))) return;
     await stockIn.mutateAsync({ productId: selectedId, body: { quantity: purchaseQuantity, purchaseUnitCost: freeOfCharge ? 0 : purchaseUnitCost, freeOfCharge, stockDate: new Date().toISOString().slice(0, 10) } });
     toast.success("Stock updated.");
-    setStockQuantity(""); setStockUnitCost(""); setFreeOfCharge(false);
+    setStockQuantity(""); setStockUnitCost(""); setFreeOfCharge(false); setShowStock(false);
   }
 
-  return <Card className="shadow-none">
-    <CardHeader className="flex flex-row items-center justify-between gap-3 p-4 pb-2">
-      <CardTitle className="flex items-center gap-2 text-base"><PackagePlus className="size-4 text-primary" /> Farm products and stock</CardTitle>
-      <Button type="button" variant="outline" size="sm" onClick={() => setShowCreate(true)}><Plus className="size-4" /> Add product</Button>
-    </CardHeader>
-    <CardContent className="space-y-4 p-4 pt-2">
+  function openStockDialog(productId: number) {
+    setSelectedId(productId);
+    setStockQuantity("");
+    setStockUnitCost("");
+    setFreeOfCharge(false);
+    setShowStock(true);
+  }
+
+  return <section className="space-y-4" aria-labelledby="farm-products-heading">
+    <div className="flex items-center justify-between gap-3">
+      <h2 id="farm-products-heading" className="flex items-center gap-2 text-base font-semibold"><PackagePlus className="hidden size-4 text-primary sm:inline" /> Farm products and stock</h2>
+      <Button type="button" variant="outline" size="sm" onClick={() => setShowCreate(true)}><Plus className="size-4" /><span className="sm:hidden">Add</span><span className="hidden sm:inline">Add product</span></Button>
+    </div>
+    <div className="space-y-4">
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
@@ -101,18 +109,59 @@ export function InventoryManagerPanel() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <form onSubmit={(event) => void submitStock(event)} className="grid gap-2.5 rounded-xl border p-3 sm:grid-cols-[minmax(0,1fr)_8rem_8rem_auto] sm:items-end">
-        <div className="space-y-1.5"><Label>Add stock</Label><NativeSelect value={selectedId ?? ""} onChange={(event) => setSelectedId(event.target.value ? Number(event.target.value) : null)}><option value="">Select product</option>{activeProducts.map((item) => <option key={item.id} value={item.id}>{item.brandName} · {item.stockOnHand} {item.stockUnit}</option>)}</NativeSelect></div>
-        <div className="space-y-1.5"><Label>Quantity purchased</Label><Input required type="number" min="0.001" step="0.001" value={stockQuantity} onChange={(event) => setStockQuantity(event.target.value)} /></div>
-        <div className="space-y-1.5"><Label>Price per {selectedProduct?.stockUnit ?? "unit"}</Label><Input required={!freeOfCharge} disabled={freeOfCharge || !selectedId} type="number" min="0" step="0.000001" value={stockUnitCost} onChange={(event) => setStockUnitCost(event.target.value)} placeholder="₱0.00" /></div>
-        <Button type="submit" disabled={stockIn.isPending || !selectedId || blockedByUnvaluedStock}>{stockIn.isPending ? <Loader2 className="animate-spin" /> : "Record purchase"}</Button>
-        <div className="rounded-lg bg-muted/40 px-3 py-2 text-xs sm:col-span-4"><div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1"><span>Purchase total</span><strong className="tabular-nums">{purchaseTotal == null ? "—" : `₱${purchaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</strong><span>Stock after</span><strong className="tabular-nums">{stockAfterPurchase == null || !selectedProduct ? "—" : `${stockAfterPurchase.toLocaleString()} ${selectedProduct.stockUnit}`}</strong><span>New average</span><strong className="tabular-nums">{newAverageCost == null ? "—" : `₱${newAverageCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} / ${selectedProduct?.stockUnit}`}</strong></div></div>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground sm:col-span-4"><input type="checkbox" checked={freeOfCharge} onChange={(event) => setFreeOfCharge(event.target.checked)} /> Free or donated stock (no cash expense)</label>
-        {blockedByUnvaluedStock && <p role="alert" className="text-xs text-warning-ink sm:col-span-4">Existing stock has no recorded unit cost. Set its opening cost or reconcile the old balance before adding more stock.</p>}
-      </form>
+      <Dialog open={showStock} onOpenChange={setShowStock}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add stock</DialogTitle>
+            <DialogDescription>{selectedProduct ? `${selectedProduct.brandName} · ${Number(selectedProduct.stockOnHand).toLocaleString()} ${selectedProduct.stockUnit} on hand` : "Record a purchase for this product."}</DialogDescription>
+          </DialogHeader>
+          <form id="add-stock-form" onSubmit={(event) => void submitStock(event)} className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5"><Label htmlFor="stock-quantity">Quantity purchased</Label><Input id="stock-quantity" required type="number" min="0.001" step="0.001" value={stockQuantity} onChange={(event) => setStockQuantity(event.target.value)} /></div>
+              <div className="space-y-1.5"><Label htmlFor="stock-unit-cost">Price per {selectedProduct?.stockUnit ?? "unit"}</Label><Input id="stock-unit-cost" required={!freeOfCharge} disabled={freeOfCharge || !selectedId} type="number" min="0" step="0.000001" value={stockUnitCost} onChange={(event) => setStockUnitCost(event.target.value)} placeholder="₱0.00" /></div>
+            </div>
+            <div className="rounded-lg bg-muted/40 px-3 py-2 text-xs"><div className="grid grid-cols-2 gap-x-4 gap-y-1"><span>Purchase total</span><strong className="text-right tabular-nums">{purchaseTotal == null ? "₱0.00" : `₱${purchaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</strong><span>Stock after</span><strong className="text-right tabular-nums">{stockAfterPurchase == null || !selectedProduct ? `0 ${selectedProduct?.stockUnit ?? "unit"}` : `${stockAfterPurchase.toLocaleString()} ${selectedProduct.stockUnit}`}</strong><span>New average</span><strong className="text-right tabular-nums">{newAverageCost == null ? `₱0.00 / ${selectedProduct?.stockUnit ?? "unit"}` : `₱${newAverageCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} / ${selectedProduct?.stockUnit}`}</strong></div></div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={freeOfCharge} onChange={(event) => setFreeOfCharge(event.target.checked)} /> Free or donated stock (no cash expense)</label>
+            {blockedByUnvaluedStock && <p role="alert" className="text-xs text-warning-ink">Existing stock has no recorded unit cost. Set its opening cost or reconcile the old balance before adding more stock.</p>}
+          </form>
+          <DialogFooter><Button type="button" variant="outline" onClick={() => setShowStock(false)}>Cancel</Button><Button type="submit" form="add-stock-form" disabled={stockIn.isPending || !selectedId || blockedByUnvaluedStock}>{stockIn.isPending ? <Loader2 className="animate-spin" /> : <Save className="size-4" />} Record purchase</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       {isLoading && <p className="text-sm text-muted-foreground">Loading products…</p>}
       {!isLoading && activeProducts.length === 0 && <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No products yet. Add the usual medicine, vitamins, or feed packs.</p>}
-      {!isLoading && activeProducts.length > 0 && <div className="overflow-hidden rounded-xl border">
+      {!isLoading && activeProducts.length > 0 && <div className="space-y-3 md:hidden">
+        {activeProducts.map((item) => {
+          const typeLabel = TYPES.find((productType) => productType.value === item.productType)?.label ?? item.productType;
+          const averageUnitCost = item.averageUnitCost == null ? null : Number(item.averageUnitCost);
+          const inventoryValue = item.inventoryValue == null ? null : Number(item.inventoryValue);
+
+          return <article key={item.id} className="rounded-xl border bg-card p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="truncate text-base font-semibold">{item.brandName}</h3>
+                <p className="mt-0.5 text-sm text-muted-foreground">{typeLabel} · {item.stockUnit}</p>
+              </div>
+              {item.lowStock ? <Badge variant="warning">Low stock</Badge> : item.valuationStatus === "UNVALUED" ? <Badge variant="outline">Cost needed</Badge> : <Badge variant="success">Tracked</Badge>}
+            </div>
+            <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-xl bg-muted/40 text-sm">
+              <div className="border-r border-border/60 px-3 py-2.5">
+                <p className="text-xs text-muted-foreground">On hand</p>
+                <p className={item.lowStock ? "mt-0.5 font-bold text-warning-ink" : "mt-0.5 font-semibold"}>{Number(item.stockOnHand).toLocaleString()} {item.stockUnit}</p>
+              </div>
+              <div className="px-3 py-2.5">
+                <p className="text-xs text-muted-foreground">Average cost</p>
+                <p className="mt-0.5 font-semibold tabular-nums">{averageUnitCost == null ? "₱0.00" : `₱${averageUnitCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`}</p>
+              </div>
+              <div className="col-span-2 flex items-center justify-between border-t border-border/60 px-3 py-2.5">
+                <p className="text-xs text-muted-foreground">Inventory value</p>
+                <p className="font-semibold tabular-nums">{inventoryValue == null ? "₱0.00" : `₱${inventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</p>
+              </div>
+            </div>
+            <Button type="button" className="mt-4 h-11 w-full" onClick={() => openStockDialog(item.id)}><Plus className="size-4" /> Add stock</Button>
+          </article>;
+        })}
+      </div>}
+      {!isLoading && activeProducts.length > 0 && <div className="hidden overflow-hidden rounded-xl border md:block">
         <Table>
           <TableHeader className="bg-muted/40">
             <TableRow>
@@ -123,6 +172,7 @@ export function InventoryManagerPanel() {
               <TableHead className="text-right">Average cost</TableHead>
               <TableHead className="text-right">Inventory value</TableHead>
               <TableHead className="text-right">Status</TableHead>
+              <TableHead className="text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -142,12 +192,13 @@ export function InventoryManagerPanel() {
                 <TableCell className="text-right tabular-nums">{averageUnitCost == null ? <span className="text-muted-foreground">—</span> : `₱${averageUnitCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`}</TableCell>
                 <TableCell className="text-right tabular-nums">{inventoryValue == null ? <span className="text-muted-foreground">—</span> : `₱${inventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</TableCell>
                 <TableCell className="text-right">{item.lowStock ? <Badge variant="warning">Low stock</Badge> : item.valuationStatus === "UNVALUED" ? <Badge variant="outline">Cost needed</Badge> : <Badge variant="success">Tracked</Badge>}</TableCell>
+                <TableCell className="text-right"><Button type="button" size="sm" variant="outline" onClick={() => openStockDialog(item.id)}><Plus className="size-4" /> Add stock</Button></TableCell>
               </TableRow>;
             })}
           </TableBody>
         </Table>
       </div>}
       {pendingUses && pendingUses.length > 0 && <div className="rounded-xl border border-warning-border bg-warning-muted/70 p-3"><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold text-warning-ink">Stock review needed</p><span className="text-xs text-warning-ink">{pendingUses.length}</span></div><div className="mt-2 space-y-2">{pendingUses.slice(0, 3).map((item) => <div key={item.id} className="flex items-center justify-between gap-2 rounded-lg border border-warning-border bg-background/70 p-2 text-sm"><span className="min-w-0 truncate">{item.brandName} · {item.quantity ?? "?"} {item.unit ?? "unit"}</span><Button type="button" size="sm" variant="outline" onClick={() => void retryPending.mutateAsync(item.id)} disabled={retryPending.isPending}>Apply now</Button></div>)}</div></div>}
-    </CardContent>
-  </Card>;
+    </div>
+  </section>;
 }

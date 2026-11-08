@@ -288,6 +288,17 @@
   color: var(--primary-foreground);
 }
 
+.ledger-summary-mobile {
+  background: color-mix(in oklab, var(--ledger-card) 86%, transparent);
+  color: var(--ledger-ink);
+  white-space: nowrap;
+}
+
+.ledger-summary-mobile-active {
+  background: var(--ledger-ink);
+  color: var(--primary-foreground);
+}
+
 .ledger-task-row {
   border-radius: var(--radius-xl);
   background: var(--ledger-card);

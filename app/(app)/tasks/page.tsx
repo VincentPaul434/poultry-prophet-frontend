@@ -1,10 +1,10 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { CheckCircle2, ChevronLeft, ChevronRight, ClipboardList, Clock3, Loader2, Plus, Search, SlidersHorizontal } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { useHandlerTaskQueueSummary, useTaskPage, useTaskQueue, useTaskSummary, useCreateTask, useUpdateTaskStatus } from "@/hooks/use-operations";
+import { useHandlerTaskQueueSummary, useTaskPage, useTaskPageInfinite, useTaskQueue, useTaskSummary, useCreateTask, useUpdateTaskStatus } from "@/hooks/use-operations";
 import { useAuth } from "@/lib/auth-context";
 import { useHandlers } from "@/hooks/use-reference";
 import { useBatches } from "@/hooks/use-batches";
@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useLocale } from "@/components/locale-provider";
 import { VaccinationTaskAction } from "@/components/vaccination-plan-card";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const PAGE_SIZE = 20;
 const HANDLER_PAGE_SIZE = 10;
@@ -70,6 +71,7 @@ export default function TasksPage() {
 function TasksPageContent() {
   const { isManager } = useAuth();
   const { t } = useLocale();
+  const isMobile = useIsMobile();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -87,16 +89,24 @@ function TasksPageContent() {
   const [due, setDue] = useState("");
   const [priority, setPriority] = useState<TaskPriority>("NORMAL");
   const [formError, setFormError] = useState("");
+  const mobileTaskLoadMoreRef = useRef<HTMLDivElement>(null);
 
   const filters = useMemo<TaskPageFilters>(() => ({ page: 0, size: isManager ? PAGE_SIZE : HANDLER_PAGE_SIZE, view: isManager ? managerFilters.view : "OPEN", dueBucket: isManager ? managerFilters.dueBucket : "ALL", batchId: managerFilters.batchId, farmWide: managerFilters.farmWide, assignedHandlerId: managerFilters.assignedHandlerId, priority: managerFilters.priority, search: managerFilters.search }), [isManager, managerFilters]);
-  const managerPageQuery = useTaskPage(managerFilters, isManager);
+  const managerPageQuery = useTaskPage(managerFilters, isManager && !isMobile);
+  const mobileManagerPageQuery = useTaskPageInfinite({ ...managerFilters, page: 0, size: PAGE_SIZE }, isManager && isMobile);
+  const mobileHasNextPage = mobileManagerPageQuery.hasNextPage;
+  const mobileIsFetchingNextPage = mobileManagerPageQuery.isFetchingNextPage;
+  const fetchMobileNextPage = mobileManagerPageQuery.fetchNextPage;
   const handlerQueueQuery = useTaskQueue(handlerQueueBucket, !isManager);
   const handlerPages = handlerQueueQuery.data?.pages ?? [];
   const handlerPage = handlerPages.at(-1);
-  const page = isManager ? managerPageQuery.data : handlerPage ? { ...handlerPage, items: handlerPages.flatMap((item) => item.items) } : undefined;
-  const isLoading = isManager ? managerPageQuery.isLoading : handlerQueueQuery.isLoading;
-  const isFetching = isManager ? managerPageQuery.isFetching : handlerQueueQuery.isFetching;
-  const error = isManager ? managerPageQuery.error : handlerQueueQuery.error;
+  const mobileManagerPages = mobileManagerPageQuery.data?.pages ?? [];
+  const mobileManagerLastPage = mobileManagerPages.at(-1);
+  const mobileManagerPage = mobileManagerLastPage ? { ...mobileManagerLastPage, items: mobileManagerPages.flatMap((item) => item.items), hasPrevious: false } : undefined;
+  const page = isManager ? (isMobile ? mobileManagerPage : managerPageQuery.data) : handlerPage ? { ...handlerPage, items: handlerPages.flatMap((item) => item.items) } : undefined;
+  const isLoading = isManager ? (isMobile ? mobileManagerPageQuery.isLoading : managerPageQuery.isLoading) : handlerQueueQuery.isLoading;
+  const isFetching = isManager ? (isMobile ? mobileManagerPageQuery.isFetching : managerPageQuery.isFetching) : handlerQueueQuery.isFetching;
+  const error = isManager ? (isMobile ? mobileManagerPageQuery.error : managerPageQuery.error) : handlerQueueQuery.error;
   const summaryFilters = useMemo(() => ({
     batchId: isManager ? managerFilters.batchId : undefined,
     farmWide: isManager ? managerFilters.farmWide : undefined,
@@ -124,6 +134,15 @@ function TasksPageContent() {
     const timer = window.setTimeout(() => changeFilters({ search: nextSearch }), 300);
     return () => window.clearTimeout(timer);
   }, [changeFilters, isManager, searchInput]);
+
+  useEffect(() => {
+    if (!isManager || !isMobile || !mobileTaskLoadMoreRef.current || !mobileHasNextPage) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && !mobileIsFetchingNextPage) void fetchMobileNextPage();
+    }, { rootMargin: "480px" });
+    observer.observe(mobileTaskLoadMoreRef.current);
+    return () => observer.disconnect();
+  }, [fetchMobileNextPage, isManager, isMobile, mobileHasNextPage, mobileIsFetchingNextPage]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -186,12 +205,17 @@ function TasksPageContent() {
   return (
     <div className="ledger-page mx-auto w-full max-w-6xl space-y-6 sm:space-y-8">
       {isManager ? <section className="space-y-6 sm:space-y-8">
-        <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="ledger-heading text-4xl leading-none sm:text-5xl">{t("tasks.title")}</h1>
-            <p className="mt-2 max-w-[42rem] text-sm text-muted-foreground">Assign, monitor, and complete farm work.</p>
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+            <h1 className="ledger-heading text-3xl leading-none sm:text-5xl">{t("tasks.title")}</h1>
+            <p className="mt-2 hidden max-w-[42rem] text-sm text-muted-foreground sm:block">Assign, monitor, and complete farm work.</p>
+            </div>
+            <Button type="button" variant="outline" aria-label={t("tasks.assign")} className="size-10 shrink-0 rounded-full p-0 sm:hidden" onClick={() => setAssignmentOpen(true)}>
+              <Plus className="size-4" aria-hidden="true" />
+            </Button>
           </div>
-          <Button type="button" className="h-11 w-full rounded-full px-5 font-semibold sm:w-auto" onClick={() => setAssignmentOpen(true)}>
+          <Button type="button" className="hidden h-11 rounded-full px-5 font-semibold sm:flex sm:w-auto" onClick={() => setAssignmentOpen(true)}>
             <Plus className="size-4" aria-hidden="true" />
             {t("tasks.assign")}
           </Button>
@@ -200,10 +224,11 @@ function TasksPageContent() {
         <TaskSummaryBar summary={summary} filters={filters} onFilter={changeFilters} />
 
         <Sheet open={assignmentOpen} onOpenChange={setAssignmentOpen}>
-          <SheetContent side="right" className="w-full max-w-none gap-0 bg-background p-0 sm:w-[24rem] sm:max-w-[24rem]">
-            <SheetHeader className="border-b px-6 py-6 pr-16">
+          <SheetContent side="bottom" showCloseButton={false} className="max-h-[92dvh] w-full max-w-none gap-0 rounded-t-[2rem] bg-background p-0 sm:data-[side=bottom]:inset-x-auto sm:data-[side=bottom]:inset-y-0 sm:data-[side=bottom]:top-0 sm:data-[side=bottom]:right-0 sm:data-[side=bottom]:bottom-auto sm:data-[side=bottom]:left-auto sm:data-[side=bottom]:h-full sm:data-[side=bottom]:w-[24rem] sm:data-[side=bottom]:max-w-[24rem] sm:data-[side=bottom]:rounded-none sm:data-[side=bottom]:rounded-l-2xl sm:data-[side=bottom]:border-l sm:data-[side=bottom]:border-t-0">
+            <SheetHeader className="border-b px-4 pb-4 pt-3 sm:px-6 sm:py-6 sm:pr-16">
+              <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-muted sm:hidden" aria-hidden="true" />
               <SheetTitle className="ledger-heading text-2xl">{t("tasks.assign")}</SheetTitle>
-              <SheetDescription>Choose one handler or make the task visible to all handlers.</SheetDescription>
+              <SheetDescription className="hidden sm:block">Choose one handler or make the task visible to all handlers.</SheetDescription>
             </SheetHeader>
             <form onSubmit={submit} className="flex min-h-0 flex-1 flex-col" noValidate>
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-6">
@@ -270,23 +295,23 @@ function TasksPageContent() {
 
         <Card className="ledger-task-list flex min-h-0 flex-col overflow-hidden border-0 bg-transparent shadow-none ring-0">
           <CardHeader className="space-y-4 p-0 pb-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="hidden flex-wrap items-start justify-between gap-3 sm:flex">
               <div><CardTitle className="ledger-card-title text-2xl">{t("tasks.allTasks")}</CardTitle><CardDescription className="mt-1">Click a task to view its details.</CardDescription></div>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-2">
               <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input aria-label="Search tasks" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Search tasks" className="min-h-11 rounded-full border border-border/40 bg-muted/60 pl-11 shadow-none focus-visible:ring-2 focus-visible:ring-ring/40" /></div>
-              <div className="flex w-full gap-2 sm:w-auto">
-                <Button type="button" variant="outline" className="h-11 min-w-0 flex-1 rounded-full bg-background/70 sm:flex-none" onClick={() => setFiltersOpen(true)}>
+              <div className="flex shrink-0 gap-2">
+                <Button type="button" variant="outline" aria-label="Filter tasks" className="size-11 shrink-0 rounded-full bg-background/70 px-0 sm:h-11 sm:w-auto sm:px-4" onClick={() => setFiltersOpen(true)}>
                   <SlidersHorizontal className="size-4" aria-hidden="true" />
-                  Filters
+                  <span className="hidden sm:inline">Filters</span>
                   {activeFilterCount > 0 && <span className="inline-flex size-5 items-center justify-center rounded-full bg-primary text-[0.7rem] text-primary-foreground">{activeFilterCount}</span>}
                 </Button>
-                {hasAnyTaskFilter && <Button type="button" variant="ghost" className="h-11 shrink-0 rounded-full px-3" onClick={clearTaskFilters}>Clear</Button>}
+                {hasAnyTaskFilter && <Button type="button" variant="ghost" className="hidden h-11 shrink-0 rounded-full px-3 sm:inline-flex" onClick={clearTaskFilters}>Clear</Button>}
               </div>
             </div>
-            <div className="flex min-h-5 items-center gap-2 px-1 text-xs text-muted-foreground" aria-live="polite">{activeFilterCount > 0 ? `${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"} applied` : "Showing open tasks"}</div>
+            <div className="hidden min-h-5 items-center gap-2 px-1 text-xs text-muted-foreground sm:flex" aria-live="polite">{activeFilterCount > 0 ? `${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"} applied` : "Showing open tasks"}</div>
           </CardHeader>
-          <CardContent className="flex min-h-0 flex-1 flex-col p-0 pt-2"><div className="min-h-[18rem] max-h-[min(62dvh,44rem)] min-w-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1">{isLoading && <TaskSkeleton />}{error && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error instanceof ApiError ? error.message : "Could not load tasks."}</p>}{!isLoading && !error && page?.items.map((task) => <TaskCard key={task.id} task={task} batchName={task.batchId == null ? "Farm-wide" : batchNames.get(task.batchId) ?? `Batch ${task.batchId}`} onOpen={setSelectedTask} />)}{!isLoading && !error && page?.items.length === 0 && <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No tasks match this view.</div>}</div><div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground"><span>{page?.totalItems ?? 0} matching task{page?.totalItems === 1 ? "" : "s"}{isFetching && !isLoading ? " · Updating…" : ""}</span><div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!page?.hasPrevious || isFetching} onClick={() => changeFilters({ page: Math.max(0, filters.page - 1) })}><ChevronLeft className="size-4" />Previous</Button><span>Page {(page?.page ?? filters.page) + 1} of {Math.max(1, page?.totalPages ?? 1)}</span><Button type="button" variant="outline" size="sm" disabled={!page?.hasNext || isFetching} onClick={() => changeFilters({ page: filters.page + 1 })}>Next<ChevronRight className="size-4" /></Button></div></div></CardContent>
+          <CardContent className="flex min-h-0 flex-1 flex-col p-0 pt-2"><div className="min-h-[18rem] min-w-0 flex-1 space-y-2 overflow-visible overscroll-contain pr-1 sm:max-h-[min(62dvh,44rem)] sm:overflow-y-auto">{isLoading && <TaskSkeleton />}{error && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{error instanceof ApiError ? error.message : "Could not load tasks."}</p>}{!isLoading && !error && page?.items.length ? <ManagerTaskList items={page.items} batchNames={batchNames} onOpen={setSelectedTask} /> : null}{!isLoading && !error && page?.items.length === 0 && <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No tasks match this view.</div>}{isManager && isMobile && mobileHasNextPage && <div ref={mobileTaskLoadMoreRef} className="h-2" aria-hidden="true">{mobileIsFetchingNextPage && <span className="sr-only">Loading more tasks</span>}</div>}</div><div className="mt-3 hidden w-full items-center justify-center text-xs text-muted-foreground sm:flex"><div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!page?.hasPrevious || isFetching} onClick={() => changeFilters({ page: Math.max(0, filters.page - 1) })}><ChevronLeft className="size-4" />Previous</Button><span>Page {(page?.page ?? filters.page) + 1} of {Math.max(1, page?.totalPages ?? 1)}</span><Button type="button" variant="outline" size="sm" disabled={!page?.hasNext || isFetching} onClick={() => changeFilters({ page: filters.page + 1 })}>Next<ChevronRight className="size-4" /></Button></div></div></CardContent>
         </Card>
       </section> : <HandlerTaskQueue
         summary={handlerSummaryQuery.data}
@@ -419,7 +444,34 @@ function TaskSummaryBar({ summary, filters, onFilter }: { summary?: TaskSummaryR
   const items: { label: string; value: number; view: TaskView; dueBucket: TaskDueBucket }[] = [
     { label: "Late", value: summary?.late ?? 0, view: "OPEN", dueBucket: "LATE" }, { label: "Today", value: summary?.today ?? 0, view: "OPEN", dueBucket: "TODAY" }, { label: "Upcoming", value: summary?.upcoming ?? 0, view: "OPEN", dueBucket: "UPCOMING" }, { label: "No due date", value: summary?.noDueDate ?? 0, view: "OPEN", dueBucket: "NO_DUE" }, { label: "Completed", value: summary?.completed ?? 0, view: "COMPLETED", dueBucket: "ALL" },
   ];
-  return <div className="ledger-task-summary grid grid-cols-2 gap-2 sm:grid-cols-5">{items.map((item) => { const active = filters.view === item.view && filters.dueBucket === item.dueBucket; return <button key={item.label} type="button" aria-pressed={active} onClick={() => onFilter(active ? { view: "ALL", dueBucket: "ALL" } : { view: item.view, dueBucket: item.dueBucket })} className={cn("ledger-summary-card min-h-20 rounded-xl border-0 p-3 text-left", active && "ledger-summary-card-active")}><p className="text-xs font-medium opacity-70">{item.label}</p><p className="mt-1 text-xl font-bold tabular-nums">{item.value}</p></button>; })}</div>;
+  const openItem = { label: "Open", value: summary?.open ?? 0, view: "OPEN" as TaskView, dueBucket: "ALL" as TaskDueBucket };
+  const renderMobileItem = (item: typeof openItem | (typeof items)[number]) => {
+    const active = filters.view === item.view && filters.dueBucket === item.dueBucket;
+    return <button key={item.label} type="button" aria-pressed={active} onClick={() => onFilter(active ? { view: "ALL", dueBucket: "ALL" } : { view: item.view, dueBucket: item.dueBucket })} className={cn("ledger-summary-mobile shrink-0 rounded-full px-4 py-2 text-left", active && "ledger-summary-mobile-active")}><span className="text-sm font-semibold">{item.label} {item.value}</span></button>;
+  };
+  const renderDesktopItem = (item: (typeof items)[number]) => {
+    const active = filters.view === item.view && filters.dueBucket === item.dueBucket;
+    return <button key={item.label} type="button" aria-pressed={active} onClick={() => onFilter(active ? { view: "ALL", dueBucket: "ALL" } : { view: item.view, dueBucket: item.dueBucket })} className={cn("ledger-summary-card min-h-20 rounded-xl border-0 p-3 text-left", active && "ledger-summary-card-active")}><p className="text-xs font-medium opacity-70">{item.label}</p><p className="mt-1 text-xl font-bold tabular-nums">{item.value}</p></button>;
+  };
+  return <><div className="ledger-task-summary flex gap-2 overflow-x-auto pb-1 sm:hidden">{renderMobileItem(openItem)}{items.map(renderMobileItem)}</div><div className="ledger-task-summary hidden grid-cols-2 gap-2 sm:grid sm:grid-cols-5">{items.map(renderDesktopItem)}</div></>;
+}
+
+function ManagerTaskList({ items, batchNames, onOpen }: { items: HandlerTask[]; batchNames: Map<number, string>; onOpen: (task: HandlerTask) => void }) {
+  const groups = groupManagerTasks(items);
+  return <div className="space-y-6" aria-live="polite">{Array.from(groups.entries()).map(([label, tasks]) => <section key={label} className="space-y-2"><h2 className="text-sm font-semibold text-muted-foreground">{label} <span className="font-normal">· {tasks.length}</span></h2><div className="space-y-2">{tasks.map((task) => <TaskCard key={task.id} task={task} batchName={task.batchId == null ? "Farm-wide" : batchNames.get(task.batchId) ?? `Batch ${task.batchId}`} onOpen={onOpen} />)}</div></section>)}</div>;
+}
+
+function groupManagerTasks(items: HandlerTask[]) {
+  const groups = new Map<string, HandlerTask[]>();
+  for (const task of items) {
+    let label = "Upcoming";
+    if (task.status === "COMPLETED") label = "Completed";
+    else if (task.overdue) label = "Late";
+    else if (!task.dueAt) label = "No due date";
+    else if (new Date(task.dueAt).toDateString() === new Date().toDateString()) label = "Today";
+    groups.set(label, [...(groups.get(label) ?? []), task]);
+  }
+  return groups;
 }
 
 function TaskCard({ task, batchName, onOpen }: { task: HandlerTask; batchName: string; onOpen: (task: HandlerTask) => void }) {

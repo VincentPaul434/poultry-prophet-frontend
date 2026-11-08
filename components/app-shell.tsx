@@ -18,6 +18,7 @@ import { useLocale } from "@/components/locale-provider";
 import type { TranslationKey } from "@/lib/i18n";
 import { NetworkStatusBanner } from "@/components/network-status-banner";
 import { SyncStatusIndicator } from "@/components/sync-status-indicator";
+import { MobileAppHeader } from "@/components/mobile-app-header";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Dialog,
@@ -43,7 +44,6 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
-  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
@@ -266,48 +266,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       />
 
       <SidebarInset className="flex h-dvh min-h-0 min-w-0 flex-col overflow-hidden">
-        <header className="relative flex min-h-[4.5rem] shrink-0 items-center justify-center border-b bg-card px-4 py-2 md:hidden">
-          {user?.role === "MANAGER" ? (
-            <SidebarTrigger className="absolute left-4 top-1/2 size-11 -translate-y-1/2" />
-          ) : (
-            <div className="absolute left-2 top-1/2 -translate-y-1/2">
-              <SyncStatusIndicator compact />
-            </div>
-          )}
-          <div className={cn("flex min-w-0 items-center gap-3", user?.role === "MANAGER" ? "pl-14 pr-16" : "pl-14 pr-14")}>
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/15">
-              <Bird className="size-5 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold tracking-tight">Poultry Prophet</p>
-              <p className="truncate text-base font-bold tracking-tight">{farmName}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {user?.role === "MANAGER" ? t("role.manager") : t("role.handler")}
-              </p>
-            </div>
-          </div>
-          {user?.role === "MANAGER" ? (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-              <SyncStatusIndicator />
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setProfileOpen(true)}
-              className="absolute right-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
-              aria-label="Open profile menu"
-            >
-              <Avatar className="size-9">
-                <AvatarFallback className="bg-primary/15 text-xs font-bold text-primary">
-                  {initials(user?.fullName)}
-                </AvatarFallback>
-              </Avatar>
-            </button>
-          )}
-        </header>
+        <MobileAppHeader
+          farmName={farmName}
+          roleLabel={user?.role === "MANAGER" ? t("role.manager") : t("role.handler")}
+          isManager={user?.role === "MANAGER"}
+          fullName={user?.fullName}
+          onProfileClick={() => setProfileOpen(true)}
+        />
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="shrink-0 px-4 pt-3 sm:px-6 lg:px-8 xl:px-10">
+          <div className={cn("shrink-0 px-4 sm:px-6 lg:px-8 xl:px-10", pathname === "/tasks" ? "pt-0" : "pt-3")}>
             <NetworkStatusBanner />
             <div className="mb-4 hidden justify-end md:flex"><SyncStatusIndicator /></div>
             {compatibilityMismatch && (
@@ -316,12 +284,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             )}
           </div>
-          <div ref={contentScrollRef} className="safe-pb min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10">
+          <div ref={contentScrollRef} className={cn("safe-pb min-h-0 min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 md:pb-6 lg:p-8 xl:p-10", pathname === "/tasks" && "pt-1 sm:pt-6")}>
             {children}
-            <footer className="mt-10 border-t pt-4 text-xs text-muted-foreground">
+            {pathname !== "/tasks" && <footer className="mt-10 border-t pt-4 text-xs text-muted-foreground">
               Poultry Prophet {release.data?.version ?? frontendVersion} · {backendEnvironment}
               {release.data?.commitSha && release.data.commitSha !== "unknown" ? ` · ${release.data.commitSha.slice(0, 7)}` : ""}
-            </footer>
+            </footer>}
           </div>
         </div>
         <MobileBottomNav isManager={user?.role === "MANAGER"} unread={unread} />
