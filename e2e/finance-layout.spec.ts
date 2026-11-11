@@ -156,7 +156,7 @@ async function openFinance(page: Page, view?: "report" | "transactions") {
 }
 
 test.describe("Finance layout", () => {
-  test("keeps the analytics card reachable without horizontal overflow on mobile", async ({ page }, testInfo) => {
+  test("keeps the report reachable without horizontal overflow on mobile", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("mobile-chromium-"), "This case is covered by the dedicated mobile Chromium projects.");
     await mockFinanceBackend(page, "single");
     await openFinance(page, "report");
@@ -169,7 +169,7 @@ test.describe("Finance layout", () => {
       viewportWidth: window.innerWidth,
     }));
     expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth + 1);
-    await expect(page.locator('[role="img"] circle')).toBeVisible();
+    await expect(page.locator('[role="img"] rect')).toHaveCount(2);
 
     await page.getByRole("button", { name: /Filters/ }).click();
     await expect(page.getByRole("heading", { name: /Finance filters|Mga finance filter/ })).toBeVisible();
@@ -182,20 +182,26 @@ test.describe("Finance layout", () => {
     await page.getByRole("button", { name: /Cancel/ }).click();
   });
 
-  test("keeps the shared filters visible and the desktop transaction panel readable", async ({ page }) => {
+  test("switches between the report and a readable transaction ledger", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await mockFinanceBackend(page, "multi");
     await openFinance(page);
 
     await expect(page.getByRole("button", { name: /Filters/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Cash movement" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Recorded statement" })).toBeVisible();
+    await expect(page.getByTestId("finance-transaction-panel")).toHaveCount(0);
+    await expect(page.locator('[role="img"] rect')).toHaveCount(6);
+    await page.getByText("View period values").click();
+    await expect(page.getByRole("table")).toBeVisible();
+    await page.getByRole("button", { name: /Transactions/ }).click();
     const panelBounds = await page.getByTestId("finance-transaction-panel").boundingBox();
     expect(panelBounds).not.toBeNull();
     expect(panelBounds!.width).toBeGreaterThanOrEqual(384);
     const listBounds = await page.getByTestId("finance-transaction-list").boundingBox();
     expect(listBounds).not.toBeNull();
-    expect(listBounds!.height).toBeGreaterThanOrEqual(384);
-    await expect(page.getByRole("button", { name: /Next/ })).toBeVisible();
-    await expect(page.locator('[role="img"] polyline')).toBeVisible();
+    expect(listBounds!.height).toBeGreaterThanOrEqual(320);
+    await expect(page.getByTestId("finance-transaction-panel").getByRole("button", { name: /Next/ })).toBeVisible();
 
     const beforeCancel = page.url();
     await page.getByRole("button", { name: /Filters/ }).click();

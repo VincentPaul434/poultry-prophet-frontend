@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Bird, ClipboardList, Egg, LayoutDashboard, LineChart, LogOut, MoreHorizontal, Package, Plus, Settings, UserCircle2, WalletCards } from "lucide-react";
+import { Bell, Bird, ChevronDown, ChevronUp, ChevronsUpDown, ClipboardList, Egg, LayoutDashboard, LineChart, LogOut, MoreHorizontal, Package, Plus, Settings, UserCircle2, WalletCards } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useFarmAlerts, useFarmAlertSummary } from "@/hooks/use-analytics";
@@ -30,6 +30,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -64,7 +70,6 @@ const NAV: NavItem[] = [
   { href: "/inputs", labelKey: "nav.products", icon: Package, managerOnly: true },
   { href: "/operations", labelKey: "nav.analytics", icon: LineChart, managerOnly: true },
   { href: "/finance", labelKey: "nav.finance", icon: WalletCards, managerOnly: true },
-  { href: "/settings", labelKey: "nav.settings", icon: Settings },
 ];
 
 function initials(name: string | undefined) {
@@ -147,29 +152,29 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider className="h-dvh min-h-0 overflow-hidden md:h-screen">
-      <Sidebar>
-        <SidebarHeader className="border-b border-sidebar-border px-5 py-5">
-          <div className="flex flex-col items-center text-center">
-            <div className="flex size-11 items-center justify-center rounded-xl bg-primary/20">
-              <Bird className="size-6 text-primary" />
+      <Sidebar className="border-0">
+        <SidebarHeader className="gap-0 px-4 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-foreground text-sidebar">
+              <Bird className="size-5" />
             </div>
-            <p className="mt-2 text-xs font-semibold uppercase tracking-[0.2em] text-sidebar-foreground/60">
-              Poultry Prophet
-            </p>
-            <p className="mt-2 w-full truncate text-xl font-bold tracking-tight text-sidebar-foreground">
-              {farmName}
-            </p>
-            <p className="mt-1 truncate text-xs uppercase tracking-widest text-sidebar-foreground/50">
-              {user?.role === "MANAGER" ? t("role.manager") : t("role.handler")}
-            </p>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-sidebar-foreground">
+                {farmName}
+              </p>
+              <p className="truncate text-xs text-sidebar-foreground/60">
+                {user?.role === "MANAGER" ? t("role.manager") : t("role.handler")}
+              </p>
+            </div>
+            <ChevronsUpDown className="size-4 shrink-0 text-sidebar-foreground/70" aria-hidden="true" />
           </div>
         </SidebarHeader>
 
         <SidebarContent>
-          <SidebarGroup className="p-3 pt-5">
-            <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroup className="px-3 py-3">
+            <SidebarGroupLabel className="h-7 px-2 text-xs font-medium text-sidebar-foreground/60">Navigation</SidebarGroupLabel>
             <SidebarGroupContent>
-              <SidebarMenu>
+              <SidebarMenu className="gap-1">
                 {NAV.filter((item) => item.managerOnly !== true || user?.role === "MANAGER").map(({ href, labelKey, icon: Icon }) => {
                   const active = pathname === href || pathname.startsWith(`${href}/`);
                   const badge = href === "/alerts" ? unread : 0;
@@ -180,7 +185,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                       <SidebarMenuButton
                         render={<Link href={href} />}
                         isActive={active}
-                        size="lg"
+                        size="default"
+                        className="rounded-lg px-2.5"
                         tooltip={label}
                       >
                         <Icon />
@@ -199,35 +205,42 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </SidebarGroup>
         </SidebarContent>
 
-        <SidebarFooter className="border-t border-sidebar-border p-3">
-          <div className="flex items-center gap-3 rounded-md px-2 py-2">
-            <Avatar className="size-9 ring-2 ring-sidebar-primary/30">
-              <AvatarFallback className="bg-sidebar-primary/20 text-xs font-bold text-sidebar-primary">
-                {initials(user?.fullName)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-sidebar-foreground">
-                {user?.fullName}
-              </p>
-              <p className="truncate text-xs text-sidebar-foreground/50">
-                {user?.email}
-              </p>
-            </div>
-          </div>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => setLogoutDialogOpen(true)}
-                size="lg"
-                className="text-sidebar-foreground/70 hover:text-sidebar-foreground"
-                tooltip="Sign out"
-              >
-                <LogOut />
-                <span>Sign out</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+        <SidebarFooter className="gap-1 px-3 py-3">
+          <DropdownMenu open={profileOpen} onOpenChange={setProfileOpen}>
+            <DropdownMenuTrigger
+              render={<button type="button" aria-label="Open account menu" />}
+              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left outline-hidden transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+              <Avatar className="size-9 shrink-0 ring-2 ring-sidebar-primary/30">
+                <AvatarFallback className="bg-sidebar-primary/20 text-xs font-bold text-sidebar-primary">
+                  {initials(user?.fullName)}
+                </AvatarFallback>
+              </Avatar>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-semibold text-sidebar-foreground">
+                  {user?.fullName}
+                </span>
+                <span className="block truncate text-xs text-sidebar-foreground/50">
+                  {user?.email}
+                </span>
+              </span>
+              {profileOpen ? (
+                <ChevronUp className="size-4 shrink-0 text-sidebar-foreground/60" aria-hidden="true" />
+              ) : (
+                <ChevronDown className="size-4 shrink-0 text-sidebar-foreground/60" aria-hidden="true" />
+              )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="top" align="start" className="w-56">
+              <DropdownMenuItem render={<Link href="/settings" />}>
+                <Settings className="size-4" aria-hidden="true" />
+                Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive" onClick={() => setLogoutDialogOpen(true)}>
+                <LogOut className="size-4" aria-hidden="true" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </SidebarFooter>
       </Sidebar>
 
@@ -358,7 +371,7 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
     <>
       <nav
         aria-label="Mobile navigation"
-        className="fixed inset-x-0 bottom-0 z-40 border-t bg-card/95 shadow-[var(--shadow-mobile-dock)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 bg-card/95 shadow-[var(--shadow-mobile-dock)] backdrop-blur md:hidden"
       >
         <div className="safe-nav-pb mx-auto grid max-w-lg grid-cols-5 items-center gap-1 px-2 pt-2">
           {items.slice(0, 2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
@@ -412,7 +425,7 @@ function HandlerProfileSheet({
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-[min(88vw,22rem)] p-0">
-        <SheetHeader className="border-b px-5 py-6 pr-12">
+        <SheetHeader className="px-5 py-6 pr-12">
           <div className="flex items-center gap-3">
             <Avatar className="size-11 ring-2 ring-primary/20">
               <AvatarFallback className="bg-primary/15 font-bold text-primary">{initials(user.fullName)}</AvatarFallback>

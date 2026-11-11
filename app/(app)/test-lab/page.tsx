@@ -6,6 +6,7 @@ import { ArrowRight, CheckCircle2, FlaskConical, Loader2, ShieldCheck } from "lu
 import { toast } from "sonner";
 import { RouteGuard } from "@/components/route-guard";
 import { PageBackLink } from "@/components/page-back-link";
+import { PageHeader } from "@/components/page-header";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,17 +66,11 @@ export default function TestLabPage() {
       <div className="mx-auto w-full max-w-3xl space-y-4">
         <PageBackLink destination="dashboard" />
 
-        <header className="flex items-start gap-3">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <FlaskConical className="size-5" aria-hidden="true" />
-          </span>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Local Test Lab</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Gumawa ng 100-day test copy in one step. Hindi mababago ang original batch.
-            </p>
-          </div>
-        </header>
+        <PageHeader
+          icon={FlaskConical}
+          title="Local Test Lab"
+          description="Gumawa ng 100-day test copy in one step. Hindi mababago ang original batch."
+        />
 
         {status.isLoading && (
           <div className="flex min-h-32 items-center justify-center rounded-xl border">

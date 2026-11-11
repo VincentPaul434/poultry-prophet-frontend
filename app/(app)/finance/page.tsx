@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight, Loader2, RotateCcw, SlidersHorizontal, WalletCards } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, RotateCcw, SlidersHorizontal, WalletCards } from "lucide-react";
 import { toast } from "sonner";
 import { useBatches } from "@/hooks/use-batches";
 import { useCreateFinanceTransaction, useFinanceAnalytics, useFinanceTransactionPage } from "@/hooks/use-operations";
@@ -15,13 +15,12 @@ import type { Batch, FinanceAnalytics, FinanceTransactionType } from "@/lib/type
 import type { TranslationKey } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header";
+import { PageHeader } from "@/components/page-header";
 
 const CATEGORIES = [
   "Feed",
@@ -178,11 +177,6 @@ function FinancePageContent() {
   const activeFilterCount = countActiveFinanceFilters(filters);
   const filterSummary = describeFinanceFilters(filters, batchNames, t);
   const visibleTransactions = transactions;
-  // Summary values must come from the unpaged analytics query. Falling back to
-  // the current transaction page would make the report change when the user
-  // only changes pagination.
-  const summaryIncome = financeAnalytics ? Number(financeAnalytics.totals.recordedIncome) : null;
-  const summaryExpense = financeAnalytics ? Number(financeAnalytics.totals.recordedExpense) : null;
 
   function openFilters() {
     setDraftFilters(filters);
@@ -228,25 +222,18 @@ function FinancePageContent() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
-      <DashboardPageHeader icon={WalletCards} title={t("finance.title")} description={t("finance.notAccounting")} action={<Button type="button" className="w-full sm:w-auto" onClick={() => setFormOpen(true)}><WalletCards aria-hidden="true" />{t("finance.recordTransaction")}</Button>} />
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-7 pb-8">
+      <PageHeader title={t("finance.title")} titleClassName="text-3xl font-semibold tracking-[-0.04em] sm:text-4xl" description={t("finance.notAccounting")} action={<Button type="button" className="w-full sm:w-auto" onClick={() => setFormOpen(true)}><WalletCards aria-hidden="true" />{t("finance.recordTransaction")}</Button>} />
 
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
-        <Summary label={t("finance.income")} value={summaryIncome == null ? (isAnalyticsLoading ? "…" : "—") : `₱${summaryIncome.toLocaleString()}`} tone="positive" />
-        <Summary label={t("finance.expenses")} value={summaryExpense == null ? (isAnalyticsLoading ? "…" : "—") : `₱${summaryExpense.toLocaleString()}`} tone="negative" />
-        <Summary label={t("finance.net")} value={summaryIncome == null || summaryExpense == null ? (isAnalyticsLoading ? "…" : "—") : `₱${(summaryIncome - summaryExpense).toLocaleString()}`} tone="neutral" />
-
+      <div className="flex flex-col gap-4 rounded-2xl bg-muted/55 p-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4">
+        <p className="min-w-0 text-sm text-foreground/80" title={filterSummary}>{filterSummary}</p>
+        <Button type="button" variant="secondary" className="w-full shrink-0 bg-background sm:w-auto" onClick={openFilters} aria-haspopup="dialog"><SlidersHorizontal aria-hidden="true" />{t("finance.filters")}{activeFilterCount > 0 && <Badge variant="secondary" className="ml-1">{activeFilterCount}</Badge>}</Button>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-xl border bg-card/40 p-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("finance.filterSummary")}</p>
-          <p className="mt-1 truncate text-sm text-foreground" title={filterSummary}>{filterSummary}</p>
-        </div>
-        <Button type="button" variant="outline" className="w-full sm:w-auto" onClick={openFilters} aria-haspopup="dialog"><SlidersHorizontal aria-hidden="true" />{t("finance.filters")}{activeFilterCount > 0 && <Badge variant="secondary" className="ml-1">{activeFilterCount}</Badge>}</Button>
-      </div>
-
-      <div className="flex gap-2 border-b pb-2 xl:hidden"><Button type="button" variant={filters.view === "report" ? "default" : "outline"} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "report" })}>Report</Button><Button type="button" variant={filters.view === "transactions" ? "default" : "outline"} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "transactions" })}>Transactions</Button></div>
+      <nav aria-label="Finance views" className="flex gap-1 border-b border-border/60">
+        <button type="button" aria-current={filters.view === "report" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "report" })} className={`px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filters.view === "report" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Report</button>
+        <button type="button" aria-current={filters.view === "transactions" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "transactions" })} className={`px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filters.view === "transactions" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Transactions <span className="ml-1 font-normal text-muted-foreground">{transactionPage?.totalItems ?? 0}</span></button>
+      </nav>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] overflow-y-auto sm:max-w-2xl">
@@ -315,47 +302,32 @@ function FinancePageContent() {
         t={t}
       />
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(24rem,1fr)]">
-      <div className={filters.view === "transactions" ? "hidden xl:block min-w-0" : "min-w-0"}>
-        <FinanceAnalyticsCard analytics={financeAnalytics} isLoading={isAnalyticsLoading} selectedBatchName={selectedBatchId == null ? "All farm records" : batchNames.get(selectedBatchId) ?? `Batch ${selectedBatchId}`} />
-      </div>
-      <section data-testid="finance-transaction-panel" className={filters.view === "report" ? "hidden xl:flex min-w-0 flex-col space-y-4 rounded-2xl border bg-card/30 p-5" : "flex min-w-0 flex-col space-y-4 rounded-2xl border bg-card/30 p-5"}>
-        <div className="space-y-2">
-          <div className="min-w-0">
-            <h2 className="text-xl font-semibold">{t("finance.history")}</h2>
-            <p className="text-sm text-muted-foreground">Review recorded amounts by batch or general farm records.</p>
-            <p className="mt-1 text-xs text-muted-foreground">{transactionPage?.totalItems ?? 0} {t("finance.matchingRecord")}{transactionPage && transactionPage.totalItems !== 1 ? "s" : ""}</p>
+      {filters.view === "report" ? (
+        <FinanceReport analytics={financeAnalytics} isLoading={isAnalyticsLoading} selectedBatchName={selectedBatchId == null ? "All farm records" : batchNames.get(selectedBatchId) ?? `Batch ${selectedBatchId}`} />
+      ) : (
+        <section data-testid="finance-transaction-panel" className="min-w-0 space-y-5">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div><h2 className="text-2xl font-semibold tracking-tight">{t("finance.history")}</h2><p className="mt-1 text-sm text-muted-foreground">Recorded income and expenses for this view.</p></div>
+            <p className="text-sm text-muted-foreground">{transactionPage?.totalItems ?? 0} {t("finance.matchingRecord")}{transactionPage && transactionPage.totalItems !== 1 ? "s" : ""}</p>
           </div>
-        </div>
-
-        {isLoading && <p className="text-sm text-muted-foreground">Loading transactions…</p>}
-        <div data-testid="finance-transaction-list" className="min-w-0 space-y-2 pr-1 xl:h-[clamp(24rem,52dvh,36rem)] xl:overflow-y-auto xl:overscroll-contain">
-          {visibleTransactions.map((transaction) => (
-            <Card key={transaction.id} className="shadow-none">
-              <CardContent className="flex items-start justify-between gap-3 p-4">
-                <div className="flex min-w-0 items-start gap-3">
-                  <span className={transaction.type === "EXPENSE" ? "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive" : "mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-success-muted text-success"}>
-                    {transaction.type === "EXPENSE" ? <ArrowDownLeft className="size-4" aria-hidden="true" /> : <ArrowUpRight className="size-4" aria-hidden="true" />}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold">{transaction.category}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{transaction.batchId == null ? t("finance.generalFarmRecords") : batchNames.get(transaction.batchId) ?? `Batch ${transaction.batchId}`} · {transaction.transactionDate}</p>
-                    {transaction.description && <p className="mt-1 truncate text-sm text-muted-foreground">{transaction.description}</p>}
-                    {transaction.sourceType === "SALE_EVENT" && <Badge variant="outline" className="mt-1 text-[10px]">Linked sale event</Badge>}
-                  </div>
+          <div className="overflow-hidden rounded-2xl bg-card shadow-sm shadow-foreground/5">
+            <div className="hidden grid-cols-[8rem_minmax(0,1fr)_9rem_8rem] gap-4 bg-muted/50 px-5 py-3 text-xs font-medium text-muted-foreground md:grid"><span>Date</span><span>Record</span><span>Scope</span><span className="text-right">Amount</span></div>
+            {isLoading && <p className="p-6 text-sm text-muted-foreground">Loading transactions…</p>}
+            <div data-testid="finance-transaction-list" className="divide-y divide-border/50">
+              {visibleTransactions.map((transaction) => (
+                <div key={transaction.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 px-4 py-4 sm:px-5 md:grid-cols-[8rem_minmax(0,1fr)_9rem_8rem] md:items-center md:gap-4">
+                  <p className="order-2 col-span-2 text-xs text-muted-foreground md:order-none md:col-span-1 md:text-sm">{transaction.transactionDate}</p>
+                  <div className="min-w-0"><p className="truncate font-medium">{transaction.category}</p><p className="truncate text-xs text-muted-foreground">{transaction.description || (transaction.sourceType === "SALE_EVENT" ? "Linked sale event" : transaction.type === "INCOME" ? "Income" : "Expense")}{transaction.status === "VOIDED" ? " · Voided" : ""}</p></div>
+                  <p className="hidden truncate text-sm text-muted-foreground md:block">{transaction.batchId == null ? t("finance.generalFarmRecords") : batchNames.get(transaction.batchId) ?? `Batch ${transaction.batchId}`}</p>
+                  <p className={`text-right font-semibold tabular-nums ${transaction.type === "EXPENSE" ? "text-foreground" : "text-primary"}`}>{transaction.type === "EXPENSE" ? "−" : "+"}{formatPeso(transaction.amount)}</p>
                 </div>
-                <div className="shrink-0 text-right">
-                  <p className={transaction.type === "EXPENSE" ? "font-bold text-destructive" : "font-bold text-success"}>{transaction.type === "EXPENSE" ? "−" : "+"} ₱{Number(transaction.amount).toLocaleString()}</p>
-                  {transaction.status === "VOIDED" && <Badge variant="secondary" className="mt-1">Voided</Badge>}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        {!isLoading && transactionPage && transactionPage.totalPages > 1 && <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm text-muted-foreground"><span>{transactionPage.totalItems} transaction{transactionPage.totalItems === 1 ? "" : "s"}</span><div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!transactionPage.hasPrevious} onClick={() => updateFinanceUrl(router, pathname, searchParams, { page: Math.max(0, filters.page - 1) })}><ChevronLeft className="size-4" />Previous</Button><span>Page {transactionPage.page + 1} of {transactionPage.totalPages}</span><Button type="button" variant="outline" size="sm" disabled={!transactionPage.hasNext} onClick={() => updateFinanceUrl(router, pathname, searchParams, { page: filters.page + 1 })}>Next<ChevronRight className="size-4" /></Button></div></div>}
-        {!isLoading && visibleTransactions.length === 0 && <Card className="border-dashed shadow-none"><CardContent className="p-8 text-center text-sm text-muted-foreground">No transactions match this view.</CardContent></Card>}
-      </section>
-      </div>
+              ))}
+            </div>
+            {!isLoading && visibleTransactions.length === 0 && <p className="px-5 py-14 text-center text-sm text-muted-foreground">No transactions match this view.</p>}
+          </div>
+          {!isLoading && transactionPage && transactionPage.totalPages > 1 && <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground"><span>{transactionPage.totalItems} transaction{transactionPage.totalItems === 1 ? "" : "s"}</span><div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!transactionPage.hasPrevious} onClick={() => updateFinanceUrl(router, pathname, searchParams, { page: Math.max(0, filters.page - 1) })}><ChevronLeft className="size-4" />Previous</Button><span>Page {transactionPage.page + 1} of {transactionPage.totalPages}</span><Button type="button" variant="outline" size="sm" disabled={!transactionPage.hasNext} onClick={() => updateFinanceUrl(router, pathname, searchParams, { page: filters.page + 1 })}>Next<ChevronRight className="size-4" /></Button></div></div>}
+        </section>
+      )}
     </div>
   );
 }
@@ -471,11 +443,7 @@ function FinanceFilterSheet({
   );
 }
 
-function Summary({ label, value, tone }: { label: string; value: string; tone: "positive" | "negative" | "neutral" }) {
-  return <Card className="shadow-none"><CardContent className="p-3 sm:p-4"><p className="text-xs font-medium text-muted-foreground">{label}</p><p className={tone === "positive" ? "mt-1 truncate text-lg font-bold text-success sm:text-xl" : tone === "negative" ? "mt-1 truncate text-lg font-bold text-destructive sm:text-xl" : "mt-1 truncate text-lg font-bold sm:text-xl"}>{value}</p></CardContent></Card>;
-}
-
-function FinanceAnalyticsCard({
+function FinanceReport({
   analytics,
   isLoading,
   selectedBatchName,
@@ -485,101 +453,77 @@ function FinanceAnalyticsCard({
   selectedBatchName: string;
 }) {
   if (isLoading) {
-    return <Card className="shadow-none"><CardContent className="space-y-3 p-5"><div className="h-5 w-48 animate-pulse rounded bg-muted" /><div className="h-36 animate-pulse rounded-xl bg-muted" /></CardContent></Card>;
+    return <div className="space-y-5" aria-label="Loading finance report"><div className="h-56 animate-pulse rounded-3xl bg-muted" /><div className="h-80 animate-pulse rounded-3xl bg-muted" /></div>;
   }
 
   if (!analytics) {
-    return <Card className="border-dashed shadow-none"><CardContent className="p-5 text-sm text-muted-foreground">No finance analytics are available for this view yet.</CardContent></Card>;
+    return <div className="rounded-3xl bg-card px-6 py-16 text-center text-sm text-muted-foreground">No finance analytics are available for this view yet.</div>;
   }
 
   const series = analytics.series ?? [];
-  const values = series.map((point) => Number(point.cumulativeNetCashFlow));
-  const minValue = Math.min(0, ...values);
-  const maxValue = Math.max(0, ...values);
-  const range = maxValue - minValue || 1;
-  const width = 640;
-  const height = 170;
-  const padding = 18;
-  const coordinates = values.map((value, index) => {
-    const x = series.length <= 1 ? width / 2 : padding + (index / (series.length - 1)) * (width - padding * 2);
-    const y = padding + ((maxValue - value) / range) * (height - padding * 2);
-    return { x, y };
-  });
-  const points = coordinates.map(({ x, y }) => `${x},${y}`).join(" ");
-  const zeroY = padding + ((maxValue - 0) / range) * (height - padding * 2);
-  const singlePoint = series.length === 1 ? series[0] : undefined;
-  const singlePointCoordinate = coordinates[0];
-  const chartDescription = singlePoint
-    ? `${singlePoint.label} cumulative recorded net cash flow: ${formatPeso(singlePoint.cumulativeNetCashFlow)}`
-    : "Cumulative recorded net cash flow trend across the selected period.";
+  const totals = analytics.totals;
+  const income = Number(totals.recordedIncome);
+  const expense = Number(totals.recordedExpense);
+  const net = Number(totals.recordedNetCashFlow);
+  const totalMovement = Math.max(income, expense, 1);
+  const chartWidth = 640;
+  const chartHeight = 204;
+  const chartBottom = 176;
+  const chartTop = 18;
+  const chartMax = Math.max(1, ...series.flatMap((point) => [Number(point.income), Number(point.expense)]));
+  const groupWidth = (chartWidth - 44) / Math.max(series.length, 1);
+  const barWidth = Math.min(22, groupWidth * 0.26);
+  const categoryMax = Math.max(1, ...analytics.categoryTotals.map((item) => Number(item.amount)));
+  const chartDescription = `Recorded income and expenses across ${series.length} period${series.length === 1 ? "" : "s"}.`;
 
   return (
-    <Card className="overflow-hidden shadow-none">
-      <div className="h-1 bg-primary" />
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <CardTitle className="text-lg">Finance trend</CardTitle>
-            <CardDescription className="truncate">{selectedBatchName} · recorded cash flow</CardDescription>
-          </div>
-          <Badge variant="outline" className="shrink-0">{analytics.scope === "BATCH" ? "Batch" : "Farm"}</Badge>
+    <div className="space-y-6">
+      <section aria-label="Financial summary" className="grid overflow-hidden rounded-[1.75rem] bg-[#194b37] text-white shadow-xl shadow-[#194b37]/10 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,1fr)]">
+        <div className="flex min-h-64 flex-col justify-between gap-10 p-6 sm:p-8 lg:p-10">
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-medium text-white/85">Net cash flow</h2><p className="mt-1 text-sm text-white/60">{selectedBatchName} · {analytics.startDate} to {analytics.endDate}</p></div><span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/80">Recorded cash</span></div>
+          <div><p className="break-words text-[clamp(2.6rem,6vw,5rem)] font-semibold leading-none tracking-[-0.065em] tabular-nums">{formatSignedPeso(net)}</p><p className="mt-3 text-sm text-white/65">Income less cash expenses for this period</p></div>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className={`grid gap-2 ${analytics.scope === "BATCH" ? "grid-cols-2 sm:grid-cols-6" : "grid-cols-2 sm:grid-cols-4"}`}>
-          <AnalyticsStat label="Income" value={formatPeso(analytics.totals.recordedIncome)} tone="positive" />
-          <AnalyticsStat label="Sale proceeds" value={formatPeso(analytics.totals.saleIncome ?? "0")} tone="positive" />
-          <AnalyticsStat label={analytics.scope === "BATCH" ? "Cash expense" : "Expenses"} value={formatPeso(analytics.totals.recordedExpense)} tone="negative" />
-          {analytics.scope === "BATCH" && <AnalyticsStat label="Products used" value={formatPeso(analytics.totals.productsConsumedCost)} tone="negative" />}
-          {analytics.scope === "BATCH" && <AnalyticsStat label="Batch cost" value={formatPeso(analytics.totals.totalRecordedBatchCost)} tone="negative" />}
-          <AnalyticsStat label={analytics.scope === "BATCH" ? "Contribution" : "Net"} value={formatPeso(analytics.scope === "BATCH" ? analytics.totals.recordedContribution : analytics.totals.recordedNetCashFlow)} tone="neutral" />
+        <div className="grid bg-white/[0.07] sm:grid-cols-2 lg:grid-cols-1">
+          <div className="flex flex-col justify-center gap-3 p-6 sm:p-8 lg:p-8"><h3 className="text-sm font-medium text-white/75">Income</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatPeso(income)}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#c6e5b4]" style={{ width: `${Math.max(income > 0 ? 2 : 0, income / totalMovement * 100)}%` }} /></div></div>
+          <div className="flex flex-col justify-center gap-3 border-t border-white/10 p-6 sm:border-l sm:border-t-0 sm:p-8 lg:border-l-0 lg:border-t lg:p-8"><h3 className="text-sm font-medium text-white/75">Cash expenses</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatPeso(expense)}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#e5b679]" style={{ width: `${Math.max(expense > 0 ? 2 : 0, expense / totalMovement * 100)}%` }} /></div></div>
         </div>
+      </section>
 
-        {series.length > 0 ? (
-          <div className="rounded-xl border bg-muted/20 p-2" role="img" aria-label={chartDescription}>
-            <svg viewBox={`0 0 ${width} ${height}`} className="h-36 w-full sm:h-44" preserveAspectRatio="none">
-              <line x1={padding} x2={width - padding} y1={zeroY} y2={zeroY} stroke="currentColor" strokeDasharray="4 4" className="text-muted-foreground/40" />
-              {singlePoint && singlePointCoordinate ? (
-                <circle cx={singlePointCoordinate.x} cy={singlePointCoordinate.y} r="6" fill="currentColor" className="text-primary" vectorEffect="non-scaling-stroke" />
-              ) : (
-                <polyline points={points} fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" className="text-primary" vectorEffect="non-scaling-stroke" />
-              )}
-            </svg>
-            <div className={`flex px-2 text-[11px] text-muted-foreground ${singlePoint ? "justify-center" : "justify-between"}`}>
-              {singlePoint ? <span>{singlePoint.label} · {formatPeso(singlePoint.cumulativeNetCashFlow)}</span> : <><span>{series[0]?.label}</span><span>{series[series.length - 1]?.label}</span></>}
+      <section className="grid min-w-0 overflow-hidden rounded-[1.75rem] bg-card shadow-sm shadow-foreground/5 lg:grid-cols-[minmax(0,1.65fr)_minmax(18rem,1fr)]">
+        <div className="min-w-0 p-5 sm:p-8"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">Cash movement</h2><p className="mt-1 text-sm text-muted-foreground">Income and expenses over the selected period</p></div><div className="flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><i className="size-2.5 rounded-sm bg-[#467e53]" />Income</span><span className="flex items-center gap-1.5"><i className="size-2.5 rounded-sm bg-[#d3a25e]" />Expenses</span></div></div>
+          {series.length > 0 ? (
+            <div className="mt-8">
+              <div role="img" aria-label={chartDescription}>
+                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="h-48 w-full sm:h-56" preserveAspectRatio="none">
+                  <line x1="22" x2="618" y1={chartBottom} y2={chartBottom} stroke="currentColor" className="text-border" />
+                  {[0.25, 0.5, 0.75, 1].map((tick) => <line key={tick} x1="22" x2="618" y1={chartBottom - tick * (chartBottom - chartTop)} y2={chartBottom - tick * (chartBottom - chartTop)} stroke="currentColor" strokeDasharray="2 5" className="text-border/70" />)}
+                  {series.map((point, index) => {
+                    const x = 22 + groupWidth * (index + 0.5);
+                    const incomeHeight = Math.max(Number(point.income) > 0 ? 2 : 0, Number(point.income) / chartMax * (chartBottom - chartTop));
+                    const expenseHeight = Math.max(Number(point.expense) > 0 ? 2 : 0, Number(point.expense) / chartMax * (chartBottom - chartTop));
+                    return <g key={`${point.label}-${index}`}><title>{`${point.label}: ${formatPeso(point.income)} income, ${formatPeso(point.expense)} expenses`}</title><rect x={x - barWidth - 2} y={chartBottom - incomeHeight} width={barWidth} height={incomeHeight} rx="3" fill="#467e53" /><rect x={x + 2} y={chartBottom - expenseHeight} width={barWidth} height={expenseHeight} rx="3" fill="#d3a25e" /></g>;
+                  })}
+                </svg>
+                <div className="flex justify-between gap-2 px-1 text-xs text-muted-foreground"><span className="truncate">{series[0]?.label}</span>{series.length > 1 && <span className="truncate text-right">{series[series.length - 1]?.label}</span>}</div>
+              </div>
+              <details className="mt-5 text-sm"><summary className="w-fit cursor-pointer font-medium text-primary">View period values</summary><div className="mt-3 max-h-60 overflow-auto rounded-xl bg-muted/35 p-3"><table className="w-full min-w-72 text-left text-xs"><thead><tr><th className="pb-2 font-medium">Period</th><th className="pb-2 text-right font-medium">Income</th><th className="pb-2 text-right font-medium">Expenses</th></tr></thead><tbody className="divide-y divide-border/60">{series.map((point, index) => <tr key={`${point.label}-${index}`}><th scope="row" className="py-2 font-normal">{point.label}</th><td className="py-2 text-right tabular-nums">{formatPeso(point.income)}</td><td className="py-2 text-right tabular-nums">{formatPeso(point.expense)}</td></tr>)}</tbody></table></div></details>
             </div>
-          </div>
-        ) : <p className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">Add a posted income or expense to see the trend.</p>}
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Top expense categories</p>
-            <div className="space-y-1.5">
-              {analytics.categoryTotals.length === 0 && <p className="text-sm text-muted-foreground">No categories recorded.</p>}
-              {analytics.categoryTotals.slice(0, 5).map((item) => <div key={item.category} className="flex items-center justify-between gap-3 text-sm"><span className="truncate">{item.category}</span><span className="shrink-0 font-semibold">{formatPeso(item.amount)}</span></div>)}
-            </div>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wide">Coverage</p>
-            <p>{analytics.totals.postedTransactionCount} posted record{analytics.totals.postedTransactionCount === 1 ? "" : "s"} included.</p>
-            {analytics.totals.voidedTransactionCount > 0 && <p>{analytics.totals.voidedTransactionCount} voided record{analytics.totals.voidedTransactionCount === 1 ? "" : "s"} excluded.</p>}
-            <p className="mt-2 text-xs">{analytics.limitations.message}</p>
-          </div>
+          ) : <p className="mt-8 flex min-h-48 items-center justify-center rounded-2xl bg-muted/35 p-5 text-center text-sm text-muted-foreground">Add a posted income or expense to see the trend.</p>}
         </div>
+        <div className="bg-muted/35 p-5 sm:p-8"><h2 className="text-xl font-semibold tracking-tight">Where spending went</h2><p className="mt-1 text-sm text-muted-foreground">Top recorded expense categories</p><div className="mt-8 space-y-5">{analytics.categoryTotals.length === 0 && <p className="text-sm text-muted-foreground">No categories recorded.</p>}{analytics.categoryTotals.slice(0, 5).map((item) => <div key={item.category}><div className="flex items-baseline justify-between gap-3 text-sm"><span className="truncate font-medium">{item.category}</span><span className="shrink-0 font-semibold tabular-nums">{formatPeso(item.amount)}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/10"><div className="h-full rounded-full bg-[#9ab476]" style={{ width: `${Number(item.amount) / categoryMax * 100}%` }} /></div></div>)}</div></div>
+      </section>
 
-        <details className="rounded-xl border px-3 py-2 text-sm">
-          <summary className="cursor-pointer font-semibold">View period details</summary>
-          <p className="mt-2 text-muted-foreground">{analytics.startDate} to {analytics.endDate} · {analytics.currency}</p>
-        </details>
-      </CardContent>
-    </Card>
+      <section className="rounded-[1.75rem] bg-card p-5 shadow-sm shadow-foreground/5 sm:p-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">Recorded statement</h2><p className="mt-1 text-sm text-muted-foreground">A breakdown of the figures above</p></div><p className="text-sm text-muted-foreground">{totals.postedTransactionCount} posted record{totals.postedTransactionCount === 1 ? "" : "s"}</p></div><dl className="mt-6 divide-y divide-border/60"><StatementRow label="Sale proceeds" value={totals.saleIncome} /><StatementRow label="Other income" value={totals.otherIncome} /><StatementRow label="Total income" value={totals.recordedIncome} emphasis /><StatementRow label="Cash expenses" value={totals.recordedExpense} negative />{analytics.scope === "BATCH" && <><StatementRow label="Products consumed" value={totals.productsConsumedCost} negative /><StatementRow label="Total recorded batch cost" value={totals.totalRecordedBatchCost} negative /></>}<StatementRow label={analytics.scope === "BATCH" ? "Recorded contribution" : "Net cash flow"} value={analytics.scope === "BATCH" ? totals.recordedContribution : totals.recordedNetCashFlow} signed emphasis /></dl><div className="mt-6 flex flex-wrap items-start justify-between gap-4 text-xs leading-5 text-muted-foreground"><p className="max-w-2xl">{analytics.limitations.message}{totals.voidedTransactionCount > 0 ? ` ${totals.voidedTransactionCount} voided record${totals.voidedTransactionCount === 1 ? " was" : "s were"} excluded.` : ""}</p><details className="shrink-0"><summary className="cursor-pointer font-medium text-foreground">View period details</summary><p className="mt-1">{analytics.startDate} to {analytics.endDate} · {analytics.currency}</p></details></div></section>
+    </div>
   );
 }
 
-function AnalyticsStat({ label, value, tone }: { label: string; value: string; tone: "positive" | "negative" | "neutral" }) {
-  const toneClass = tone === "positive" ? "text-success" : tone === "negative" ? "text-destructive" : "text-foreground";
-  return <div className="rounded-xl border bg-card p-3"><p className="text-[11px] font-medium text-muted-foreground">{label}</p><p className={`mt-1 truncate text-base font-bold tabular-nums ${toneClass}`}>{value}</p></div>;
+function StatementRow({ label, value, negative = false, signed = false, emphasis = false }: { label: string; value: string | number; negative?: boolean; signed?: boolean; emphasis?: boolean }) {
+  const amount = Number(value);
+  return <div className={`flex items-baseline justify-between gap-4 py-3.5 ${emphasis ? "font-semibold" : "text-sm"}`}><dt className="text-foreground/80">{label}</dt><dd className={`text-right tabular-nums ${signed && amount >= 0 ? "text-primary" : ""}`}>{signed ? formatSignedPeso(amount) : `${negative ? "−" : ""}${formatPeso(amount)}`}</dd></div>;
 }
+
+function formatSignedPeso(value: number) { return value === 0 ? formatPeso(0) : `${value < 0 ? "−" : "+"}${formatPeso(Math.abs(value))}`; }
 
 function formatPeso(value: string | number) {
   return `₱${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;

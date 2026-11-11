@@ -24,7 +24,7 @@ import { useLocale } from "@/components/locale-provider";
 import { VaccinationManagerAction } from "@/components/vaccination-plan-card";
 import { HandlerTaskDetailDialog } from "@/components/tasks/handler-task-ui";
 import { CloseTaskDialog } from "@/components/tasks/close-task-dialog";
-import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header";
+import { PageHeader } from "@/components/page-header";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const PAGE_SIZE = 20;
@@ -238,7 +238,7 @@ function TasksPageContent() {
   return (
     <div className="mx-auto w-full max-w-[96rem] space-y-4">
       {isManager ? <>
-      <DashboardPageHeader icon={ClipboardList} title={t("tasks.title")} description="Assign, monitor, and complete farm work." />
+      <PageHeader icon={ClipboardList} title={t("tasks.title")} description="Assign, monitor, and complete farm work." />
       <TaskSummaryBar summary={summary} filters={filters} onFilter={changeFilters} />
       <div className="task-workspace grid gap-4">
         <div className="task-assignment-trigger">
@@ -491,7 +491,7 @@ function HandlerTaskQueue({
   });
   const tabCount = (value: number | undefined) => summaryLoading && value == null ? "…" : String(value ?? 0);
   return <section className="space-y-4 pb-2">
-    <DashboardPageHeader icon={ClipboardList} title={t("tasks.myTasks")} description={t("tasks.handlerSubtitle")} />
+    <PageHeader icon={ClipboardList} title={t("tasks.myTasks")} description={t("tasks.handlerSubtitle")} />
     <div className="grid grid-cols-3 gap-1 rounded-2xl bg-muted/50 p-1" role="tablist" aria-label={t("tasks.title")}>
       <HandlerQueueTab active={bucket === "NOW"} label={t("tasks.handlerNowTab")} count={tabCount(summary?.now)} onClick={() => onBucketChange("NOW")} />
       <HandlerQueueTab active={bucket === "UPCOMING"} label={t("tasks.handlerUpcomingTab")} count={tabCount(summary?.upcoming)} onClick={() => onBucketChange("UPCOMING")} />

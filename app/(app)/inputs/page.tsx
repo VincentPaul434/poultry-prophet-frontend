@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InventoryManagerPanel } from "@/components/inventory-manager-panel";
+import { PageHeader } from "@/components/page-header";
 
 const PRODUCT_TYPES: { value: InputProductType; label: string }[] = [
   { value: "FEED", label: "Feed" }, { value: "VITAMIN", label: "Vitamin" }, { value: "MEDICINE", label: "Medicine" }, { value: "VACCINE", label: "Vaccine" }, { value: "OTHER", label: "Other" },
@@ -92,7 +93,7 @@ function ManagerInputsPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4">
-      <header className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary"><Package className="size-5" aria-hidden="true" /></div><div><h1 className="text-2xl font-bold tracking-tight">Products</h1><p className="text-sm text-muted-foreground">Manage inventory, record usage, and review product history.</p></div></header>
+      <PageHeader icon={Package} title="Products" description="Manage inventory, record usage, and review product history." />
       <nav className="grid grid-cols-3 rounded-xl border bg-muted/30 p-1" role="tablist" aria-label="Product pages">
         <button type="button" role="tab" aria-selected={activeTab === "inventory"} onClick={() => setActiveTab("inventory")} className={activeTab === "inventory" ? "min-h-11 rounded-lg bg-background text-sm font-semibold shadow-sm" : "min-h-11 rounded-lg text-sm font-semibold text-muted-foreground"}>Inventory</button>
         <button type="button" role="tab" aria-selected={activeTab === "record"} onClick={() => setActiveTab("record")} className={activeTab === "record" ? "min-h-11 rounded-lg bg-background text-sm font-semibold shadow-sm" : "min-h-11 rounded-lg text-sm font-semibold text-muted-foreground"}>Record usage</button>

@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { IncubationCycleCard } from "@/components/incubation/incubation-cycle-card";
 import { IncubationCyclePanel } from "@/components/incubation/incubation-cycle-panel";
 import { IncubationLoadSheet } from "@/components/incubation/incubation-load-sheet";
-import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header";
+import { PageHeader } from "@/components/page-header";
 
 const PAGE_SIZE = 12;
 
@@ -109,7 +109,7 @@ function IncubationPageContent() {
 
   return (
     <div className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-5 pb-2" data-testid="incubation-page">
-      <DashboardPageHeader icon={Egg} title={t("incubation.title")} description={t("incubation.loadDescription")} action={!isManager ? <Button type="button" className="min-h-11 w-full sm:w-auto" onClick={() => setLoadOpen(true)}><Egg className="size-4" aria-hidden="true" />{t("incubation.loadEggs")}</Button> : undefined} />
+      <PageHeader icon={Egg} title={t("incubation.title")} description={t("incubation.loadDescription")} action={!isManager ? <Button type="button" className="min-h-11 w-full sm:w-auto" onClick={() => setLoadOpen(true)}><Egg className="size-4" aria-hidden="true" />{t("incubation.loadEggs")}</Button> : undefined} />
 
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"><span className="font-semibold text-foreground">{titleSummary}</span>{summary && summary.activeEggs > 0 && <><span aria-hidden="true">·</span><span>{summary.activeEggs} {t("incubation.eggs")}</span></>}</div>
 
