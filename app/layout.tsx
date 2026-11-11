@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
+import { Geist } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
+
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://poultry-prophet.vercel.app"),
@@ -35,7 +41,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className="h-full antialiased"
+      className={`h-full font-sans antialiased ${geist.variable}`}
     >
       {/* Browser extensions may add attributes to body before hydration. */}
       <body suppressHydrationWarning className="min-h-full bg-background text-foreground">

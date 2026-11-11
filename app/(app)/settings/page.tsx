@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth-context";
 import { SETTINGS_SECTIONS } from "@/components/settings/sections";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageBackLink } from "@/components/page-back-link";
+import { PageHeader } from "@/components/page-header";
 import { useLocale } from "@/components/locale-provider";
 
 export default function SettingsPage() {
@@ -19,12 +20,11 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto w-full max-w-5xl space-y-8">
       <PageBackLink destination="dashboard" />
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">{t("settings.title")}</h1>
-        <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">
-          Manage your account and farm configuration.
-        </p>
-      </div>
+      <PageHeader
+        title={t("settings.title")}
+        titleClassName="text-3xl sm:text-4xl"
+        description="Manage your account and farm configuration."
+      />
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {sections.map((s) => (

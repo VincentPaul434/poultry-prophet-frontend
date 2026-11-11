@@ -58,31 +58,46 @@ function isAuthEndpoint(url?: string) {
   return Boolean(url && /\/auth\/(login|register|refresh|logout)(?:$|[/?])/.test(url));
 }
 
-async function refreshAccessToken() {
+export async function refreshAccessToken() {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return null;
 
   if (!refreshPromise) {
-    refreshPromise = axios
-      .post<AuthResponse>(`${API_PROXY_BASE_URL}/auth/refresh`, { refreshToken }, {
-        headers: { "Content-Type": "application/json" },
-      })
-      .then((response) => {
+    const rotate = async () => {
+      // Another tab may have rotated while this tab waited for the lock.
+      if (getRefreshToken() !== refreshToken) return getToken();
+      try {
+        const response = await axios.post<AuthResponse>(
+          `${API_PROXY_BASE_URL}/auth/refresh`,
+          { refreshToken },
+          { headers: { "Content-Type": "application/json" } },
+        );
+        // A logout or a new login during the request takes precedence.
+        if (getRefreshToken() !== refreshToken) return getToken();
         saveSession(response.data);
         return response.data.token;
-      })
-      .catch((error: unknown) => {
-        // Invalid or expired refresh credentials require a new login. A
-        // network/server failure should leave the cached session intact so a
-        // PWA can still use its offline data and retry later.
+      } catch (error) {
+        if (getRefreshToken() !== refreshToken) return getToken();
+        // Invalid credentials end the session. Network/server failures leave
+        // it available for an offline view and a later retry.
         if (axios.isAxiosError(error) && error.response && error.response.status < 500) {
           clearSession();
         }
         return null;
-      })
-      .finally(() => {
-        refreshPromise = null;
-      });
+      }
+    };
+
+    // A refresh token is single-use on the backend. A process-local promise
+    // coordinates requests here; Web Locks also serializes other open tabs.
+    const coordinatedRefresh = async (): Promise<string | null> => {
+      if (typeof navigator !== "undefined" && navigator.locks) {
+        return await navigator.locks.request("poultry-prophet-auth-refresh", rotate);
+      }
+      return rotate();
+    };
+    refreshPromise = coordinatedRefresh().finally(() => {
+      refreshPromise = null;
+    });
   }
 
   return refreshPromise;
@@ -113,6 +128,13 @@ apiClient.interceptors.response.use(
       const requestAuthorization = error.config?.headers?.Authorization;
       const requestUsedCurrentSession =
         !currentToken || requestAuthorization === `Bearer ${currentToken}`;
+
+      if (requestConfig && !requestConfig._authRetry && currentToken && !requestUsedCurrentSession) {
+        // A different tab already refreshed after this request was sent.
+        requestConfig._authRetry = true;
+        requestConfig.headers.Authorization = `Bearer ${currentToken}`;
+        return apiClient.request(requestConfig);
+      }
 
       // An old in-flight request must not log out a newer session that was
       // established while it was still completing.
