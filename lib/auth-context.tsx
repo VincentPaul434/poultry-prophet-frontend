@@ -17,12 +17,15 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { accountApi, authApi, inviteApi } from "./api";
-import { ApiError } from "./api-client";
+import { refreshAccessToken } from "./api-client";
 import {
+  AUTH_SESSION_KEY,
   clearSession,
   getStoredUser,
   getRefreshToken,
   getToken,
+  hasCurrentAccessToken,
+  isAuthStorageKey,
   saveSession,
   type StoredUser,
 } from "./auth-storage";
@@ -48,17 +51,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  // Hydrate from localStorage once on mount (avoids SSR/client mismatch). If a
-  // refresh token exists, rotate it before exposing the authenticated app so a
-  // PWA opened after the access JWT expires can restore the session silently.
+  // Hydrate from localStorage once on mount. A still-current access token can
+  // be reused by a new tab; rotating on every mount races single-use refresh
+  // tokens across tabs and can revoke the whole session.
   useEffect(() => {
     let active = true;
 
     const hydrate = async () => {
       const storedUser = getStoredUser();
+      const token = getToken();
       const refreshToken = getRefreshToken();
 
-      if (!refreshToken) {
+      if (!storedUser || (!token && !refreshToken)) {
+        clearSession();
+        if (active) {
+          setUser(null);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      if (token && hasCurrentAccessToken(token)) {
         if (active) {
           setUser(storedUser);
           setIsLoading(false);
@@ -66,24 +79,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      try {
-        const auth = await authApi.refresh(refreshToken);
-        if (active) setUser(saveSession(auth));
-      } catch (error) {
-        // Keep the cached profile for an offline/transient startup failure;
-        // the API client can retry once the backend is reachable again. A
-        // rejected 4xx refresh credential means the session really ended.
-        const transient = error instanceof ApiError && (error.status === 0 || error.status >= 500);
+      if (!refreshToken) {
+        clearSession();
         if (active) {
-          if (transient) {
-            setUser(storedUser);
-          } else {
-            clearSession();
-            setUser(null);
-          }
+          setUser(null);
+          setIsLoading(false);
         }
-      } finally {
-        if (active) setIsLoading(false);
+        return;
+      }
+
+      const refreshedToken = await refreshAccessToken();
+      if (active) {
+        // A transient refresh failure keeps the cached profile for offline
+        // access; an invalid refresh token was cleared by the API client.
+        setUser(refreshedToken ? getStoredUser() : getRefreshToken() ? storedUser : null);
+        setIsLoading(false);
       }
     };
 
@@ -92,6 +102,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const syncSession = (event: StorageEvent) => {
+      if (event.storageArea !== window.localStorage || !isAuthStorageKey(event.key)) return;
+      // Legacy keys are observed only until the atomic session is migrated.
+      if (event.key !== AUTH_SESSION_KEY && window.localStorage.getItem(AUTH_SESSION_KEY)) return;
+      queryClient.clear();
+      setUser(getToken() ? getStoredUser() : null);
+    };
+    window.addEventListener("storage", syncSession);
+    return () => window.removeEventListener("storage", syncSession);
+  }, [queryClient]);
 
   const login = useCallback(async (body: LoginRequest) => {
     await queryClient.cancelQueries();

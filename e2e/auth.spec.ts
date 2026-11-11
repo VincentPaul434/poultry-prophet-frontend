@@ -4,7 +4,7 @@ test.describe("Public authentication flow", () => {
   test("login password visibility and home navigation work", async ({ page }) => {
     await page.goto("/login");
 
-    const password = page.getByLabel("Password");
+    const password = page.getByLabel("Password", { exact: true });
     await expect(password).toHaveAttribute("type", "password");
 
     await password.fill("secret123");
@@ -27,14 +27,14 @@ test.describe("Public authentication flow", () => {
     });
 
     await page.goto("/register");
-    await page.getByLabel("Full name").fill("Test Manager");
+    await page.getByLabel("Buong pangalan").fill("Test Manager");
     await page.getByLabel("Email address").fill("test-manager@example.com");
     await page.getByLabel("Password", { exact: true }).fill("secret123");
-    await page.getByLabel("Confirm password").fill("different123");
-    await expect(page.getByText("Passwords do not match.")).toBeVisible();
+    await page.getByLabel("Ulitin ang password").fill("different123");
+    await expect(page.locator("#confirm-password-error")).toBeVisible();
 
-    await page.getByRole("button", { name: "Create account" }).click();
-    await expect(page.getByText("Passwords do not match.")).toBeVisible();
+    await page.getByRole("button", { name: "Gumawa ng account" }).click();
+    await expect(page.locator("#confirm-password-error")).toBeVisible();
     expect(registerCalled).toBe(false);
   });
 
@@ -44,7 +44,7 @@ test.describe("Public authentication flow", () => {
     await expect(page).toHaveURL(/\/$/);
 
     await page.goto("/register");
-    await page.getByRole("link", { name: "Back to home" }).click();
+    await page.getByRole("link", { name: "Bumalik sa home" }).click();
     await expect(page).toHaveURL(/\/$/);
   });
 });
