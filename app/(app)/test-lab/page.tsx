@@ -197,7 +197,7 @@ function ProfileButton({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       aria-pressed={active}
       onClick={onClick}
@@ -208,7 +208,7 @@ function ProfileButton({
     >
       <span className="block font-semibold">{title}</span>
       <span className="mt-1 block text-xs text-muted-foreground">{detail}</span>
-    </button>
+    </Button>
   );
 }
 

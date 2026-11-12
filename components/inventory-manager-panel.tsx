@@ -8,6 +8,7 @@ import { useCreateFarmProduct, useFarmProducts, usePendingInventoryReview, useRe
 import type { InputProductType } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -122,7 +123,7 @@ export function InventoryManagerPanel() {
               <div className="space-y-1.5"><Label htmlFor="stock-unit-cost">Price per {selectedProduct?.stockUnit ?? "unit"}</Label><Input id="stock-unit-cost" required={!freeOfCharge} disabled={freeOfCharge || !selectedId} type="number" min="0" step="0.000001" value={stockUnitCost} onChange={(event) => setStockUnitCost(event.target.value)} placeholder="₱0.00" /></div>
             </div>
             <div className="rounded-lg bg-muted/40 px-3 py-2 text-xs"><div className="grid grid-cols-2 gap-x-4 gap-y-1"><span>Purchase total</span><strong className="text-right tabular-nums">{purchaseTotal == null ? "₱0.00" : `₱${purchaseTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</strong><span>Stock after</span><strong className="text-right tabular-nums">{stockAfterPurchase == null || !selectedProduct ? `0 ${selectedProduct?.stockUnit ?? "unit"}` : `${stockAfterPurchase.toLocaleString()} ${selectedProduct.stockUnit}`}</strong><span>New average</span><strong className="text-right tabular-nums">{newAverageCost == null ? `₱0.00 / ${selectedProduct?.stockUnit ?? "unit"}` : `₱${newAverageCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} / ${selectedProduct?.stockUnit}`}</strong></div></div>
-            <label className="flex items-center gap-2 text-xs text-muted-foreground"><input type="checkbox" checked={freeOfCharge} onChange={(event) => setFreeOfCharge(event.target.checked)} /> Free or donated stock (no cash expense)</label>
+            <Label className="flex items-center gap-2"><Checkbox checked={freeOfCharge} onCheckedChange={setFreeOfCharge} /> Free or donated stock (no cash expense)</Label>
             {blockedByUnvaluedStock && <p role="alert" className="text-xs text-warning-ink">Existing stock has no recorded unit cost. Set its opening cost or reconcile the old balance before adding more stock.</p>}
           </form>
           <DialogFooter><Button type="button" variant="outline" onClick={() => setShowStock(false)}>Cancel</Button><Button type="submit" form="add-stock-form" disabled={stockIn.isPending || !selectedId || blockedByUnvaluedStock}>{stockIn.isPending ? <Loader2 className="animate-spin" /> : <Save className="size-4" />} Record purchase</Button></DialogFooter>
@@ -142,7 +143,7 @@ export function InventoryManagerPanel() {
                 <h3 className="truncate text-base font-semibold">{item.brandName}</h3>
                 <p className="mt-0.5 text-sm text-muted-foreground">{typeLabel} · {item.stockUnit}</p>
               </div>
-              {item.lowStock ? <Badge variant="warning">Low stock</Badge> : item.valuationStatus === "UNVALUED" ? <Badge variant="outline">Cost needed</Badge> : <Badge variant="success">Tracked</Badge>}
+              {item.lowStock ? <Badge variant="secondary">Low stock</Badge> : item.valuationStatus === "UNVALUED" ? <Badge variant="outline">Cost needed</Badge> : <Badge variant="secondary">Tracked</Badge>}
             </div>
             <div className="mt-3 grid grid-cols-2 overflow-hidden rounded-xl bg-muted/40 text-sm">
               <div className="border-r border-border/60 px-3 py-2.5">
@@ -192,7 +193,7 @@ export function InventoryManagerPanel() {
                 <TableCell className={item.lowStock ? "text-right font-bold text-warning-ink" : "text-right font-semibold"}>{Number(item.stockOnHand).toLocaleString()} <span className="font-normal text-muted-foreground">{item.stockUnit}</span></TableCell>
                 <TableCell className="text-right tabular-nums">{averageUnitCost == null ? <span className="text-muted-foreground">—</span> : `₱${averageUnitCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`}</TableCell>
                 <TableCell className="text-right tabular-nums">{inventoryValue == null ? <span className="text-muted-foreground">—</span> : `₱${inventoryValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}</TableCell>
-                <TableCell className="text-right">{item.lowStock ? <Badge variant="warning">Low stock</Badge> : item.valuationStatus === "UNVALUED" ? <Badge variant="outline">Cost needed</Badge> : <Badge variant="success">Tracked</Badge>}</TableCell>
+                <TableCell className="text-right">{item.lowStock ? <Badge variant="secondary">Low stock</Badge> : item.valuationStatus === "UNVALUED" ? <Badge variant="outline">Cost needed</Badge> : <Badge variant="secondary">Tracked</Badge>}</TableCell>
                 <TableCell className="text-right"><Button type="button" size="sm" variant="outline" onClick={() => openStockDialog(item.id)}><Plus className="size-4" /> Add stock</Button></TableCell>
               </TableRow>;
             })}

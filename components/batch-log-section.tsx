@@ -38,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Dialog,
   DialogContent,
@@ -193,13 +194,13 @@ function EventDateControl({
           <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">When / Kailan</p>
           <p className="text-sm font-semibold">{date === today ? "Ngayon · Today" : formatDate(date)}</p>
         </div>
-        <button
+        <Button variant="ghost"
           type="button"
           className="shrink-0 text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
           onClick={() => onShowOverrideChange(!showOverride)}
         >
           {showOverride ? "Use today" : "Ibang date"}
-        </button>
+        </Button>
       </div>
       {showOverride && (
         <div>
@@ -213,7 +214,7 @@ function EventDateControl({
 
 function TagPill({ label, selected, onToggle }: { label: string; selected: boolean; onToggle: () => void }) {
   return (
-    <button
+    <Button variant="ghost"
       type="button"
       onClick={onToggle}
       aria-pressed={selected}
@@ -226,7 +227,7 @@ function TagPill({ label, selected, onToggle }: { label: string; selected: boole
     >
       {selected && <CheckCircle2 className="size-3.5 shrink-0" />}
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -364,9 +365,9 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
       </div>
       <div className="space-y-1.5">
         <span id={`${id}-event-type`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">What happened?</span>
-        <div role="group" aria-labelledby={`${id}-event-type`} className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {LOSS_CATEGORIES.map((category) => <button key={category.type} type="button" aria-pressed={lossType === category.type} onClick={() => setLossType(category.type)} className={cn("min-h-11 rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", lossType === category.type ? "border-destructive bg-destructive/10 text-destructive" : "border-border hover:bg-muted")}>{lossType === category.type ? "✓ " : ""}{category.label}</button>)}
-        </div>
+        <ToggleGroup aria-labelledby={`${id}-event-type`} variant="outline" value={lossType ? [lossType] : []} onValueChange={(values) => { const next = LOSS_CATEGORIES.find((category) => category.type === values[0]); if (next) setLossType(next.type); }} className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {LOSS_CATEGORIES.map((category) => <ToggleGroupItem key={category.type} value={category.type} className="min-h-11 justify-start">{category.label}</ToggleGroupItem>)}
+        </ToggleGroup>
         {selectedCategory && <p className="text-xs text-muted-foreground">{selectedCategory.hint}</p>}
       {lossType === "SALE" && (
         <div className="space-y-1.5">
@@ -394,13 +395,13 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
           <span id={`${id}-sex`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Which birds were affected?</span>
           {sexProjectionReady ? (
             <>
-              <div role="group" aria-labelledby={`${id}-sex`} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <ToggleGroup aria-labelledby={`${id}-sex`} variant="outline" value={sexChoice ? [sexChoice] : []} onValueChange={(values) => { const next = (["MALE", "FEMALE", "UNCLASSIFIED", "MIXED"] as const).find((choice) => choice === values[0]); if (next) setSexChoice(next); }} className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
                 {(["MALE", "FEMALE", "UNCLASSIFIED", "MIXED"] as const).map((choice) => (
-                  <button key={choice} type="button" aria-pressed={sexChoice === choice} onClick={() => setSexChoice(choice)} className={cn("rounded-lg border px-2 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", sexChoice === choice ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted")}>
+                  <ToggleGroupItem key={choice} value={choice}>
                     {choice === "UNCLASSIFIED" ? "Unclassified" : choice[0] + choice.slice(1).toLowerCase()}
-                  </button>
+                  </ToggleGroupItem>
                 ))}
-              </div>
+              </ToggleGroup>
               {sexChoice === "MIXED" && <div className="grid grid-cols-3 gap-2"><Input aria-label="Male allocation" type="number" min={0} max={allocationAmount} step={1} value={maleSplit} onChange={(e) => setMaleSplit(e.target.value)} placeholder="Male" className="h-9 text-center text-xs" /><Input aria-label="Female allocation" type="number" min={0} max={allocationAmount} step={1} value={femaleSplit} onChange={(e) => setFemaleSplit(e.target.value)} placeholder="Female" className="h-9 text-center text-xs" /><Input aria-label="Unclassified allocation" type="number" min={0} max={allocationAmount} step={1} value={unclassifiedSplit} onChange={(e) => setUnclassifiedSplit(e.target.value)} placeholder="Unclassified" className="h-9 text-center text-xs" /></div>}
               <p className="text-xs text-muted-foreground">Current: {sexComposition?.maleCount} male · {sexComposition?.femaleCount} female · {sexComposition?.unclassifiedCount} unclassified</p>
             </>
@@ -443,7 +444,7 @@ function HealthForm({ batchId, population, onDone }: { batchId: string; populati
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label htmlFor={`${id}-count`} className="text-sm font-semibold">Affected birds</Label><Input id={`${id}-count`} type="number" min={1} max={population} required value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg text-center font-bold" /></div></div>
-      <div className="space-y-1.5"><span id={`${id}-concern`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Concern level</span><div role="group" aria-labelledby={`${id}-concern`} className="grid grid-cols-3 gap-2">{[{ v: "MINOR", label: "Mild" }, { v: "MODERATE", label: "Serious" }, { v: "MAJOR", label: "Urgent" }].map((item) => <button key={item.v} type="button" aria-pressed={severity === item.v} onClick={() => setSeverity(item.v)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", severity === item.v ? "border-warning bg-warning-muted text-warning-ink" : "border-border hover:bg-muted")}>{item.label}</button>)}</div></div>
+      <div className="space-y-1.5"><span id={`${id}-concern`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Concern level</span><ToggleGroup aria-labelledby={`${id}-concern`} variant="outline" value={severity ? [severity] : []} onValueChange={(values) => { if (values[0]) setSeverity(values[0]); }} className="grid w-full grid-cols-3 gap-2">{[{ v: "MINOR", label: "Mild" }, { v: "MODERATE", label: "Serious" }, { v: "MAJOR", label: "Urgent" }].map((item) => <ToggleGroupItem key={item.v} value={item.v} className="min-h-11">{item.label}</ToggleGroupItem>)}</ToggleGroup></div>
       <div className="space-y-1.5"><span id={`${id}-signs`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Signs noticed</span><div role="group" aria-labelledby={`${id}-signs`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{HEALTH_SYMPTOMS.map((item) => <TagPill key={item} label={item} selected={symptoms.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
       <div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea id={`${id}-notes`} rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you observe?" className="resize-none rounded-lg" /></div>
       <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || population <= 0}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save sickness report"}</Button>
@@ -505,9 +506,9 @@ function TreatmentForm({ batchId, population, onDone }: { batchId: string; popul
       <NoAnimalsAlert population={population} />
       {farmProducts && farmProducts.length > 0 && <div className="space-y-1.5"><Label htmlFor={`${id}-stock`} className="text-sm font-semibold">Product from farm stock</Label><NativeSelect id={`${id}-stock`} value={farmProductId ?? ""} onChange={(e) => { const value = e.target.value ? Number(e.target.value) : null; const selected = farmProducts.find((item) => item.id === value); setFarmProductId(value); if (selected) { setProductName(selected.brandName); setProductType(selected.productType); } }}><option value="">Product not listed</option>{farmProducts.map((item) => <option key={item.id} value={item.id}>{item.brandName} · {item.stockOnHand} {item.stockUnit}{item.lowStock ? " · low stock" : ""}</option>)}</NativeSelect></div>}
       <div className="grid grid-cols-[minmax(0,1fr)_9rem] gap-2.5"><div className="space-y-1.5"><Label htmlFor={`${id}-product`} className="text-sm font-semibold">Product / brand</Label><Input id={`${id}-product`} required value={productName} onChange={(e) => { setProductName(e.target.value); setFarmProductId(null); }} placeholder="e.g. Baby Stag Booster" className="h-11 rounded-lg" /></div><div className="space-y-1.5"><Label htmlFor={`${id}-quantity`} className="text-sm font-semibold">Units used {farmProductId ? <span className="font-normal text-destructive">required</span> : <span className="font-normal text-muted-foreground">optional</span>}</Label><Input id={`${id}-quantity`} required={Boolean(farmProductId)} type="number" min="0.001" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder={selectedProduct?.stockUnit ?? "If known"} className="h-11 rounded-lg" />{selectedProduct && <p className="text-[11px] text-muted-foreground">Available: {selectedProduct.stockOnHand} {selectedProduct.stockUnit}{estimatedCost != null ? ` · Estimated batch cost ₱${estimatedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : " · Cost unavailable"}</p>}</div></div>
-      <div className="space-y-1.5"><span id={`${id}-type`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Product type</span><div role="group" aria-labelledby={`${id}-type`} className="grid grid-cols-3 gap-2 sm:grid-cols-5">{[{ v: "FEED", label: "Feed" }, { v: "VITAMIN", label: "Vitamin" }, { v: "MEDICINE", label: "Medicine" }, { v: "VACCINE", label: "Vaccine" }, { v: "OTHER", label: "Other" }].map((item) => <button key={item.v} type="button" aria-pressed={productType === item.v} onClick={() => setProductType(item.v as typeof productType)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", productType === item.v ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{item.label}</button>)}</div></div>
-      {purposeRequired && <div className="space-y-1.5"><span id={`${id}-purpose`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Purpose</span><div role="group" aria-labelledby={`${id}-purpose`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{MEDICINE_PURPOSES.map((item) => <button key={item} type="button" aria-pressed={purpose === item} onClick={() => setPurpose(item)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", purpose === item ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{purpose === item ? "✓ " : ""}{item}</button>)}</div></div>}
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><span id={`${id}-applied-to`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Applied to</span><div role="group" aria-labelledby={`${id}-applied-to`} className="flex h-11 gap-1.5"><button type="button" aria-pressed={allBirds} onClick={() => setAllBirds(true)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", allBirds ? "border-success bg-success-muted text-success" : "border-border")}>All {population}</button><button type="button" aria-pressed={!allBirds} onClick={() => setAllBirds(false)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", !allBirds ? "border-success bg-success-muted text-success" : "border-border")}>Some</button></div></div></div>
+      <div className="space-y-1.5"><span id={`${id}-type`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Product type</span><ToggleGroup aria-labelledby={`${id}-type`} variant="outline" value={productType ? [productType] : []} onValueChange={(values) => { if (values[0]) setProductType(values[0] as typeof productType); }} className="grid w-full grid-cols-3 gap-2 sm:grid-cols-5">{[{ v: "FEED", label: "Feed" }, { v: "VITAMIN", label: "Vitamin" }, { v: "MEDICINE", label: "Medicine" }, { v: "VACCINE", label: "Vaccine" }, { v: "OTHER", label: "Other" }].map((item) => <ToggleGroupItem key={item.v} value={item.v} className="min-h-11">{item.label}</ToggleGroupItem>)}</ToggleGroup></div>
+      {purposeRequired && <div className="space-y-1.5"><span id={`${id}-purpose`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Purpose</span><div role="group" aria-labelledby={`${id}-purpose`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{MEDICINE_PURPOSES.map((item) => <Button variant="ghost" key={item} type="button" aria-pressed={purpose === item} onClick={() => setPurpose(item)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", purpose === item ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{purpose === item ? "✓ " : ""}{item}</Button>)}</div></div>}
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><span id={`${id}-applied-to`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Applied to</span><div role="group" aria-labelledby={`${id}-applied-to`} className="flex h-11 gap-1.5"><Button variant="ghost" type="button" aria-pressed={allBirds} onClick={() => setAllBirds(true)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", allBirds ? "border-success bg-success-muted text-success" : "border-border")}>All {population}</Button><Button variant="ghost" type="button" aria-pressed={!allBirds} onClick={() => setAllBirds(false)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", !allBirds ? "border-success bg-success-muted text-success" : "border-border")}>Some</Button></div></div></div>
       {!allBirds && <Input aria-label="Number of birds treated" type="number" min={1} max={population} value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg" placeholder={`1 – ${population}`} />}
       <details open={showDetails} onToggle={(e) => setShowDetails(e.currentTarget.open)} className="rounded-lg border px-3"><summary className="flex min-h-10 cursor-pointer items-center text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">More details <span className="ml-1 font-normal text-muted-foreground">(optional)</span></summary><div className="space-y-2 pb-3"><Input aria-label="Dose guidance or application note" value={dose} onChange={(e) => setDose(e.target.value)} placeholder="Dose guidance or application note" className="h-10 rounded-lg" /><Textarea aria-label="Product notes" rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Notes" className="resize-none rounded-lg" /></div></details>
       <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createInput.isPending || population <= 0}>{createInput.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save product record"}</Button>
@@ -538,7 +539,7 @@ function BehaviorForm({ batchId, population, onDone }: { batchId: string; popula
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
       <div className="space-y-1.5"><span id={`${id}-signs`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Signs noticed</span><div role="group" aria-labelledby={`${id}-signs`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{BEHAVIOR_SIGNS.map((item) => <TagPill key={item} label={item} selected={signs.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
-      <div className="space-y-1.5"><span id={`${id}-attention`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Attention level</span><div role="group" aria-labelledby={`${id}-attention`} className="grid grid-cols-3 gap-2">{[{ v: "LOW", label: "Watch" }, { v: "MEDIUM", label: "Check" }, { v: "HIGH", label: "Now" }].map((item) => <button key={item.v} type="button" aria-pressed={concern === item.v} onClick={() => setConcern(item.v)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", concern === item.v ? "border-warning bg-warning-muted text-warning-ink" : "border-border hover:bg-muted")}>{item.label}</button>)}</div></div>
+      <div className="space-y-1.5"><span id={`${id}-attention`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Attention level</span><div role="group" aria-labelledby={`${id}-attention`} className="grid grid-cols-3 gap-2">{[{ v: "LOW", label: "Watch" }, { v: "MEDIUM", label: "Check" }, { v: "HIGH", label: "Now" }].map((item) => <Button variant="ghost" key={item.v} type="button" aria-pressed={concern === item.v} onClick={() => setConcern(item.v)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", concern === item.v ? "border-warning bg-warning-muted text-warning-ink" : "border-border hover:bg-muted")}>{item.label}</Button>)}</div></div>
       <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id={`${id}-notes`} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you see?" className="h-11 rounded-lg" /></div></div>
       <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || population <= 0}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save behavior note"}</Button>
     </form>
@@ -626,7 +627,7 @@ export function EventTimeline({ events }: { events: BatchEvent[] }) {
                     <div className="min-w-0">
                       <div className="flex min-w-0 items-start gap-2">
                         <p className="min-w-0 flex-1 text-sm font-semibold leading-snug">{ev.title}</p>
-                        {syncNeedsReview && <Badge variant="warning" className="shrink-0 px-1.5 text-[10px]">{ev.syncStatus === "AUTH_REQUIRED" ? t("status.signInToSync") : t("status.needsReview")}</Badge>}
+                        {syncNeedsReview && <Badge variant="secondary" className="shrink-0 px-1.5 text-[10px]">{ev.syncStatus === "AUTH_REQUIRED" ? t("status.signInToSync") : t("status.needsReview")}</Badge>}
                         {!syncNeedsReview && ev.syncStatus && <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">{t("record.pendingSync")}</span>}
                       </div>
                       <p className="mt-1 break-words text-[11px] leading-snug text-muted-foreground" title={secondary}>{secondary || "—"}</p>
@@ -708,7 +709,7 @@ export function BatchLogSection({
       {/* Four common recording choices. */}
       <div className="grid grid-cols-2 gap-2">
         {ACTION_BUTTONS.map((btn) => (
-          <button
+          <Button variant="ghost"
             key={btn.type}
             type="button"
             ref={(node) => { triggerRefs.current[btn.type] = node; }}
@@ -722,11 +723,11 @@ export function BatchLogSection({
               <btn.icon className="size-[18px]" />
             </span>
             <span className="leading-tight">{t(ACTION_LABEL_KEYS[btn.type])}</span>
-          </button>
+          </Button>
         ))}
       </div>
 
-      <button
+      <Button variant="ghost"
         type="button"
         ref={(node) => { triggerRefs.current.DAILY_VITALS = node; }}
         onClick={() => setActiveDialog("DAILY_VITALS")}
@@ -737,7 +738,7 @@ export function BatchLogSection({
           <span className="truncate text-sm font-semibold">{t("record.measurements")}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2 text-xs font-semibold text-muted-foreground"><VitalsStatus batchId={batchId} /><span aria-hidden="true" className="text-base leading-none">›</span></span>
-      </button>
+      </Button>
 
       {/* Dialogs */}
       <Dialog open={activeDialog !== null} onOpenChange={(o) => !o && close()}>

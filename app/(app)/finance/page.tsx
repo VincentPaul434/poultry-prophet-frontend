@@ -1,5 +1,7 @@
 "use client";
 
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
 import { Suspense, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Loader2, RotateCcw, SlidersHorizontal, WalletCards } from "lucide-react";
@@ -229,8 +231,8 @@ function FinancePageContent() {
       </div>
 
       <nav aria-label="Finance views" className="flex gap-1 border-b border-border/60">
-        <button type="button" aria-current={filters.view === "report" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "report" })} className={`px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filters.view === "report" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Report</button>
-        <button type="button" aria-current={filters.view === "transactions" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "transactions" })} className={`px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filters.view === "transactions" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Transactions <span className="ml-1 font-normal text-muted-foreground">{transactionPage?.totalItems ?? 0}</span></button>
+        <Button variant="ghost" type="button" aria-current={filters.view === "report" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "report" })} className={`px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filters.view === "report" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Report</Button>
+        <Button variant="ghost" type="button" aria-current={filters.view === "transactions" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "transactions" })} className={`px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filters.view === "transactions" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Transactions <span className="ml-1 font-normal text-muted-foreground">{transactionPage?.totalItems ?? 0}</span></Button>
       </nav>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
@@ -515,7 +517,7 @@ function FinanceCurrencySection({ analytics, report, selectedBatchName }: { anal
                 </svg>
                 <div className="flex justify-between gap-2 px-1 text-xs text-muted-foreground"><span className="truncate">{series[0]?.label}</span>{series.length > 1 && <span className="truncate text-right">{series[series.length - 1]?.label}</span>}</div>
               </div>
-              <details className="mt-5 text-sm"><summary className="w-fit cursor-pointer font-medium text-primary">View period values</summary><div className="mt-3 max-h-60 overflow-auto rounded-xl bg-muted/35 p-3"><table className="w-full min-w-72 text-left text-xs"><thead><tr><th className="pb-2 font-medium">Period</th><th className="pb-2 text-right font-medium">Income</th><th className="pb-2 text-right font-medium">Expenses</th></tr></thead><tbody className="divide-y divide-border/60">{series.map((point, index) => <tr key={`${point.label}-${index}`}><th scope="row" className="py-2 font-normal">{point.label}</th><td className="py-2 text-right tabular-nums">{formatMoney(point.income, currency)}</td><td className="py-2 text-right tabular-nums">{formatMoney(point.expense, currency)}</td></tr>)}</tbody></table></div></details>
+              <details className="mt-5 text-sm"><summary className="w-fit cursor-pointer font-medium text-primary">View period values</summary><div className="mt-3 max-h-60 overflow-auto rounded-xl bg-muted/35 p-3"><Table className="w-full min-w-72 text-left text-xs"><TableHeader><TableRow><TableHead className="pb-2 font-medium">Period</TableHead><TableHead className="pb-2 text-right font-medium">Income</TableHead><TableHead className="pb-2 text-right font-medium">Expenses</TableHead></TableRow></TableHeader><TableBody className="divide-y divide-border/60">{series.map((point, index) => <TableRow key={`${point.label}-${index}`}><TableHead scope="row" className="py-2 font-normal">{point.label}</TableHead><TableCell className="py-2 text-right tabular-nums">{formatMoney(point.income, currency)}</TableCell><TableCell className="py-2 text-right tabular-nums">{formatMoney(point.expense, currency)}</TableCell></TableRow>)}</TableBody></Table></div></details>
             </div>
           ) : <p className="mt-8 flex min-h-48 items-center justify-center rounded-2xl bg-muted/35 p-5 text-center text-sm text-muted-foreground">Add a posted income or expense to see the trend.</p>}
         </div>

@@ -27,5 +27,5 @@ jobs:
         run: |
           pnpm exec next dev --hostname 127.0.0.1 --port 3000 > /tmp/poultry-next.log 2>&1 &
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/login >/dev/null && break; sleep 1; done
-          pnpm exec playwright test e2e/auth-block.spec.ts e2e/auth-lock.spec.ts e2e/auth-persistence.spec.ts e2e/calendar-dates.spec.ts e2e/offline-outbox.spec.ts --project=chromium --workers=1 --reporter=line
-          pnpm exec playwright test e2e/record-batch-picker.spec.ts --project=mobile-chromium-360 --project=mobile-chromium-390 --workers=1 --reporter=line --grep 'keeps offline recording scoped|names recording fields'
+          pnpm exec playwright test e2e/alerts-controls.spec.ts e2e/auth-block.spec.ts e2e/auth-lock.spec.ts e2e/auth-persistence.spec.ts e2e/calendar-dates.spec.ts e2e/offline-outbox.spec.ts --project=chromium --workers=1 --reporter=line
+          pnpm exec playwright test e2e/record-batch-picker.spec.ts --project=mobile-chromium-360 --project=mobile-chromium-390 --workers=1 --reporter=line --grep 'keeps offline recording scoped|names recording fields|shows the reason a queued record'

@@ -3,6 +3,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SyncStatusIndicator } from "@/components/sync-status-indicator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 
 function initials(name: string | undefined) {
   if (!name) return "?";
@@ -45,8 +46,10 @@ export function MobileAppHeader({ farmName, roleLabel, isManager, fullName, onPr
           <SyncStatusIndicator />
         </div>
       ) : (
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="icon"
           onClick={onProfileClick}
           className="absolute right-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
           aria-label="Open profile menu"
@@ -56,7 +59,7 @@ export function MobileAppHeader({ farmName, roleLabel, isManager, fullName, onPr
               {initials(fullName)}
             </AvatarFallback>
           </Avatar>
-        </button>
+        </Button>
       )}
     </header>
   );

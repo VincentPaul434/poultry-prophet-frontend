@@ -62,6 +62,17 @@ test.describe("Authentication forms", () => {
     await mockBackend(page, baseURL);
   });
 
+  test("password visibility can be toggled without losing the value", async ({ page }) => {
+    await page.goto("/login", { waitUntil: "networkidle" });
+    const input = page.getByLabel(/^password$/i);
+    await input.fill(password);
+    await page.getByRole("button", { name: "Show password" }).click();
+    await expect(input).toHaveAttribute("type", "text");
+    await expect(input).toHaveValue(password);
+    await page.getByRole("button", { name: "Hide password" }).click();
+    await expect(input).toHaveAttribute("type", "password");
+  });
+
   test("signs in without Web Locks when IndexedDB is available", async ({ page }) => {
     await page.addInitScript(() => Object.defineProperty(navigator, "locks", { value: undefined }));
     await page.route("**/api/backend/auth/login", route => route.fulfill({ json: authResponse() }));

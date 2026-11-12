@@ -131,6 +131,44 @@ test.describe("Record batch picker", () => {
     test.skip(!testInfo.project.name.startsWith("mobile-chromium-"), "This suite is reserved for mobile Chromium projects.");
   });
 
+  test("shows the reason a queued record needs attention without removing it", async ({ page }) => {
+    await mockHandlerBackend(page);
+    await openPicker(page);
+    await page.keyboard.press("Escape");
+    await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("poultry-prophet-offline-v1", 5);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("outbox", "readwrite");
+        tx.objectStore("outbox").put({ operationId: "conflict-test", schemaVersion: 1, entityType: "DAILY_RECORD", userId: 2, farmId: 1, batchId: 2, payload: {}, occurredAt: new Date().toISOString(), queuedAt: new Date().toISOString(), sequence: 1, status: "CONFLICT", attemptCount: 1, lastErrorMessage: "A measurement already exists for this date." });
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error);
+      });
+      db.close();
+      window.dispatchEvent(new Event("pp-offline-outbox-changed"));
+    });
+    await page.getByRole("button", { name: /1 needs help|1 kailangang ayusin/i }).first().click();
+    await expect(page.getByText("A measurement already exists for this date.")).toBeVisible();
+    await page.keyboard.press("Escape");
+    expect(await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("poultry-prophet-offline-v1", 5);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const result = await new Promise<unknown>((resolve, reject) => {
+        const request = db.transaction("outbox").objectStore("outbox").get("conflict-test");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      return result !== undefined;
+    })).toBe(true);
+  });
+
   test("keeps offline recording scoped after refresh rejection until the same handler signs in", async ({ page }) => {
     await mockHandlerBackend(page);
     let syncCalls = 0;

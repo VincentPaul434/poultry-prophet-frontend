@@ -1,29 +1,33 @@
 import * as React from "react"
-import { cn } from "@/lib/utils"
+import { cn } from "cn"
+import { ChevronDownIcon } from "lucide-react"
 
 type NativeSelectProps = Omit<React.ComponentProps<"select">, "size"> & {
-  size?: "sm" | "default" | number
-  error?: boolean
+  size?: "sm" | "default"
 }
 
 function NativeSelect({
   className,
   size = "default",
-  error = false,
   ...props
 }: NativeSelectProps) {
   return (
-    <select
-      data-slot="native-select"
-      data-size={typeof size === "number" ? "default" : size}
-      size={typeof size === "number" ? size : undefined}
+    <div
       className={cn(
-        "h-9 max-md:h-11 w-full min-w-0 rounded-md border border-input bg-transparent py-1 pr-8 pl-2.5 text-base shadow-xs transition-[color,box-shadow] outline-none select-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[size=sm]:h-8 md:text-sm dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
-        error && "border-destructive focus-visible:border-destructive focus-visible:ring-destructive/20",
+        "group/native-select relative w-fit has-[select:disabled]:opacity-50",
         className
       )}
-      {...props}
-    />
+      data-slot="native-select-wrapper"
+      data-size={size}
+    >
+      <select
+        data-slot="native-select"
+        data-size={size}
+        className="h-9 w-full min-w-0 appearance-none rounded-md border border-input bg-transparent py-1 pr-8 pl-2.5 text-sm shadow-xs transition-[color,box-shadow] outline-none select-none selection:bg-primary selection:text-primary-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 data-[size=sm]:h-8 dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
+        {...props}
+      />
+      <ChevronDownIcon className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground select-none" aria-hidden="true" data-slot="native-select-icon" />
+    </div>
   )
 }
 

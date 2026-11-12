@@ -28,14 +28,16 @@ export function FarmOnboardingBanner() {
       aria-label={t("farmSetup.ariaLabel")}
       className="relative overflow-hidden rounded-xl border border-primary/20 bg-primary/5 p-4 sm:p-5"
     >
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon"
         onClick={() => setDismissed(true)}
         aria-label={t("common.dismiss")}
         className="absolute right-2 top-2 flex size-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <X className="size-4" />
-      </button>
+      </Button>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
