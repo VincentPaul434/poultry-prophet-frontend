@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
+import { Geist, Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
+import { cn } from "@/lib/utils";
+
+const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
 const geist = Geist({
   subsets: ["latin"],
@@ -41,7 +44,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`h-full font-sans antialiased ${geist.variable}`}
+      className={cn("h-full", "antialiased", geist.variable, "font-sans", inter.variable)}
     >
       {/* Browser extensions may add attributes to body before hydration. */}
       <body suppressHydrationWarning className="min-h-full bg-background text-foreground">

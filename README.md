@@ -15,10 +15,13 @@ fighting performance.
 
 ## Getting started
 
+Use Node.js 24.13.0 (see `.nvmrc`) and pnpm 11.8.0. With Corepack available, enable it before installing. The `pnpm-lock.yaml` file is the canonical lockfile; use frozen installs to keep local and CI dependencies aligned.
+
 ```bash
-npm install
+corepack enable
+pnpm install --frozen-lockfile
 cp .env.example .env.local
-npm run dev
+pnpm dev
 ```
 
 Configure the backend API URL in `.env.local`:
@@ -33,6 +36,17 @@ backend host is not included in the client bundle. `BACKEND_API_URL` is
 server-only and must be configured in the deployment environment.
 `NEXT_PUBLIC_API_BASE_URL` remains supported as a compatibility fallback for
 existing deployments and should be replaced with `BACKEND_API_URL`.
+
+Offline daily-measurement replay is disabled by default. Set
+`NEXT_PUBLIC_OFFLINE_DAILY_RECORDS=true` only after deploying the matching backend and
+applying the reviewed V27 receipt migration to the intended database. Older backends reject
+the new operation type, so enabling it early can block a batch's offline queue.
+
+Authentication uses a separate IndexedDB database to coordinate credential changes across
+tabs. An interrupted credential request can leave its lock abandoned, preventing sign-in.
+Close all app tabs to end any in-flight requests, reopen one tab, and use the browser's
+storage developer tools to delete **only** `poultry-prophet-auth-lock` before signing in.
+Do not clear all site data or delete `poultry-prophet-offline-v1`: it contains unsynced records.
 
 ## Architecture
 

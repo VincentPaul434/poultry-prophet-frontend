@@ -1,5 +1,7 @@
 "use client";
 
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
 import { Suspense, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Loader2, RotateCcw, SlidersHorizontal, WalletCards } from "lucide-react";
@@ -10,8 +12,8 @@ import { useLocalDraft } from "@/hooks/use-local-draft";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/components/locale-provider";
 import { ApiError } from "@/lib/api-client";
-import { todayIso } from "@/lib/format";
-import type { Batch, FinanceAnalytics, FinanceTransactionType } from "@/lib/types";
+import { shiftCalendarDate, todayIso } from "@/lib/format";
+import type { Batch, FinanceAnalytics, FinanceCurrencyReport, FinanceTransactionType } from "@/lib/types";
 import type { TranslationKey } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -113,9 +115,7 @@ function describeFinanceFilters(
 function financeDates(filters: FinanceFilterState) {
   if (filters.period === "custom") return { start: filters.start, end: filters.end };
   const end = todayIso();
-  const startDate = new Date(`${end}T00:00:00`);
-  startDate.setDate(startDate.getDate() - (filters.period === "30d" ? 29 : filters.period === "90d" ? 89 : 364));
-  return { start: startDate.toISOString().slice(0, 10), end };
+  return { start: shiftCalendarDate(end, -(filters.period === "30d" ? 29 : filters.period === "90d" ? 89 : 364)), end };
 }
 
 function updateFinanceUrl(
@@ -231,8 +231,8 @@ function FinancePageContent() {
       </div>
 
       <nav aria-label="Finance views" className="flex gap-1 border-b border-border/60">
-        <button type="button" aria-current={filters.view === "report" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "report" })} className={`px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filters.view === "report" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Report</button>
-        <button type="button" aria-current={filters.view === "transactions" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "transactions" })} className={`px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filters.view === "transactions" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Transactions <span className="ml-1 font-normal text-muted-foreground">{transactionPage?.totalItems ?? 0}</span></button>
+        <Button variant="ghost" type="button" aria-current={filters.view === "report" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "report" })} className={`px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filters.view === "report" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Report</Button>
+        <Button variant="ghost" type="button" aria-current={filters.view === "transactions" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "transactions" })} className={`px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${filters.view === "transactions" ? "border-b-2 border-primary text-foreground" : "text-muted-foreground hover:text-foreground"}`}>Transactions <span className="ml-1 font-normal text-muted-foreground">{transactionPage?.totalItems ?? 0}</span></Button>
       </nav>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
@@ -319,7 +319,7 @@ function FinancePageContent() {
                   <p className="order-2 col-span-2 text-xs text-muted-foreground md:order-none md:col-span-1 md:text-sm">{transaction.transactionDate}</p>
                   <div className="min-w-0"><p className="truncate font-medium">{transaction.category}</p><p className="truncate text-xs text-muted-foreground">{transaction.description || (transaction.sourceType === "SALE_EVENT" ? "Linked sale event" : transaction.type === "INCOME" ? "Income" : "Expense")}{transaction.status === "VOIDED" ? " · Voided" : ""}</p></div>
                   <p className="hidden truncate text-sm text-muted-foreground md:block">{transaction.batchId == null ? t("finance.generalFarmRecords") : batchNames.get(transaction.batchId) ?? `Batch ${transaction.batchId}`}</p>
-                  <p className={`text-right font-semibold tabular-nums ${transaction.type === "EXPENSE" ? "text-foreground" : "text-primary"}`}>{transaction.type === "EXPENSE" ? "−" : "+"}{formatPeso(transaction.amount)}</p>
+                  <p className={`text-right font-semibold tabular-nums ${transaction.type === "EXPENSE" ? "text-foreground" : "text-primary"}`}>{transaction.type === "EXPENSE" ? "−" : "+"}{formatMoney(transaction.amount, transaction.currency)}</p>
                 </div>
               ))}
             </div>
@@ -460,8 +460,19 @@ function FinanceReport({
     return <div className="rounded-3xl bg-card px-6 py-16 text-center text-sm text-muted-foreground">No finance analytics are available for this view yet.</div>;
   }
 
-  const series = analytics.series ?? [];
-  const totals = analytics.totals;
+  const reports = analytics.byCurrency ?? (analytics.totals && analytics.currency
+    ? [{ currency: analytics.currency, totals: analytics.totals, series: analytics.series, categoryTotals: analytics.categoryTotals }]
+    : []);
+  if (reports.length === 0) {
+    return <div className="rounded-3xl bg-card px-6 py-16 text-center text-sm text-muted-foreground">Currency-separated finance data is unavailable.</div>;
+  }
+  return <div className="space-y-8">{reports.length > 1 && <p className="text-sm text-muted-foreground">Currencies are reported separately; no conversion is applied.</p>}{reports.map((report) => <FinanceCurrencySection key={report.currency} analytics={analytics} report={report} selectedBatchName={selectedBatchName} />)}</div>;
+}
+
+function FinanceCurrencySection({ analytics, report, selectedBatchName }: { analytics: FinanceAnalytics; report: FinanceCurrencyReport; selectedBatchName: string }) {
+  const series = report.series ?? [];
+  const totals = report.totals;
+  const currency = report.currency;
   const income = Number(totals.recordedIncome);
   const expense = Number(totals.recordedExpense);
   const net = Number(totals.recordedNetCashFlow);
@@ -473,19 +484,19 @@ function FinanceReport({
   const chartMax = Math.max(1, ...series.flatMap((point) => [Number(point.income), Number(point.expense)]));
   const groupWidth = (chartWidth - 44) / Math.max(series.length, 1);
   const barWidth = Math.min(22, groupWidth * 0.26);
-  const categoryMax = Math.max(1, ...analytics.categoryTotals.map((item) => Number(item.amount)));
+  const categoryMax = Math.max(1, ...report.categoryTotals.map((item) => Number(item.amount)));
   const chartDescription = `Recorded income and expenses across ${series.length} period${series.length === 1 ? "" : "s"}.`;
 
   return (
     <div className="space-y-6">
       <section aria-label="Financial summary" className="grid overflow-hidden rounded-[1.75rem] bg-[#194b37] text-white shadow-xl shadow-[#194b37]/10 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,1fr)]">
         <div className="flex min-h-64 flex-col justify-between gap-10 p-6 sm:p-8 lg:p-10">
-          <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-medium text-white/85">Net cash flow</h2><p className="mt-1 text-sm text-white/60">{selectedBatchName} · {analytics.startDate} to {analytics.endDate}</p></div><span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/80">Recorded cash</span></div>
-          <div><p className="break-words text-[clamp(2.6rem,6vw,5rem)] font-semibold leading-none tracking-[-0.065em] tabular-nums">{formatSignedPeso(net)}</p><p className="mt-3 text-sm text-white/65">Income less cash expenses for this period</p></div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-medium text-white/85">Net cash flow</h2><p className="mt-1 text-sm text-white/60">{selectedBatchName} · {analytics.startDate} to {analytics.endDate}</p></div><span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/80">{currency} · Recorded cash</span></div>
+          <div><p className="break-words text-[clamp(2.6rem,6vw,5rem)] font-semibold leading-none tracking-[-0.065em] tabular-nums">{formatSignedMoney(net, currency)}</p><p className="mt-3 text-sm text-white/65">Income less cash expenses for this period</p></div>
         </div>
         <div className="grid bg-white/[0.07] sm:grid-cols-2 lg:grid-cols-1">
-          <div className="flex flex-col justify-center gap-3 p-6 sm:p-8 lg:p-8"><h3 className="text-sm font-medium text-white/75">Income</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatPeso(income)}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#c6e5b4]" style={{ width: `${Math.max(income > 0 ? 2 : 0, income / totalMovement * 100)}%` }} /></div></div>
-          <div className="flex flex-col justify-center gap-3 border-t border-white/10 p-6 sm:border-l sm:border-t-0 sm:p-8 lg:border-l-0 lg:border-t lg:p-8"><h3 className="text-sm font-medium text-white/75">Cash expenses</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatPeso(expense)}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#e5b679]" style={{ width: `${Math.max(expense > 0 ? 2 : 0, expense / totalMovement * 100)}%` }} /></div></div>
+          <div className="flex flex-col justify-center gap-3 p-6 sm:p-8 lg:p-8"><h3 className="text-sm font-medium text-white/75">Income</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatMoney(income, currency)}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#c6e5b4]" style={{ width: `${Math.max(income > 0 ? 2 : 0, income / totalMovement * 100)}%` }} /></div></div>
+          <div className="flex flex-col justify-center gap-3 border-t border-white/10 p-6 sm:border-l sm:border-t-0 sm:p-8 lg:border-l-0 lg:border-t lg:p-8"><h3 className="text-sm font-medium text-white/75">Cash expenses</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatMoney(expense, currency)}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#e5b679]" style={{ width: `${Math.max(expense > 0 ? 2 : 0, expense / totalMovement * 100)}%` }} /></div></div>
         </div>
       </section>
 
@@ -501,31 +512,32 @@ function FinanceReport({
                     const x = 22 + groupWidth * (index + 0.5);
                     const incomeHeight = Math.max(Number(point.income) > 0 ? 2 : 0, Number(point.income) / chartMax * (chartBottom - chartTop));
                     const expenseHeight = Math.max(Number(point.expense) > 0 ? 2 : 0, Number(point.expense) / chartMax * (chartBottom - chartTop));
-                    return <g key={`${point.label}-${index}`}><title>{`${point.label}: ${formatPeso(point.income)} income, ${formatPeso(point.expense)} expenses`}</title><rect x={x - barWidth - 2} y={chartBottom - incomeHeight} width={barWidth} height={incomeHeight} rx="3" fill="#467e53" /><rect x={x + 2} y={chartBottom - expenseHeight} width={barWidth} height={expenseHeight} rx="3" fill="#d3a25e" /></g>;
+                    return <g key={`${point.label}-${index}`}><title>{`${point.label}: ${formatMoney(point.income, currency)} income, ${formatMoney(point.expense, currency)} expenses`}</title><rect x={x - barWidth - 2} y={chartBottom - incomeHeight} width={barWidth} height={incomeHeight} rx="3" fill="#467e53" /><rect x={x + 2} y={chartBottom - expenseHeight} width={barWidth} height={expenseHeight} rx="3" fill="#d3a25e" /></g>;
                   })}
                 </svg>
                 <div className="flex justify-between gap-2 px-1 text-xs text-muted-foreground"><span className="truncate">{series[0]?.label}</span>{series.length > 1 && <span className="truncate text-right">{series[series.length - 1]?.label}</span>}</div>
               </div>
-              <details className="mt-5 text-sm"><summary className="w-fit cursor-pointer font-medium text-primary">View period values</summary><div className="mt-3 max-h-60 overflow-auto rounded-xl bg-muted/35 p-3"><table className="w-full min-w-72 text-left text-xs"><thead><tr><th className="pb-2 font-medium">Period</th><th className="pb-2 text-right font-medium">Income</th><th className="pb-2 text-right font-medium">Expenses</th></tr></thead><tbody className="divide-y divide-border/60">{series.map((point, index) => <tr key={`${point.label}-${index}`}><th scope="row" className="py-2 font-normal">{point.label}</th><td className="py-2 text-right tabular-nums">{formatPeso(point.income)}</td><td className="py-2 text-right tabular-nums">{formatPeso(point.expense)}</td></tr>)}</tbody></table></div></details>
+              <details className="mt-5 text-sm"><summary className="w-fit cursor-pointer font-medium text-primary">View period values</summary><div className="mt-3 max-h-60 overflow-auto rounded-xl bg-muted/35 p-3"><Table className="w-full min-w-72 text-left text-xs"><TableHeader><TableRow><TableHead className="pb-2 font-medium">Period</TableHead><TableHead className="pb-2 text-right font-medium">Income</TableHead><TableHead className="pb-2 text-right font-medium">Expenses</TableHead></TableRow></TableHeader><TableBody className="divide-y divide-border/60">{series.map((point, index) => <TableRow key={`${point.label}-${index}`}><TableHead scope="row" className="py-2 font-normal">{point.label}</TableHead><TableCell className="py-2 text-right tabular-nums">{formatMoney(point.income, currency)}</TableCell><TableCell className="py-2 text-right tabular-nums">{formatMoney(point.expense, currency)}</TableCell></TableRow>)}</TableBody></Table></div></details>
             </div>
           ) : <p className="mt-8 flex min-h-48 items-center justify-center rounded-2xl bg-muted/35 p-5 text-center text-sm text-muted-foreground">Add a posted income or expense to see the trend.</p>}
         </div>
-        <div className="bg-muted/35 p-5 sm:p-8"><h2 className="text-xl font-semibold tracking-tight">Where spending went</h2><p className="mt-1 text-sm text-muted-foreground">Top recorded expense categories</p><div className="mt-8 space-y-5">{analytics.categoryTotals.length === 0 && <p className="text-sm text-muted-foreground">No categories recorded.</p>}{analytics.categoryTotals.slice(0, 5).map((item) => <div key={item.category}><div className="flex items-baseline justify-between gap-3 text-sm"><span className="truncate font-medium">{item.category}</span><span className="shrink-0 font-semibold tabular-nums">{formatPeso(item.amount)}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/10"><div className="h-full rounded-full bg-[#9ab476]" style={{ width: `${Number(item.amount) / categoryMax * 100}%` }} /></div></div>)}</div></div>
+        <div className="bg-muted/35 p-5 sm:p-8"><h2 className="text-xl font-semibold tracking-tight">Where spending went</h2><p className="mt-1 text-sm text-muted-foreground">Top recorded expense categories</p><div className="mt-8 space-y-5">{report.categoryTotals.length === 0 && <p className="text-sm text-muted-foreground">No categories recorded.</p>}{report.categoryTotals.slice(0, 5).map((item) => <div key={item.category}><div className="flex items-baseline justify-between gap-3 text-sm"><span className="truncate font-medium">{item.category}</span><span className="shrink-0 font-semibold tabular-nums">{formatMoney(item.amount, currency)}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/10"><div className="h-full rounded-full bg-[#9ab476]" style={{ width: `${Number(item.amount) / categoryMax * 100}%` }} /></div></div>)}</div></div>
       </section>
 
-      <section className="rounded-[1.75rem] bg-card p-5 shadow-sm shadow-foreground/5 sm:p-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">Recorded statement</h2><p className="mt-1 text-sm text-muted-foreground">A breakdown of the figures above</p></div><p className="text-sm text-muted-foreground">{totals.postedTransactionCount} posted record{totals.postedTransactionCount === 1 ? "" : "s"}</p></div><dl className="mt-6 divide-y divide-border/60"><StatementRow label="Sale proceeds" value={totals.saleIncome} /><StatementRow label="Other income" value={totals.otherIncome} /><StatementRow label="Total income" value={totals.recordedIncome} emphasis /><StatementRow label="Cash expenses" value={totals.recordedExpense} negative />{analytics.scope === "BATCH" && <><StatementRow label="Products consumed" value={totals.productsConsumedCost} negative /><StatementRow label="Total recorded batch cost" value={totals.totalRecordedBatchCost} negative /></>}<StatementRow label={analytics.scope === "BATCH" ? "Recorded contribution" : "Net cash flow"} value={analytics.scope === "BATCH" ? totals.recordedContribution : totals.recordedNetCashFlow} signed emphasis /></dl><div className="mt-6 flex flex-wrap items-start justify-between gap-4 text-xs leading-5 text-muted-foreground"><p className="max-w-2xl">{analytics.limitations.message}{totals.voidedTransactionCount > 0 ? ` ${totals.voidedTransactionCount} voided record${totals.voidedTransactionCount === 1 ? " was" : "s were"} excluded.` : ""}</p><details className="shrink-0"><summary className="cursor-pointer font-medium text-foreground">View period details</summary><p className="mt-1">{analytics.startDate} to {analytics.endDate} · {analytics.currency}</p></details></div></section>
+      <section className="rounded-[1.75rem] bg-card p-5 shadow-sm shadow-foreground/5 sm:p-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">Recorded statement</h2><p className="mt-1 text-sm text-muted-foreground">A breakdown of the figures above</p></div><p className="text-sm text-muted-foreground">{totals.postedTransactionCount} posted record{totals.postedTransactionCount === 1 ? "" : "s"}</p></div><dl className="mt-6 divide-y divide-border/60"><StatementRow currency={currency} label="Sale proceeds" value={totals.saleIncome} /><StatementRow currency={currency} label="Other income" value={totals.otherIncome} /><StatementRow currency={currency} label="Total income" value={totals.recordedIncome} emphasis /><StatementRow currency={currency} label="Cash expenses" value={totals.recordedExpense} negative />{analytics.scope === "BATCH" && totals.productsConsumedCost != null && <><StatementRow currency={currency} label="Products consumed" value={totals.productsConsumedCost} negative /><StatementRow currency={currency} label="Total recorded batch cost" value={totals.totalRecordedBatchCost} negative /></>}<StatementRow currency={currency} label={analytics.scope === "BATCH" && totals.recordedContribution != null ? "Recorded contribution" : "Net cash flow"} value={analytics.scope === "BATCH" && totals.recordedContribution != null ? totals.recordedContribution : totals.recordedNetCashFlow} signed emphasis /></dl><div className="mt-6 flex flex-wrap items-start justify-between gap-4 text-xs leading-5 text-muted-foreground"><p className="max-w-2xl">{analytics.limitations.message}{totals.voidedTransactionCount > 0 ? ` ${totals.voidedTransactionCount} voided record${totals.voidedTransactionCount === 1 ? " was" : "s were"} excluded.` : ""}</p><details className="shrink-0"><summary className="cursor-pointer font-medium text-foreground">View period details</summary><p className="mt-1">{analytics.startDate} to {analytics.endDate} · {currency}</p></details></div></section>
     </div>
   );
 }
 
-function StatementRow({ label, value, negative = false, signed = false, emphasis = false }: { label: string; value: string | number; negative?: boolean; signed?: boolean; emphasis?: boolean }) {
+function StatementRow({ currency, label, value, negative = false, signed = false, emphasis = false }: { currency: string; label: string; value: string | number | null; negative?: boolean; signed?: boolean; emphasis?: boolean }) {
+  if (value == null) return null;
   const amount = Number(value);
-  return <div className={`flex items-baseline justify-between gap-4 py-3.5 ${emphasis ? "font-semibold" : "text-sm"}`}><dt className="text-foreground/80">{label}</dt><dd className={`text-right tabular-nums ${signed && amount >= 0 ? "text-primary" : ""}`}>{signed ? formatSignedPeso(amount) : `${negative ? "−" : ""}${formatPeso(amount)}`}</dd></div>;
+  return <div className={`flex items-baseline justify-between gap-4 py-3.5 ${emphasis ? "font-semibold" : "text-sm"}`}><dt className="text-foreground/80">{label}</dt><dd className={`text-right tabular-nums ${signed && amount >= 0 ? "text-primary" : ""}`}>{signed ? formatSignedMoney(amount, currency) : `${negative ? "−" : ""}${formatMoney(amount, currency)}`}</dd></div>;
 }
 
-function formatSignedPeso(value: number) { return value === 0 ? formatPeso(0) : `${value < 0 ? "−" : "+"}${formatPeso(Math.abs(value))}`; }
+function formatSignedMoney(value: number, currency: string) { return value === 0 ? formatMoney(0, currency) : `${value < 0 ? "−" : "+"}${formatMoney(Math.abs(value), currency)}`; }
 
-function formatPeso(value: string | number) {
-  return `₱${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-  
+function formatMoney(value: string | number, currency: string) {
+  const amount = Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return currency === "PHP" ? `₱${amount}` : `${currency} ${amount}`;
 }

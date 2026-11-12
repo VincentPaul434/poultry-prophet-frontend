@@ -41,11 +41,19 @@ export function scoreColor(value: number | null | undefined): string {
   return "text-destructive";
 }
 
-export function todayIso(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
+export function todayIso(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  return `${value("year")}-${value("month")}-${value("day")}`;
+}
+
+/** Shift a calendar date without converting local midnight to a different UTC day. */
+export function shiftCalendarDate(date: string, days: number): string {
+  const result = new Date(`${date}T00:00:00.000Z`);
+  result.setUTCDate(result.getUTCDate() + days);
+  return result.toISOString().slice(0, 10);
 }
 
 export function isFutureDate(value: string | null | undefined): boolean {

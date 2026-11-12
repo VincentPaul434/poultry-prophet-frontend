@@ -40,6 +40,7 @@ async function withQueuedPopulation<T extends { id: number; currentPopulation: n
 export function useBatches({ enabled = true }: BatchListOptions = {}) {
   const { user } = useAuth();
   return useQuery({
+    networkMode: "always",
     queryKey: qk.batches.lists(),
     queryFn: async () => {
       try {
@@ -68,6 +69,7 @@ export function useBatches({ enabled = true }: BatchListOptions = {}) {
 export function useBatch(batchId: number | string, enabled = true) {
   const { user } = useAuth();
   return useQuery({
+    networkMode: "always",
     queryKey: qk.batches.detail(batchId),
     queryFn: async () => {
       try {
@@ -167,6 +169,7 @@ export function useDeleteBatch() {
 export function useBatchOverview(batchId: number | string, enabled = true) {
   const { user } = useAuth();
   return useQuery({
+    networkMode: "always",
     queryKey: qk.batches.overview(batchId),
     queryFn: async () => {
       try {
@@ -258,6 +261,7 @@ export function useDashboardBatches() {
   }, [farmId, queryClient, userId]);
 
   return useQuery({
+    networkMode: "always",
     queryKey: qk.batches.dashboard(),
     queryFn: async () => {
       try {

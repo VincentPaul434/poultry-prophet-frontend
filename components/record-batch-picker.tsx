@@ -69,7 +69,7 @@ function RecordBatchOption({ batch, origin, onSelected }: { batch: Batch; origin
         {needsReview ? <span className="font-bold tabular-nums text-warning-ink">{batch.initialPopulation} initial</span> : <><span className="font-bold tabular-nums text-foreground">{batch.currentPopulation} / {batch.initialPopulation}</span><span>{t("dashboard.birdsInBatch")}</span></>}
         <span aria-hidden="true">·</span>
         <Badge variant="secondary" className="h-5 max-w-[8rem] truncate rounded-full bg-primary/10 px-2 text-[10px] font-semibold capitalize text-primary">{stage}</Badge>
-        {needsReview && <Badge variant="warning" className="h-5 max-w-[8rem] truncate rounded-full px-2 text-[10px] font-semibold">{t("record.countNeedsReview")}</Badge>}
+        {needsReview && <Badge variant="secondary" className="h-5 max-w-[8rem] truncate rounded-full px-2 text-[10px] font-semibold">{t("record.countNeedsReview")}</Badge>}
       </span>
     </span>
     <ChevronRight className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
@@ -97,7 +97,6 @@ export function RecordBatchPicker({ open, onOpenChange, origin }: { open: boolea
     <SheetContent
       side="bottom"
       showCloseButton={false}
-      overlayClassName="bg-black/30 backdrop-blur-[2px]"
       className="h-[min(90dvh,46rem)] max-h-[calc(100dvh-0.5rem)] gap-0 overflow-hidden rounded-t-[1.75rem] border-t-0 bg-muted/30 p-0 shadow-2xl"
     >
       <SheetHeader className="relative shrink-0 overflow-hidden bg-primary px-5 pb-8 pt-5 pr-16 text-primary-foreground">
@@ -109,7 +108,7 @@ export function RecordBatchPicker({ open, onOpenChange, origin }: { open: boolea
         <div className="relative z-10 flex items-start gap-3">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary-foreground/15 text-primary-foreground"><ClipboardList className="size-5" aria-hidden="true" /></span>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2"><SheetTitle className="text-xl font-bold text-primary-foreground">{t("record.title")}</SheetTitle><Badge variant="warning" className="h-5 rounded-full px-2 text-[10px] font-bold">{isLoading ? "…" : activeBatches.length} {t("record.activeBatches")}</Badge></div>
+            <div className="flex flex-wrap items-center gap-2"><SheetTitle className="text-xl font-bold text-primary-foreground">{t("record.title")}</SheetTitle><Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px] font-bold">{isLoading ? "…" : activeBatches.length} {t("record.activeBatches")}</Badge></div>
             <SheetDescription className="mt-1 text-primary-foreground/75">{t("record.chooseBatch")}</SheetDescription>
           </div>
         </div>

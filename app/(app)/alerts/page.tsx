@@ -20,6 +20,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/page-header";
 
 const severityConfig: Record<Severity, { label: string; badgeClass: string; statClass: string }> = {
@@ -78,36 +80,18 @@ export default function AlertsPage() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           {/* Active / All toggle */}
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <div className="flex rounded-xl border bg-card p-1 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => { setShowAll(false); setPage(0); }}
-                aria-pressed={!showAll}
-                className={cn(
-                  "min-h-9 rounded-lg px-3 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
-                  !showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                Active
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowAll(true); setPage(0); }}
-                aria-pressed={showAll}
-                className={cn(
-                  "min-h-9 rounded-lg px-3 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
-                  showAll ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                All
-              </button>
-            </div>
-            <select aria-label="Alert severity" className="min-h-11 min-w-0 max-w-full rounded-xl border bg-card px-3 text-xs" value={severity} onChange={(event) => { setSeverity(event.target.value as Severity | "ALL"); setPage(0); }}>
+            <Tabs value={showAll ? "all" : "active"} onValueChange={(value) => { setShowAll(value === "all"); setPage(0); }}>
+              <TabsList aria-label="Alert status">
+                <TabsTrigger value="active">Active</TabsTrigger>
+                <TabsTrigger value="all">All</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <NativeSelect aria-label="Alert severity" value={severity} onChange={(event) => { setSeverity(event.target.value as Severity | "ALL"); setPage(0); }}>
               <option value="ALL">All severities</option><option value="CRITICAL">Critical</option><option value="WARNING">Warning</option><option value="INFO">Info</option>
-            </select>
-            <select aria-label="Alert sort" className="min-h-11 min-w-0 rounded-xl border bg-card px-3 text-xs" value={sort} onChange={(event) => { setSort(event.target.value); setPage(0); }}>
+            </NativeSelect>
+            <NativeSelect aria-label="Alert sort" value={sort} onChange={(event) => { setSort(event.target.value); setPage(0); }}>
               <option value="priority">Sort: Priority</option><option value="newest">Sort: Newest</option>
-            </select>
+            </NativeSelect>
           </div>
           {isManager && unacknowledgedItems.length > 0 && (
             <Button
@@ -115,10 +99,10 @@ export default function AlertsPage() {
               size="sm"
               variant="outline"
               className="w-full sm:w-auto"
-              loading={acknowledgeAllMutation.isPending}
+              disabled={acknowledgeAllMutation.isPending}
               onClick={acknowledgeAll}
             >
-              Acknowledge all
+              {acknowledgeAllMutation.isPending && <Loader2 data-icon="inline-start" className="animate-spin" />} Acknowledge all
             </Button>
           )}
         </div>
@@ -197,10 +181,12 @@ export default function AlertsPage() {
 
 function AlertStat({ label, value, className }: { label: string; value: number | string; className?: string }) {
   return (
-    <div className="min-w-0 rounded-xl border bg-card px-3 py-2.5 shadow-none">
+    <Card className="min-w-0">
+      <CardContent>
       <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className={cn("mt-0.5 text-lg font-bold tabular-nums", className)}>{value}</p>
-    </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -258,10 +244,10 @@ function AlertRow({
             <Button
               size="xs"
               className="min-w-0 flex-1 bg-primary px-2 font-semibold sm:flex-none"
-              loading={acknowledge.isPending}
+              disabled={acknowledge.isPending}
               onClick={ack}
             >
-              Acknowledge
+              {acknowledge.isPending && <Loader2 data-icon="inline-start" className="animate-spin" />} Acknowledge
             </Button>
           )
         )}

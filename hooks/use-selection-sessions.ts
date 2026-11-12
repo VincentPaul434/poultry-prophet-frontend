@@ -137,6 +137,7 @@ export function useSelectionSessions(batchId: number | string, enabled = true) {
     void queryClient.invalidateQueries({ queryKey: qk.batches.selectionSessions(batchId) });
   }), [batchId, queryClient]);
   return useQuery<SelectionSession[]>({
+    networkMode: "always",
     queryKey: qk.batches.selectionSessions(batchId),
     queryFn: async () => {
       const numericBatchId = Number(batchId);
@@ -178,6 +179,7 @@ export function useCreateSelectionSession(batchId: number | string) {
   const { user } = useAuth();
   const { enqueue } = useOfflineSync();
   return useMutation({
+    networkMode: "always",
     mutationFn: async (body: CreateSelectionSessionRequest) => {
       if (!user?.farmId) throw new Error("Sign in to save this selection draft.");
       if (navigator.onLine) {
@@ -207,6 +209,7 @@ export function useUpdateSelectionSession(batchId: number | string) {
   const { user } = useAuth();
   const { enqueue } = useOfflineSync();
   return useMutation({
+    networkMode: "always",
     mutationFn: async ({ sessionId, body }: { sessionId: number; body: CreateSelectionSessionRequest }) => {
       if (!user?.farmId) throw new Error("Sign in to save this selection draft.");
       let targetSessionId = sessionId;

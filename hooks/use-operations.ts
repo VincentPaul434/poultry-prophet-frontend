@@ -47,6 +47,7 @@ export function useCreateIncubationBatch() { const qc = useQueryClient(); return
 export function useFarmInputs(batchId?: number, cycleId?: number, enabled = true) {
   const { user } = useAuth();
   return useQuery({
+    networkMode: "always",
     queryKey: qk.farmInputs(batchId, cycleId),
     queryFn: async () => {
       try { return await inputApi.list(batchId, cycleId); }
@@ -66,6 +67,7 @@ export function useCreateFarmInput() {
   const qc = useQueryClient();
   const { enqueue } = useOfflineSync();
   return useMutation({
+    networkMode: "always",
     mutationFn: async (body: CreateFarmInputRequest) => {
       if (!body.batchId) return inputApi.create(body);
       const operationId = body.operationId ?? crypto.randomUUID();
@@ -119,7 +121,8 @@ export function useFarmProducts(includeInactive = false, enabled = true) {
       return { ...product, stockOnHand };
     }));
   }
-  return useQuery({ queryKey: qk.inventoryProducts(includeInactive), queryFn: async () => {
+  return useQuery({
+    networkMode: "always", queryKey: qk.inventoryProducts(includeInactive), queryFn: async () => {
     try {
       const products = await inventoryApi.products(includeInactive);
       if (user?.farmId) {
@@ -286,6 +289,7 @@ function isTaskQueueContractMismatch(error: unknown) {
 export function useTaskPage(filters: TaskPageFilters = DEFAULT_TASK_PAGE, enabled = true) {
   const { user } = useAuth();
   return useQuery({
+    networkMode: "always",
     queryKey: qk.taskPage(filters as unknown as Record<string, unknown>),
     enabled,
     queryFn: async () => {
@@ -305,6 +309,7 @@ export function useTaskPage(filters: TaskPageFilters = DEFAULT_TASK_PAGE, enable
 export function useTaskPageInfinite(filters: TaskPageFilters = DEFAULT_TASK_PAGE, enabled = true) {
   const { user } = useAuth();
   return useInfiniteQuery({
+    networkMode: "always",
     queryKey: qk.taskPageInfinite(filters as unknown as Record<string, unknown>),
     initialPageParam: 0,
     enabled,
@@ -327,6 +332,7 @@ export function useTaskQueue(bucket: HandlerTaskQueueBucket, enabled = true) {
   const { user } = useAuth();
   const size = 10;
   return useInfiniteQuery({
+    networkMode: "always",
     queryKey: qk.handlerTaskQueue(bucket, size),
     initialPageParam: 0,
     enabled,
@@ -351,6 +357,7 @@ export function useTaskQueue(bucket: HandlerTaskQueueBucket, enabled = true) {
 export function useHandlerTaskQueueSummary(enabled = true) {
   const { user } = useAuth();
   return useQuery({
+    networkMode: "always",
     queryKey: qk.handlerTaskQueueSummary,
     enabled,
     queryFn: async () => {
@@ -372,6 +379,7 @@ export function useHandlerTaskQueueSummary(enabled = true) {
 export function useTaskSummary(filters: Partial<Omit<TaskPageFilters, "page" | "size" | "view" | "dueBucket">> = {}, enabled = true) {
   const { user } = useAuth();
   return useQuery({
+    networkMode: "always",
     queryKey: qk.taskSummary(filters as Record<string, unknown>),
     enabled,
     queryFn: async () => {
@@ -426,6 +434,7 @@ export function useUpdateTaskStatus() {
   const qc = useQueryClient();
   const { enqueue } = useOfflineSync();
   return useMutation({
+    networkMode: "always",
     mutationFn: async ({ id, body, batchId }: { id: number; body: UpdateTaskStatusRequest; batchId?: number | null }) => {
       const operationId = body.operationId ?? (typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
@@ -472,6 +481,7 @@ export function useRecordSexComposition() {
   const qc = useQueryClient();
   const { enqueue } = useOfflineSync();
   return useMutation({
+    networkMode: "always",
     mutationFn: async ({ batchId, body }: { batchId: number; body: CreateSexCompositionRequest }) => {
       const operationId = body.operationId ?? (typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
@@ -530,6 +540,7 @@ export function useVaccinationPrograms(enabled = true) { return useQuery({ query
 export function useVaccinationPlan(batchId: number, enabled = true) {
   const { user } = useAuth();
   return useQuery({
+    networkMode: "always",
     queryKey: qk.batches.vaccinationPlan(batchId),
     queryFn: async () => {
       try { return await vaccinationApi.plan(batchId); }
@@ -548,6 +559,7 @@ export function useCreateVaccinationProgram() {
   const qc = useQueryClient();
   const { enqueue } = useOfflineSync();
   return useMutation({
+    networkMode: "always",
     mutationFn: async (input: CreateVaccinationProgramRequest | { body: CreateVaccinationProgramRequest; batchId: number; replace: boolean }) => {
       const body = "body" in input ? input.body : input;
       const scheduleContext = "body" in input ? input : null;
@@ -573,6 +585,7 @@ export function useAssignVaccinationProgram() {
   const qc = useQueryClient();
   const { enqueue } = useOfflineSync();
   return useMutation({
+    networkMode: "always",
     mutationFn: async ({ batchId, body }: { batchId: number; body: AssignVaccinationProgramRequest }) => {
       const operationId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
       if (typeof navigator === "undefined" || navigator.onLine) {
@@ -594,6 +607,7 @@ export function useReplaceVaccinationProgram() {
   const qc = useQueryClient();
   const { enqueue } = useOfflineSync();
   return useMutation({
+    networkMode: "always",
     mutationFn: async ({ batchId, body }: { batchId: number; body: ReplaceVaccinationPlanRequest }) => {
       const operationId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
       if (typeof navigator === "undefined" || navigator.onLine) {
@@ -615,6 +629,7 @@ export function useRecordVaccination() {
   const qc = useQueryClient();
   const { enqueue } = useOfflineSync();
   return useMutation({
+    networkMode: "always",
     mutationFn: async ({ plan, body }: { plan: import("@/lib/types").VaccinationPlanItem; body: RecordVaccinationRequest }) => {
       const operationId = body.operationId ?? (typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);

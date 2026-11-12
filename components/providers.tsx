@@ -10,6 +10,7 @@ import { makeQueryClient } from "@/lib/query-client";
 import { LocaleProvider } from "@/components/locale-provider";
 import { OfflineSyncProvider } from "@/lib/offline-sync-provider";
 import { ServiceWorkerRegistration } from "@/components/service-worker-registration";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export function Providers({ children }: { children: ReactNode }) {
   // useState ensures one QueryClient per browser session (survives re-renders,
@@ -21,7 +22,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} themes={["light", "dark"]}>
         <LocaleProvider>
           <AuthProvider>
-            <OfflineSyncProvider>{children}</OfflineSyncProvider>
+            <TooltipProvider><OfflineSyncProvider>{children}</OfflineSyncProvider></TooltipProvider>
           </AuthProvider>
           <ServiceWorkerRegistration />
         </LocaleProvider>

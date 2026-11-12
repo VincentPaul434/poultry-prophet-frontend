@@ -137,7 +137,7 @@ export function EditableSexCompositionMetric({ batch, fallback, readOnly = false
   </div>;
 
   return <>
-    {readOnly ? metric : <button type="button" className="min-w-0 text-left focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" aria-label={accessibleLabel} onClick={startEdit}>{metric}</button>}
+    {readOnly ? metric : <Button type="button" variant="ghost" className="h-auto min-w-0 p-0 text-left" aria-label={accessibleLabel} onClick={startEdit}>{metric}</Button>}
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="grid max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-lg grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-4 py-4 pr-12 sm:px-5"><DialogTitle>{displayed ? t("sexComposition.editTitle") : t("sexComposition.recordTitle")}</DialogTitle><DialogDescription>{t("sexComposition.description")}</DialogDescription></DialogHeader>

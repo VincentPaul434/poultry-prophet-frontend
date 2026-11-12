@@ -1,0 +1,31 @@
+name: Frontend checks
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: node --test tests/auth-client.test.cjs tests/auth-cookie.test.cjs tests/auth-origin.test.cjs tests/backend-proxy.test.cjs tests/selection-review-finance.test.cjs tests/service-worker.test.cjs
+      - run: pnpm build
+        env:
+          NODE_OPTIONS: --max-old-space-size=2048
+          BACKEND_API_URL: http://127.0.0.1:8080/api
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Run authentication browser checks
+        env:
+          BACKEND_API_URL: http://127.0.0.1:8080/api
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+        run: |
+          pnpm exec next dev --hostname 127.0.0.1 --port 3000 > /tmp/poultry-next.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:3000/login >/dev/null && break; sleep 1; done
+          pnpm exec playwright test e2e/alerts-controls.spec.ts e2e/auth-block.spec.ts e2e/auth-lock.spec.ts e2e/auth-persistence.spec.ts e2e/calendar-dates.spec.ts e2e/offline-outbox.spec.ts --project=chromium --workers=1 --reporter=line
+          pnpm exec playwright test e2e/record-batch-picker.spec.ts --project=mobile-chromium-360 --project=mobile-chromium-390 --workers=1 --reporter=line --grep 'keeps offline recording scoped|names recording fields|shows the reason a queued record'

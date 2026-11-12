@@ -564,7 +564,7 @@ export interface OperationsAnalytics {
   incubation: { totalCycles: number; completedCycles: number; eggsLoaded: number; hatched: number; unhatched: number; removedOrDamaged: number; hatchRatePercent: number | null; averageDurationDays: number | null };
   tasks: { totalTasks: number; openTasks: number; completedTasks: number; overdueTasks: number; completionRatePercent: number };
   inputs: { totalLogs: number; byProductType: Record<string, number>; byBrand: Record<string, number> };
-  finance: { currency: string; income: string; expense: string; net: string; transactionCount: number };
+  finance: { currency: string | null; income: string | null; expense: string | null; net: string | null; transactionCount: number; byCurrency: Array<{ currency: string; income: string; expense: string; net: string }> };
 }
 
 export interface FinanceAnalytics {
@@ -573,6 +573,15 @@ export interface FinanceAnalytics {
   batchName: string | null;
   startDate: string;
   endDate: string;
+  currency: string | null;
+  totals: FinanceCurrencyReport["totals"] | null;
+  byCurrency?: FinanceCurrencyReport[];
+  series: FinanceCurrencyReport["series"];
+  categoryTotals: FinanceCurrencyReport["categoryTotals"];
+  limitations: { farmWideCostsExcluded: boolean; message: string };
+}
+
+export interface FinanceCurrencyReport {
   currency: string;
   totals: {
     recordedIncome: string;
@@ -581,9 +590,9 @@ export interface FinanceAnalytics {
     saleTransactionCount: number;
     recordedExpense: string;
     recordedNetCashFlow: string;
-    productsConsumedCost: string;
-    totalRecordedBatchCost: string;
-    recordedContribution: string;
+    productsConsumedCost: string | null;
+    totalRecordedBatchCost: string | null;
+    recordedContribution: string | null;
     productCostComplete: boolean;
     postedTransactionCount: number;
     voidedTransactionCount: number;
@@ -598,7 +607,6 @@ export interface FinanceAnalytics {
     cumulativeNetCashFlow: string;
   }>;
   categoryTotals: Array<{ category: string; amount: string }>;
-  limitations: { farmWideCostsExcluded: boolean; message: string };
 }
 
 // ---- Per-bird ranging records ----
@@ -872,18 +880,34 @@ export interface SelectionReviewIncubation {
   limitation: string;
 }
 
-export interface SelectionReviewFinance {
-  startDate: string;
-  endDate: string;
+export interface SelectionReviewCurrencyTotal {
+  currency: string;
   recordedIncome: number;
   saleIncome: number;
   otherIncome: number;
   saleTransactionCount: number;
   recordedExpense: number;
   recordedNetCashFlow: number;
-  productsConsumedCost: number;
-  totalRecordedBatchCost: number;
-  recordedContribution: number;
+  productsConsumedCost: number | null;
+  totalRecordedBatchCost: number | null;
+  recordedContribution: number | null;
+  postedTransactionCount: number;
+  recordsMayBeIncomplete: boolean;
+}
+
+export interface SelectionReviewFinance {
+  startDate: string;
+  endDate: string;
+  currencyTotals?: SelectionReviewCurrencyTotal[] | null;
+  recordedIncome: number | null;
+  saleIncome: number | null;
+  otherIncome: number | null;
+  saleTransactionCount: number;
+  recordedExpense: number | null;
+  recordedNetCashFlow: number | null;
+  productsConsumedCost: number | null;
+  totalRecordedBatchCost: number | null;
+  recordedContribution: number | null;
   postedTransactionCount: number;
   recordsMayBeIncomplete: boolean;
   limitation: string;
@@ -1111,7 +1135,7 @@ export interface CreateBatchEventRequest {
   saleDetails?: { amount?: number | null; currency?: string | null; buyer?: string | null; reference?: string | null } | null;
 }
 
-export type SyncEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE" | "SEX_COMPOSITION" | "VACCINATION_PLAN" | "TASK_STATUS" | "VACCINATION_SCHEDULE";
+export type SyncEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE" | "SEX_COMPOSITION" | "VACCINATION_PLAN" | "TASK_STATUS" | "VACCINATION_SCHEDULE" | "DAILY_RECORD";
 export type SyncResultStatus = "APPLIED" | "ALREADY_APPLIED" | "CONFLICT" | "REJECTED" | "RETRYABLE" | "AUTH_REQUIRED";
 export interface SyncOperationRequest {
   operationId: string;

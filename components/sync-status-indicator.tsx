@@ -1,12 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, CloudOff, Loader2, LockKeyhole, RefreshCw, Wifi } from "lucide-react";
-import { toast } from "sonner";
 import { useLocale } from "@/components/locale-provider";
 import { useOfflineSync } from "@/lib/offline-sync-provider";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+
+const recordLabels: Record<string, string> = {
+  BATCH_EVENT: "Event",
+  DAILY_RECORD: "Daily measurement",
+  FARM_INPUT: "Farm input",
+  SELECTION_SESSION: "Selection record",
+  SELECTION_SESSION_UPDATE: "Selection update",
+  SEX_COMPOSITION: "Sex composition",
+  TASK_STATUS: "Task update",
+  VACCINATION_PLAN: "Vaccination plan",
+  VACCINATION_SCHEDULE: "Vaccination schedule",
+};
 
 /**
  * A deliberately small field-friendly connection control.
@@ -15,10 +28,12 @@ import { cn } from "@/lib/utils";
  */
 export function SyncStatusIndicator({ compact = false }: { compact?: boolean }) {
   const { snapshot, syncNow } = useOfflineSync();
+  const router = useRouter();
   const { language, t } = useLocale();
   const taglish = language === "taglish";
-  const [announcement, setAnnouncement] = useState("");
+  const [issuesOpen, setIssuesOpen] = useState(false);
   const hasIssues = snapshot.issueCount > 0;
+  const issues = snapshot.items.filter((item) => item.status === "CONFLICT" || item.status === "REJECTED");
   const storageUnavailable = !snapshot.storageAvailable;
   const isBusy = snapshot.connection === "CHECKING" || snapshot.connection === "SYNCING";
   const pending = snapshot.pendingCount;
@@ -29,10 +44,10 @@ export function SyncStatusIndicator({ compact = false }: { compact?: boolean }) 
 
   const label = storageUnavailable
     ? t("status.offlineStorageUnavailable")
-    : hasIssues
-      ? snapshot.issueCount + (taglish ? " kailangang ayusin" : " needs help")
-      : snapshot.connection === "AUTH_REQUIRED"
+    : snapshot.connection === "AUTH_REQUIRED"
       ? (taglish ? "Mag-sign in para maipadala ang " : "Sign in to send ") + pending
+      : hasIssues
+      ? snapshot.issueCount + (taglish ? " kailangang ayusin" : " needs help")
       : snapshot.connection === "SYNCING"
         ? (taglish ? "Ipinapadala…" : "Sending…")
         : snapshot.connection === "CHECKING"
@@ -69,20 +84,12 @@ export function SyncStatusIndicator({ compact = false }: { compact?: boolean }) 
       : "text-success";
 
   async function handleAction() {
-    if (hasIssues) {
-      const message = taglish
-        ? "May record na hindi naipadala. Sabihan ang manager para ma-review."
-        : "One record was not sent. Please ask the manager to review it.";
-      setAnnouncement(message);
-      toast.warning(message);
+    if (snapshot.connection === "AUTH_REQUIRED") {
+      router.push("/login");
       return;
     }
-    if (snapshot.connection === "AUTH_REQUIRED") {
-      const message = taglish
-        ? "Ligtas ang record sa phone. Mag-sign in ulit para maipadala."
-        : "Your records are safe on this phone. Sign in again to send them.";
-      setAnnouncement(message);
-      toast.info(message);
+    if (hasIssues) {
+      setIssuesOpen(true);
       return;
     }
     await syncNow();
@@ -126,7 +133,24 @@ export function SyncStatusIndicator({ compact = false }: { compact?: boolean }) 
           {content}
         </div>
       )}
-      <span className="sr-only" aria-live="polite">{announcement}</span>
+      <Dialog open={issuesOpen} onOpenChange={setIssuesOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{taglish ? "Mga record na kailangang ayusin" : "Records needing attention"}</DialogTitle>
+            <DialogDescription>
+              {taglish ? "Naka-save pa rin ang mga record sa device na ito. Ipakita ang dahilan sa manager; hindi pa ito naipapadala." : "These records remain saved on this device and have not been sent. Share the reason with your manager."}
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="flex flex-col gap-3">
+            {issues.map((item) => (
+              <li key={item.operationId} className="rounded-md border p-3">
+                <p className="font-medium">{recordLabels[item.entityType] ?? "Record"} · Batch {item.batchId}</p>
+                <p className="mt-1 text-muted-foreground">{item.lastErrorMessage || (taglish ? "Kailangan ng review bago maipadala." : "This record needs review before it can be sent.")}</p>
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

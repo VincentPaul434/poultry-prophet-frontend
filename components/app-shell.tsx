@@ -208,7 +208,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <SidebarFooter className="gap-1 px-3 py-3">
           <DropdownMenu open={profileOpen} onOpenChange={setProfileOpen}>
             <DropdownMenuTrigger
-              render={<button type="button" aria-label="Open account menu" />}
+              render={<Button type="button" variant="ghost" aria-label="Open account menu" />}
               className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left outline-hidden transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             >
               <Avatar className="size-9 shrink-0 ring-2 ring-sidebar-primary/30">
@@ -377,29 +377,31 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
           {items.slice(0, 2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
 
           {!isManager && (
-            <button
+            <Button
               type="button"
+              size="lg"
               onClick={openRecord}
               className="-mt-6 flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl bg-primary px-1 text-primary-foreground shadow-lg shadow-primary/25 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
               aria-label={t("record.title")}
             >
               <Plus className="size-6" aria-hidden="true" />
               <span className="max-w-full truncate text-[11px] font-bold">{t("nav.record")}</span>
-            </button>
+            </Button>
           )}
 
           {items.slice(2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
 
           {isManager ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
               onClick={toggleSidebar}
               className="flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
               aria-label="Open more navigation options"
             >
               <MoreHorizontal className="size-5" aria-hidden="true" />
               <span className="text-xs font-semibold">{t("nav.more")}</span>
-            </button>
+            </Button>
           ) : null}
         </div>
       </nav>

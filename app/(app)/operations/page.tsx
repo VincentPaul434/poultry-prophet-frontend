@@ -1,12 +1,16 @@
 "use client";
 
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+import { Button } from "@/components/ui/button";
+
 import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Activity, CalendarDays, ChevronDown, GitCompareArrows, HeartPulse, LayoutDashboard, WalletCards } from "lucide-react";
 import { useBatches } from "@/hooks/use-batches";
 import { useBatchComparison, useOperationsAnalytics } from "@/hooks/use-operations";
-import type { AnalyticsScope, BatchComparison, FarmSummaryAnalytics } from "@/lib/farm-summary-types";
+import type { AnalyticsScope, BatchComparison, FarmSummaryAnalytics, FinanceCurrencySummary } from "@/lib/farm-summary-types";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -33,7 +37,8 @@ function daysAgo(days: number) {
 function money(value: string, currency = "PHP") {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "No record";
-  return new Intl.NumberFormat("en-PH", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
+  const formatted = amount.toLocaleString("en-PH", { maximumFractionDigits: 2 });
+  return currency === "PHP" ? `₱${formatted}` : `${currency} ${formatted}`;
 }
 
 function count(value: number | null | undefined) {
@@ -140,11 +145,11 @@ function OperationsPageContent() {
           { id: "activity", label: "Activity", detail: "Events over time", icon: Activity },
           { id: "finance", label: "Finance", detail: "Recorded cash", icon: WalletCards },
           { id: "compare", label: "Compare", detail: "Batch differences", icon: GitCompareArrows },
-        ] as const).map(({ id, label, detail, icon: Icon }) => <button key={id} type="button" aria-current={section === id ? "page" : undefined} onClick={() => updateOverviewUrl(router, pathname, searchParams, { section: id })} className={cn("flex min-h-16 items-center gap-3 rounded-[1rem] px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60 sm:px-4", section === id ? "bg-primary text-primary-foreground shadow-[0_8px_20px_rgb(40_99_63_/_0.16)]" : "text-foreground hover:bg-muted/70")}><Icon className={cn("size-5 shrink-0", section === id ? "text-primary-foreground" : "text-primary")} aria-hidden="true" /><span className="min-w-0"><span className="block text-sm font-semibold">{label}</span><span className={cn("hidden truncate text-xs sm:block", section === id ? "text-primary-foreground/70" : "text-muted-foreground")}>{detail}</span></span></button>)}
+        ] as const).map(({ id, label, detail, icon: Icon }) => <Button variant="ghost" key={id} type="button" aria-current={section === id ? "page" : undefined} onClick={() => updateOverviewUrl(router, pathname, searchParams, { section: id })} className={cn("flex min-h-16 items-center gap-3 rounded-[1rem] px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60 sm:px-4", section === id ? "bg-primary text-primary-foreground shadow-[0_8px_20px_rgb(40_99_63_/_0.16)]" : "text-foreground hover:bg-muted/70")}><Icon className={cn("size-5 shrink-0", section === id ? "text-primary-foreground" : "text-primary")} aria-hidden="true" /><span className="min-w-0"><span className="block text-sm font-semibold">{label}</span><span className={cn("hidden truncate text-xs sm:block", section === id ? "text-primary-foreground/70" : "text-muted-foreground")}>{detail}</span></span></Button>)}
       </nav>
 
       {section !== "compare" && <section aria-label="Review window" className="rounded-[1.5rem] border border-border/70 bg-card p-3 sm:p-5">
-        <button type="button" aria-expanded={filtersOpen} aria-controls="review-window-controls" onClick={() => setFiltersOpen((open) => !open)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-2 text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60 sm:hidden"><span className="min-w-0"><span className="block text-sm font-semibold">Review window</span><span className="mt-0.5 block truncate text-xs text-muted-foreground">{scope === "FARM" ? "Whole farm" : "One batch"} · {start} to {end}</span></span><ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", filtersOpen && "rotate-180")} aria-hidden="true" /></button>
+        <Button variant="ghost" type="button" aria-expanded={filtersOpen} aria-controls="review-window-controls" onClick={() => setFiltersOpen((open) => !open)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-2 text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60 sm:hidden"><span className="min-w-0"><span className="block text-sm font-semibold">Review window</span><span className="mt-0.5 block truncate text-xs text-muted-foreground">{scope === "FARM" ? "Whole farm" : "One batch"} · {start} to {end}</span></span><ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", filtersOpen && "rotate-180")} aria-hidden="true" /></Button>
         <div id="review-window-controls" className={cn("gap-6 lg:grid-cols-[minmax(12rem,0.72fr)_minmax(0,2.28fr)] lg:items-end sm:grid", filtersOpen ? "grid pt-4 sm:pt-0" : "hidden")}>
           <div className="hidden space-y-2 sm:block">
             <p id="review-window-heading" className="text-sm font-semibold text-foreground">Review window</p>
@@ -233,7 +238,7 @@ function BatchComparisonPanel({ batches, origin, validation, onOriginChange }: {
     <div className="mt-6 flex flex-wrap gap-2">
       {batches.length === 0 ? <span className="text-sm text-muted-foreground">No batches available in this view.</span> : batches.map((batch) => {
         const selected = selectedIds.includes(batch.id);
-        return <button key={batch.id} type="button" aria-pressed={selected} onClick={() => toggle(batch.id)} className={cn("min-h-10 rounded-xl px-3 text-sm font-semibold transition-colors active:scale-[0.98]", selected ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/45 text-foreground hover:bg-muted")}>{selected ? "✓ " : ""}{batch.name}</button>;
+        return <Button variant="ghost" key={batch.id} type="button" aria-pressed={selected} onClick={() => toggle(batch.id)} className={cn("min-h-10 rounded-xl px-3 text-sm font-semibold transition-colors active:scale-[0.98]", selected ? "bg-primary text-primary-foreground shadow-sm" : "bg-muted/45 text-foreground hover:bg-muted")}>{selected ? "✓ " : ""}{batch.name}</Button>;
       })}
     </div>
     {selectedIds.length < 2 && <p className="mt-4 rounded-xl bg-muted/35 px-3 py-2.5 text-sm text-muted-foreground">Choose two or three batches.</p>}
@@ -244,7 +249,7 @@ function BatchComparisonPanel({ batches, origin, validation, onOriginChange }: {
 }
 
 function ComparisonTable({ data }: { data: BatchComparison }) {
-  return <div className="space-y-3"><div className="flex flex-wrap gap-2 text-xs text-muted-foreground"><Badge variant="outline" className="border-0 bg-muted/60">First {data.effectiveWindowDays} days</Badge><span>All values are recorded facts; rates show their numerator and denominator.</span></div>{data.warnings.length > 0 && <div className="rounded-xl bg-warning-muted px-3 py-2.5 text-sm">{data.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}<div className="overflow-x-auto rounded-2xl bg-muted/25"><table className="min-w-[48rem] w-full text-left text-sm"><thead className="bg-muted/45 text-xs uppercase tracking-wide text-muted-foreground"><tr><th className="px-3 py-2.5">Batch</th><th className="px-3 py-2.5">Population</th><th className="px-3 py-2.5">Health deaths</th><th className="px-3 py-2.5">Health concerns</th><th className="px-3 py-2.5">Product records</th><th className="px-3 py-2.5">Selection</th></tr></thead><tbody>{data.batches.map((batch) => { const populationNeedsReview = batch.populationStatus === "RECONCILIATION_REQUIRED" || (batch.populationAtWindowEnd != null && batch.populationAtWindowEnd < 0); return <tr key={batch.batchId} className="border-t border-border/40 align-top"><th className="px-3 py-3 font-semibold">{batch.batchName}<span className="mt-1 block text-xs font-normal text-muted-foreground">{batch.bloodline ?? "Bloodline not recorded"}</span></th><td className="px-3 py-3 tabular-nums">{populationNeedsReview ? <span className="block max-w-44 text-warning-ink"><span className="font-semibold">Needs review</span><span className="block text-xs font-normal">Initial: {batch.initialPopulation}</span><span className="mt-1 block text-xs font-normal leading-snug">{batch.populationWarning ?? "Population records need review."}</span><Link className="mt-2 inline-block font-semibold underline underline-offset-2" href={`/batches/${batch.batchId}/data-entry?from=operations`}>Review records →</Link></span> : `${batch.populationAtWindowEnd ?? "No record"} / ${batch.initialPopulation}`}</td><td className="px-3 py-3 tabular-nums">{batch.healthRelatedDeaths}<span className="block text-xs text-muted-foreground">{batch.healthRelatedLossRatePercent == null ? "Rate unavailable" : `${batch.healthRelatedLossRatePercent}% of start`}</span></td><td className="px-3 py-3 tabular-nums">{batch.healthConcerns}</td><td className="px-3 py-3 tabular-nums">{batch.interventionRecords}</td><td className="px-3 py-3 tabular-nums">{batch.selectionDataStatus === "AVAILABLE" ? `${batch.acceptedAtSelection} / ${batch.evaluatedAtSelection}` : "No record"}</td></tr>; })}</tbody></table></div></div>;
+  return <div className="space-y-3"><div className="flex flex-wrap gap-2 text-xs text-muted-foreground"><Badge variant="outline" className="border-0 bg-muted/60">First {data.effectiveWindowDays} days</Badge><span>All values are recorded facts; rates show their numerator and denominator.</span></div>{data.warnings.length > 0 && <div className="rounded-xl bg-warning-muted px-3 py-2.5 text-sm">{data.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}<div className="overflow-x-auto rounded-2xl bg-muted/25"><Table className="min-w-[48rem] w-full text-left text-sm"><TableHeader className="bg-muted/45 text-xs uppercase tracking-wide text-muted-foreground"><TableRow><TableHead className="px-3 py-2.5">Batch</TableHead><TableHead className="px-3 py-2.5">Population</TableHead><TableHead className="px-3 py-2.5">Health deaths</TableHead><TableHead className="px-3 py-2.5">Health concerns</TableHead><TableHead className="px-3 py-2.5">Product records</TableHead><TableHead className="px-3 py-2.5">Selection</TableHead></TableRow></TableHeader><TableBody>{data.batches.map((batch) => { const populationNeedsReview = batch.populationStatus === "RECONCILIATION_REQUIRED" || (batch.populationAtWindowEnd != null && batch.populationAtWindowEnd < 0); return <TableRow key={batch.batchId} className="border-t border-border/40 align-top"><TableHead className="px-3 py-3 font-semibold">{batch.batchName}<span className="mt-1 block text-xs font-normal text-muted-foreground">{batch.bloodline ?? "Bloodline not recorded"}</span></TableHead><TableCell className="px-3 py-3 tabular-nums">{populationNeedsReview ? <span className="block max-w-44 text-warning-ink"><span className="font-semibold">Needs review</span><span className="block text-xs font-normal">Initial: {batch.initialPopulation}</span><span className="mt-1 block text-xs font-normal leading-snug">{batch.populationWarning ?? "Population records need review."}</span><Link className="mt-2 inline-block font-semibold underline underline-offset-2" href={`/batches/${batch.batchId}/data-entry?from=operations`}>Review records →</Link></span> : `${batch.populationAtWindowEnd ?? "No record"} / ${batch.initialPopulation}`}</TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.healthRelatedDeaths}<span className="block text-xs text-muted-foreground">{batch.healthRelatedLossRatePercent == null ? "Rate unavailable" : `${batch.healthRelatedLossRatePercent}% of start`}</span></TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.healthConcerns}</TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.interventionRecords}</TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.selectionDataStatus === "AVAILABLE" ? `${batch.acceptedAtSelection} / ${batch.evaluatedAtSelection}` : "No record"}</TableCell></TableRow>; })}</TableBody></Table></div></div>;
 }
 
 function Summary({ data, scope }: { data: FarmSummaryAnalytics; scope: AnalyticsScope }) {
@@ -306,7 +311,14 @@ function ActivityFact({ label, value }: { label: string; value: string }) {
 }
 
 function FinancialSection({ data, href }: { data: FarmSummaryAnalytics["finance"]; href: string }) {
-  const scopeNote = financeScopeNote(data.limitation);
+  const reports = data.byCurrency ?? (data.currency && data.income != null && data.expense != null && data.net != null
+    ? [{ ...data, currency: data.currency, income: data.income, saleIncome: data.saleIncome ?? "0", expense: data.expense, net: data.net }]
+    : []);
+  return <div className="space-y-6">{reports.length > 1 && <p className="text-sm text-muted-foreground">Currencies are shown separately; no conversion is applied.</p>}{reports.map((report) => <FinancialCurrencySection key={report.currency} data={report} limitation={data.limitation} href={href} />)}</div>;
+}
+
+function FinancialCurrencySection({ data, limitation, href }: { data: FinanceCurrencySummary; limitation: string; href: string }) {
+  const scopeNote = financeScopeNote(limitation);
   const netValue = data.available ? money(data.net, data.currency) : "No record";
   const incomeValue = data.available ? money(data.income, data.currency) : "No record";
   const expenseValue = data.available ? money(data.expense, data.currency) : "No record";
@@ -314,9 +326,9 @@ function FinancialSection({ data, href }: { data: FarmSummaryAnalytics["finance"
   const incomeWidth = data.available ? Math.max(Number(data.income) > 0 ? 2 : 0, Number(data.income) / largest * 100) : 0;
   const expenseWidth = data.available ? Math.max(Number(data.expense) > 0 ? 2 : 0, Number(data.expense) / largest * 100) : 0;
 
-  return <section className="space-y-5" aria-labelledby="financial-snapshot-heading">
+  return <section className="space-y-5" aria-labelledby={`financial-snapshot-${data.currency}`}>
     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-      <div><h2 id="financial-snapshot-heading" className="ledger-card-title text-2xl sm:text-3xl">Financial snapshot</h2><p className="mt-1 text-sm text-muted-foreground">Recorded cash for the selected period.</p></div>
+      <div><h2 id={`financial-snapshot-${data.currency}`} className="ledger-card-title text-2xl sm:text-3xl">Financial snapshot</h2><p className="mt-1 text-sm font-medium">{data.currency}</p><p className="mt-1 text-sm text-muted-foreground">Recorded cash for the selected period.</p></div>
       <span className="text-sm text-muted-foreground">{data.transactionCount} posted transaction{data.transactionCount === 1 ? "" : "s"}</span>
     </div>
     <div className="grid overflow-hidden rounded-[1.75rem] bg-[#194b37] text-white shadow-xl shadow-[#194b37]/10 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,1fr)]">
@@ -358,7 +370,7 @@ function ActivityChart({ data }: { data: FarmSummaryAnalytics["activity"] }) {
 }
 
 function ChartTable({ rows }: { rows: Array<{ label: string; value: number }> }) {
-  return <table className="w-full text-left"><tbody>{rows.map((row) => <tr key={row.label} className="border-b last:border-0"><th className="py-1 font-normal">{row.label}</th><td className="py-1 text-right tabular-nums">{row.value}</td></tr>)}</tbody></table>;
+  return <Table className="w-full text-left"><TableBody>{rows.map((row) => <TableRow key={row.label} className="border-b last:border-0"><TableHead className="py-1 font-normal">{row.label}</TableHead><TableCell className="py-1 text-right tabular-nums">{row.value}</TableCell></TableRow>)}</TableBody></Table>;
 }
 
 function SignalsPanel({ events, incubation }: { events: FarmSummaryAnalytics["events"]; incubation: FarmSummaryAnalytics["incubation"] }) {

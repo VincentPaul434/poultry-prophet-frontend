@@ -1,7 +1,7 @@
 "use client";
 
 // Client-side auth state. Holds the decoded profile from the JWT login response
-// in React state (hydrated from localStorage on mount) and exposes login /
+// in React state (restored through the refresh cookie on mount) and exposes login /
 // register / logout. On logout we also clear the React Query cache so a new user
 // never sees the previous user's cached data.
 
@@ -17,15 +17,18 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { accountApi, authApi, inviteApi } from "./api";
-import { refreshAccessToken } from "./api-client";
+import { ApiError, logoutIfCurrent, refreshAccessToken, withAuthLock } from "./api-client";
 import {
   AUTH_SESSION_KEY,
+  AUTH_STATE_EVENT,
   clearSession,
   getStoredUser,
-  getRefreshToken,
+  getAuthRevision,
+  getSessionScope,
+  purgeLegacyCredentials,
   getToken,
-  hasCurrentAccessToken,
   isAuthStorageKey,
+  isAuthRequired,
   saveSession,
   type StoredUser,
 } from "./auth-storage";
@@ -36,6 +39,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isManager: boolean;
   isLoading: boolean;
+  authRequired: boolean;
   login: (body: LoginRequest) => Promise<StoredUser>;
   register: (body: RegisterRequest) => Promise<StoredUser>;
   acceptInvite: (token: string) => Promise<StoredUser>;
@@ -48,148 +52,98 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<StoredUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authRequired, setAuthRequired] = useState(false);
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  // Hydrate from localStorage once on mount. A still-current access token can
-  // be reused by a new tab; rotating on every mount races single-use refresh
-  // tokens across tabs and can revoke the whole session.
+  // The cached profile enables offline work; credentials are restored only
+  // through the same-origin refresh route and remain in memory.
   useEffect(() => {
     let active = true;
-
+    purgeLegacyCredentials();
     const hydrate = async () => {
-      const storedUser = getStoredUser();
-      const token = getToken();
-      const refreshToken = getRefreshToken();
-
-      if (!storedUser || (!token && !refreshToken)) {
-        clearSession();
-        if (active) {
-          setUser(null);
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      if (token && hasCurrentAccessToken(token)) {
-        if (active) {
-          setUser(storedUser);
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      if (!refreshToken) {
-        clearSession();
-        if (active) {
-          setUser(null);
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      const refreshedToken = await refreshAccessToken();
-      if (active) {
-        // A transient refresh failure keeps the cached profile for offline
-        // access; an invalid refresh token was cleared by the API client.
-        setUser(refreshedToken ? getStoredUser() : getRefreshToken() ? storedUser : null);
-        setIsLoading(false);
-      }
+      if (getStoredUser() && !getToken()) await refreshAccessToken();
+      if (active) { setUser(getStoredUser()); setAuthRequired(isAuthRequired()); setIsLoading(false); }
     };
-
     void hydrate();
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
     const syncSession = (event: StorageEvent) => {
       if (event.storageArea !== window.localStorage || !isAuthStorageKey(event.key)) return;
-      // Legacy keys are observed only until the atomic session is migrated.
       if (event.key !== AUTH_SESSION_KEY && window.localStorage.getItem(AUTH_SESSION_KEY)) return;
       queryClient.clear();
-      setUser(getToken() ? getStoredUser() : null);
+      const nextUser = getStoredUser();
+      setUser(nextUser);
+      setAuthRequired(isAuthRequired());
+      if (nextUser && !getToken() && !isAuthRequired()) {
+        void refreshAccessToken().then(() => { setUser(getStoredUser()); setAuthRequired(isAuthRequired()); });
+      }
     };
+    const syncLocalState = () => { setUser(getStoredUser()); setAuthRequired(isAuthRequired()); };
     window.addEventListener("storage", syncSession);
-    return () => window.removeEventListener("storage", syncSession);
+    window.addEventListener(AUTH_STATE_EVENT, syncLocalState);
+    return () => { window.removeEventListener("storage", syncSession); window.removeEventListener(AUTH_STATE_EVENT, syncLocalState); };
   }, [queryClient]);
 
-  const login = useCallback(async (body: LoginRequest) => {
+  const establish = useCallback(async (request: () => Promise<import("./auth-storage").ClientAuthResponse>, preserveScope = false) => {
+    const revision = getAuthRevision();
+    const scope = getSessionScope();
     await queryClient.cancelQueries();
-    const auth = await authApi.login(body);
-    // Discard queries from any previous session before the new user's
-    // farm-scoped requests start. Otherwise stale/in-flight queries can
-    // surface 401/403 responses after the redirect to the dashboard.
-    queryClient.clear();
-    const stored = saveSession(auth);
-    setUser(stored);
-    return stored;
-  }, [queryClient]);
-
-  const register = useCallback(async (body: RegisterRequest) => {
-    await queryClient.cancelQueries();
-    const auth = await authApi.register(body);
-    queryClient.clear();
-    const stored = saveSession(auth);
-    setUser(stored);
-    return stored;
-  }, [queryClient]);
-
-  const acceptInvite = useCallback(
-    async (token: string) => {
-      // Accepting assigns the handler to the farm and returns a fresh token
-      // reflecting the new farmId, so we re-save the session like a re-login.
-      const auth = await inviteApi.accept(token);
+    const run = () => withAuthLock(async () => {
+      if (getAuthRevision() !== revision || (preserveScope && getSessionScope() !== scope)) throw new Error("Your session changed. Please try again.");
+      const auth = await request();
+      if (getAuthRevision() !== revision || (preserveScope && getSessionScope() !== scope)) throw new Error("Your session changed. Please try again.");
+      queryClient.clear();
       const stored = saveSession(auth);
       setUser(stored);
-      // The user now belongs to a farm; drop any cached (empty) farm data so
-      // every query refetches against the new scope.
-      queryClient.clear();
+      setAuthRequired(false);
       return stored;
-    },
-    [queryClient]
-  );
+    });
+    try {
+      return await run();
+    } catch (error) {
+      // Credential-changing requests cannot refresh while holding the lock.
+      if (!preserveScope || !(error instanceof ApiError) || error.status !== 401 || !await refreshAccessToken()) throw error;
+      return run();
+    }
+  }, [queryClient]);
 
-  const updateProfile = useCallback(async (body: UpdateProfileRequest) => {
-    // Returns a fresh token (email is the JWT subject), so re-save the session.
-    const auth = await accountApi.updateProfile(body);
-    const stored = saveSession(auth);
-    setUser(stored);
-    return stored;
-  }, []);
+  const login = useCallback((body: LoginRequest) => establish(() => authApi.login(body)), [establish]);
+  const register = useCallback((body: RegisterRequest) => establish(() => authApi.register(body)), [establish]);
+  const acceptInvite = useCallback((token: string) => establish(() => inviteApi.accept(token), true), [establish]);
+  const updateProfile = useCallback((body: UpdateProfileRequest) => establish(() => accountApi.updateProfile(body), true), [establish]);
 
   const logout = useCallback(async () => {
-    try {
-      // The endpoint can revoke one device session when given the refresh
-      // token. If an older session has no refresh token, it still clears the
-      // local state below without blocking sign-out.
-      await authApi.logout(getRefreshToken() ?? undefined);
-    } catch {
-      // Sign-out is local-first: a failed network request must not leave the
-      // user appearing logged in on this device.
-    }
     clearSession();
+    const revision = getAuthRevision();
     setUser(null);
+    setAuthRequired(false);
     queryClient.clear();
     router.push("/login");
+    try {
+      await logoutIfCurrent(revision, () => authApi.logout());
+    } catch {
+      // The local session stays signed out even when revocation is unavailable.
+    }
   }, [queryClient, router]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
-      // A cached profile without its token is not a valid session. This can
-      // happen after storage is partially cleared or an old session expires.
-      isAuthenticated: !!user && !!getToken(),
+      // The cached profile retains the offline queue scope during an outage.
+      isAuthenticated: !!user && !!getSessionScope(),
       isManager: user?.role === "MANAGER",
       isLoading,
+      authRequired,
       login,
       register,
       acceptInvite,
       updateProfile,
       logout,
     }),
-    [user, isLoading, login, register, acceptInvite, updateProfile, logout]
+    [user, isLoading, authRequired, login, register, acceptInvite, updateProfile, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

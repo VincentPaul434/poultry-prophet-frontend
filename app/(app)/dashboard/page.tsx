@@ -326,7 +326,7 @@ function BatchCardHeader({ item }: { item: BatchDashboardItem }) {
           <CardTitle className="ledger-card-title truncate text-xl leading-tight"><Link href={overviewHref} className="rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">{batch.name}</Link></CardTitle>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{t("dashboard.day")} {days}{batch.bloodline ? ` · ${batch.bloodline}` : batch.source ? ` · ${batch.source}` : ""}{batch.status !== "ACTIVE" ? ` · ${batch.status}` : ""}</p>
         </div>
-        {summary.activeAlertCount > 0 && <Badge variant={summary.highestActiveAlertSeverity === "CRITICAL" ? "destructive" : summary.highestActiveAlertSeverity === "WARNING" ? "warning" : "secondary"} className="shrink-0 px-1.5 text-[10px]" aria-label={summary.highestActiveAlertSeverity ? alertAttentionText(summary.highestActiveAlertSeverity, summary.activeAlertCount, t) : `${summary.activeAlertCount} ${t("dashboard.activeAlerts")}`}><AlertCircle aria-hidden="true" />{summary.activeAlertCount}</Badge>}
+        {summary.activeAlertCount > 0 && <Badge variant={summary.highestActiveAlertSeverity === "CRITICAL" ? "destructive" : summary.highestActiveAlertSeverity === "WARNING" ? "secondary" : "secondary"} className="shrink-0 px-1.5 text-[10px]" aria-label={summary.highestActiveAlertSeverity ? alertAttentionText(summary.highestActiveAlertSeverity, summary.activeAlertCount, t) : `${summary.activeAlertCount} ${t("dashboard.activeAlerts")}`}><AlertCircle aria-hidden="true" />{summary.activeAlertCount}</Badge>}
       </div>
     </CardHeader>
   );

@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+
 import { AlertTriangle, CalendarClock, ChevronRight, Egg, FlaskConical } from "lucide-react";
 import { useLocale } from "@/components/locale-provider";
 import { Badge } from "@/components/ui/badge";
@@ -51,7 +53,7 @@ export function IncubationCycleCard({ cycle, onOpen }: { cycle: IncubationCycle;
 
   return (
     <Card className={cn("overflow-hidden rounded-2xl shadow-none transition-colors hover:border-primary/40", due && "border-warning/60")}>
-      <button
+      <Button variant="ghost"
         type="button"
         className="w-full text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
         onClick={() => onOpen(cycle)}
@@ -98,7 +100,7 @@ export function IncubationCycleCard({ cycle, onOpen }: { cycle: IncubationCycle;
             <span className="shrink-0 font-semibold text-primary">{t("incubation.openDetails")}</span>
           </div>}
         </div>
-      </button>
+      </Button>
     </Card>
   );
 }

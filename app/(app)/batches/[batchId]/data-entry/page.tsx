@@ -8,7 +8,7 @@ import { useBatchEvents, useBatchEventPage, useBatchEventReport } from "@/hooks/
 import { useHandlers } from "@/hooks/use-reference";
 import { useAuth } from "@/lib/auth-context";
 import { LOGGING_ORIGINS, parseLoggingOrigin } from "@/lib/logging-navigation";
-import { todayIso } from "@/lib/format";
+import { shiftCalendarDate, todayIso } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageBackLink } from "@/components/page-back-link";
 import { BatchLogSection, EventTimeline } from "@/components/batch-log-section";
@@ -62,9 +62,7 @@ function readEventFilters(searchParams: ReturnType<typeof useSearchParams>): Eve
 function eventDates(filters: EventFilterState) {
   if (filters.period === "custom") return { start: filters.start, end: filters.end };
   const end = todayIso();
-  const startDate = new Date(`${end}T00:00:00`);
-  startDate.setDate(startDate.getDate() - (filters.period === "7d" ? 6 : filters.period === "90d" ? 89 : 29));
-  return { start: startDate.toISOString().slice(0, 10), end };
+  return { start: shiftCalendarDate(end, -(filters.period === "7d" ? 6 : filters.period === "90d" ? 89 : 29)), end };
 }
 
 function updateEventUrl(
@@ -190,7 +188,7 @@ function EventHistoryPageContent({
       {/* Secondary guidance uses progressive disclosure to keep the task focused. */}
       {!isManager && !isHistoryView && (
         <div className="rounded-2xl border bg-card">
-          <button
+          <Button variant="ghost"
             type="button"
             aria-expanded={helpOpen}
             aria-controls="recording-help"
@@ -199,7 +197,7 @@ function EventHistoryPageContent({
           >
             <span className="flex items-center gap-2"><Info className="size-4 text-primary" aria-hidden="true" />{t("record.howRecordsWork")}</span>
             <ChevronDown className={`size-4 text-muted-foreground transition-transform ${helpOpen ? "rotate-180" : ""}`} aria-hidden="true" />
-          </button>
+          </Button>
           {helpOpen && <p id="recording-help" className="border-t px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">{t("record.howRecordsWorkDescription")}</p>}
         </div>
       )}
@@ -272,7 +270,7 @@ function ManagerEventReport({ batchId }: { batchId: string }) {
         <Card className="shadow-none"><CardContent className="space-y-3 p-4"><div className="flex items-end justify-between"><div><p className="font-semibold">Events over time</p><p className="text-xs text-muted-foreground">All filtered records, not just the visible page.</p></div><Badge variant="outline">Deaths: {data?.deathRecords ?? "—"}</Badge></div><div className="flex h-36 items-end gap-1 border-b">{(data?.overTime ?? []).map((item) => <div key={item.date} title={`${item.date}: ${item.count}`} className="flex-1 rounded-t bg-primary/70" style={{ height: `${Math.max(item.count > 0 ? 8 : 1, item.count / max * 100)}%` }} />)}</div><div className="flex flex-wrap gap-2 text-xs text-muted-foreground"><span>Concern: {Object.entries(data?.concernDistribution ?? {}).map(([key, value]) => `${key} ${value}`).join(" · ") || "No data"}</span><span>Categories: {Object.keys(data?.categoryDistribution ?? {}).length}</span></div></CardContent></Card>
       </div>
       <div className={filters.view === "report" ? "hidden lg:flex lg:min-h-0 lg:flex-col" : "flex min-h-0 flex-col"}>
-        <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">{rows.map((event) => <button type="button" key={event.id} onClick={() => setSelected(event)} className="w-full rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/50"><div className="flex items-start justify-between gap-2"><span className="font-semibold">{event.title}</span><span className="text-xs text-muted-foreground">{event.eventDate}</span></div><p className="mt-1 text-xs text-muted-foreground">{event.eventType.replaceAll("_", " ")} · {event.affectedCount} affected · {event.concernLevel ?? "UNRATED"}</p></button>)}{rows.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No events match these filters.</p>}</div>
+        <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">{rows.map((event) => <Button variant="ghost" type="button" key={event.id} onClick={() => setSelected(event)} className="w-full rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/50"><div className="flex items-start justify-between gap-2"><span className="font-semibold">{event.title}</span><span className="text-xs text-muted-foreground">{event.eventDate}</span></div><p className="mt-1 text-xs text-muted-foreground">{event.eventType.replaceAll("_", " ")} · {event.affectedCount} affected · {event.concernLevel ?? "UNRATED"}</p></Button>)}{rows.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No events match these filters.</p>}</div>
         {records.data && <div className="mt-3 flex shrink-0 items-center justify-between border-t pt-3 text-sm text-muted-foreground"><span>{records.data.totalItems} records</span><div className="flex items-center gap-2"><Button size="sm" variant="outline" disabled={!records.data.hasPrevious} onClick={() => updateEventUrl(router, pathname, searchParams, { page: Math.max(0, filters.page - 1) })}>Previous</Button><span>{records.data.page + 1}/{Math.max(1, records.data.totalPages)}</span><Button size="sm" variant="outline" disabled={!records.data.hasNext} onClick={() => updateEventUrl(router, pathname, searchParams, { page: filters.page + 1 })}>Next</Button></div></div>}
       </div>
     </div>

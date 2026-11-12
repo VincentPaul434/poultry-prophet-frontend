@@ -2,7 +2,7 @@
 
 import type { Batch, BatchDashboardItem, BatchEvent, BatchOverview, FarmProduct, OfflineBootstrap, SelectionSession } from "./types";
 
-export type OfflineEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE" | "SEX_COMPOSITION" | "VACCINATION_PLAN" | "TASK_STATUS" | "VACCINATION_SCHEDULE";
+export type OfflineEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE" | "SEX_COMPOSITION" | "VACCINATION_PLAN" | "TASK_STATUS" | "VACCINATION_SCHEDULE" | "DAILY_RECORD";
 export type OutboxStatus =
   | "PENDING"
   | "SYNCING"
@@ -28,6 +28,8 @@ export interface OutboxOperation {
   lastAttemptAt?: string;
   lastErrorCode?: string;
   lastErrorMessage?: string;
+  leaseOwner?: string;
+  leaseUntil?: number;
 }
 
 export interface StoredBatchSnapshot {
@@ -126,13 +128,21 @@ function transactionDone(transaction: IDBTransaction) {
 }
 
 function emitChanged() {
-  if (typeof window !== "undefined") window.dispatchEvent(new Event(OUTBOX_CHANGED));
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(OUTBOX_CHANGED));
+  if (typeof BroadcastChannel !== "undefined") {
+    const channel = new BroadcastChannel(OUTBOX_CHANGED);
+    channel.postMessage("changed");
+    channel.close();
+  }
 }
 
 export function onOfflineOutboxChanged(listener: () => void) {
   if (typeof window === "undefined") return () => undefined;
   window.addEventListener(OUTBOX_CHANGED, listener);
-  return () => window.removeEventListener(OUTBOX_CHANGED, listener);
+  const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(OUTBOX_CHANGED);
+  if (channel) channel.onmessage = listener;
+  return () => { window.removeEventListener(OUTBOX_CHANGED, listener); channel?.close(); };
 }
 
 function openDatabase() {
@@ -160,20 +170,13 @@ function openDatabase() {
       if (!db.objectStoreNames.contains(META_STORE)) db.createObjectStore(META_STORE, { keyPath: "key" });
       if (!db.objectStoreNames.contains(FIELD_STORE)) db.createObjectStore(FIELD_STORE, { keyPath: "key" });
     };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("Could not open offline storage."));
+    request.onsuccess = () => {
+      request.result.onversionchange = () => { request.result.close(); dbPromise = null; };
+      resolve(request.result);
+    };
+    request.onerror = () => { dbPromise = null; reject(request.error ?? new Error("Could not open offline storage.")); };
   });
   return dbPromise;
-}
-
-async function nextSequence(db: IDBDatabase) {
-  const tx = db.transaction([META_STORE], "readwrite");
-  const store = tx.objectStore(META_STORE);
-  const current = (await requestResult(store.get("sequence")) as { value?: number } | undefined)?.value ?? 0;
-  const sequence = current + 1;
-  store.put({ key: "sequence", value: sequence });
-  await transactionDone(tx);
-  return sequence;
 }
 
 export async function getDeviceId() {
@@ -190,13 +193,76 @@ export async function getDeviceId() {
 
 export async function putOutboxOperation(operation: Omit<OutboxOperation, "sequence" | "status" | "attemptCount">) {
   const db = await openDatabase();
-  const sequence = await nextSequence(db);
+  const tx = db.transaction([OUTBOX_STORE, META_STORE], "readwrite");
+  const store = tx.objectStore(OUTBOX_STORE);
+  const existing = await requestResult(store.get(operation.operationId)) as OutboxOperation | undefined;
+  if (existing && (existing.entityType === "DAILY_RECORD" || operation.entityType === "DAILY_RECORD"
+    || existing.userId !== operation.userId || existing.farmId !== operation.farmId
+    || existing.batchId !== operation.batchId || existing.entityType !== operation.entityType
+    || existing.status !== "PENDING" || existing.attemptCount !== 0)) {
+    tx.abort();
+    throw new Error("This offline record is already syncing or belongs to another account.");
+  }
+  const meta = tx.objectStore(META_STORE);
+  const current = (await requestResult(meta.get("sequence")) as { value?: number } | undefined)?.value ?? 0;
+  const sequence = existing?.sequence ?? current + 1;
+  if (!existing) meta.put({ key: "sequence", value: sequence });
   const record: OutboxOperation = { ...operation, sequence, status: "PENDING", attemptCount: 0 };
-  const tx = db.transaction([OUTBOX_STORE], "readwrite");
-  tx.objectStore(OUTBOX_STORE).put(record);
+  store.put(record);
   await transactionDone(tx);
   emitChanged();
   return record;
+}
+
+// The read and claims share one transaction, so tabs cannot claim the same head.
+export async function claimOutboxOperations(userId: number, farmId: number, owner: string, now: number, leaseMs: number) {
+  const db = await openDatabase();
+  const tx = db.transaction([OUTBOX_STORE], "readwrite");
+  const store = tx.objectStore(OUTBOX_STORE);
+  const items = await requestResult(store.index("byUserFarm").getAll([userId, farmId])) as OutboxOperation[];
+  const heads = new Map<number, OutboxOperation>();
+  for (const item of items.sort((a, b) => a.sequence - b.sequence)) {
+    if (!heads.has(item.batchId)) heads.set(item.batchId, item);
+  }
+  const selected = [...heads.values()].filter((item) => item.status === "PENDING"
+    || (item.status === "RETRY_WAIT" && (!item.nextAttemptAt || Date.parse(item.nextAttemptAt) <= now))
+    || (item.status === "SYNCING" && (!item.leaseUntil || item.leaseUntil <= now))).slice(0, 25);
+  for (const item of selected) {
+    item.status = "SYNCING";
+    item.leaseOwner = owner;
+    item.leaseUntil = now + leaseMs;
+    item.lastAttemptAt = new Date(now).toISOString();
+    store.put(item);
+  }
+  await transactionDone(tx);
+  if (selected.length) emitChanged();
+  return selected;
+}
+
+export async function updateClaimedOutboxOperation(operationId: string, owner: string, patch: Partial<OutboxOperation> | null) {
+  const db = await openDatabase();
+  const tx = db.transaction([OUTBOX_STORE], "readwrite");
+  const store = tx.objectStore(OUTBOX_STORE);
+  const existing = await requestResult(store.get(operationId)) as OutboxOperation | undefined;
+  const owned = existing?.status === "SYNCING" && existing.leaseOwner === owner;
+  if (owned) {
+    if (patch) store.put({ ...existing, ...patch });
+    else store.delete(operationId);
+  }
+  await transactionDone(tx);
+  if (owned) emitChanged();
+  return owned;
+}
+
+export async function renewOutboxClaims(operationIds: string[], owner: string, leaseUntil: number) {
+  const db = await openDatabase();
+  const tx = db.transaction([OUTBOX_STORE], "readwrite");
+  const store = tx.objectStore(OUTBOX_STORE);
+  for (const id of operationIds) {
+    const item = await requestResult(store.get(id)) as OutboxOperation | undefined;
+    if (item?.status === "SYNCING" && item.leaseOwner === owner) store.put({ ...item, leaseUntil });
+  }
+  await transactionDone(tx);
 }
 
 export async function listOutbox(userId: number, farmId: number) {
@@ -254,17 +320,22 @@ export async function getQueuedInventoryDelta(userId: number, farmId: number, fa
 }
 
 export async function retryOutboxIssues(userId: number, farmId: number) {
-  const items = await listOutbox(userId, farmId);
+  const db = await openDatabase();
+  const tx = db.transaction([OUTBOX_STORE], "readwrite");
+  const store = tx.objectStore(OUTBOX_STORE);
+  const items = await requestResult(store.index("byUserFarm").getAll([userId, farmId])) as OutboxOperation[];
   // A conflict or rejection is a manager-review state, not an automatic retry.
   // Only an expired authentication state is safe to retry without changing data.
   const issues = items.filter((item) => item.status === "AUTH_REQUIRED");
-  await Promise.all(issues.map((item) => updateOutboxOperation(item.operationId, {
+  for (const item of issues) store.put({ ...item,
     status: "PENDING",
     attemptCount: 0,
     nextAttemptAt: undefined,
     lastErrorCode: undefined,
     lastErrorMessage: undefined,
-  })));
+  });
+  await transactionDone(tx);
+  if (issues.length) emitChanged();
   return issues.length;
 }
 

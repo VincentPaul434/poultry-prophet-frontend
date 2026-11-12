@@ -10,14 +10,14 @@ export function AuthBrandLink({ className, variant = "default" }: { className?: 
       href="/"
       aria-label="Go to Poultry Prophet home"
       className={cn(
-        "group inline-flex min-h-11 items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[#eeb541]/60",
-        hero ? "text-white" : "text-[#173d2a]",
+        "group inline-flex min-h-11 items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+        hero ? "text-primary-foreground" : "text-foreground",
         className,
       )}
     >
       <span className={cn(
         "flex shrink-0 items-center justify-center rounded-2xl shadow-sm transition-transform duration-200 group-hover:-rotate-3 group-hover:scale-105",
-        hero ? "size-12 bg-white/12 text-white" : "size-11 bg-[#173d2a] text-white",
+        hero ? "size-12 bg-primary-foreground/12 text-primary-foreground" : "size-11 bg-primary text-primary-foreground",
       )}>
         <Bird className={hero ? "size-6" : "size-5"} aria-hidden="true" />
       </span>
@@ -32,7 +32,7 @@ export function BackToHomeLink({ className }: { className?: string }) {
       href="/"
       aria-label="Bumalik sa home"
       className={cn(
-        "inline-flex min-h-11 items-center gap-1.5 rounded-xl px-2.5 text-sm font-bold text-[#617267] transition-colors hover:bg-white/70 hover:text-[#173d2a] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[#eeb541]/60",
+        "inline-flex min-h-11 items-center gap-1.5 rounded-xl px-2.5 text-sm font-bold text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
         className,
       )}
     >
