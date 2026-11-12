@@ -1,13 +1,14 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "./api-client";
 import { offlineApi, syncApi } from "./api";
 import { qk } from "./query-keys";
 import { useAuth } from "./auth-context";
+import { isAuthRequired } from "./auth-storage";
 import {
-  deleteOutboxOperation,
+  claimOutboxOperations,
   commitSyncedSelectionSession,
   getDeviceId,
   getLastSuccessfulSync,
@@ -21,8 +22,9 @@ import {
   onOfflineOutboxChanged,
   putOutboxOperation,
   retryOutboxIssues,
+  renewOutboxClaims,
   setLastSuccessfulSync,
-  updateOutboxOperation,
+  updateClaimedOutboxOperation,
   type OfflineEntityType,
   type OutboxOperation,
   type OutboxStatus,
@@ -56,6 +58,7 @@ interface OfflineSyncContextValue {
 }
 
 const OfflineSyncContext = createContext<OfflineSyncContextValue | null>(null);
+const LEASE_MS = 60_000;
 
 function uuid() {
   return typeof crypto.randomUUID === "function"
@@ -90,11 +93,15 @@ function pendingStatuses(status: OutboxStatus[]) {
 }
 
 export function OfflineSyncProvider({ children }: { children: ReactNode }) {
-  const { user, isAuthenticated, isLoading } = useAuth();
+  const { user, isAuthenticated, isLoading, authRequired } = useAuth();
   const queryClient = useQueryClient();
   const runRef = useRef<Promise<void> | null>(null);
   const retryTimer = useRef<number | null>(null);
   const bootstrapAtRef = useRef(0);
+  const scopeRef = useRef<string | null>(null);
+  const syncRef = useRef<() => Promise<void>>(async () => undefined);
+  const currentScope = isAuthenticated && user?.farmId ? `${user.userId}:${user.farmId}` : null;
+  useLayoutEffect(() => { scopeRef.current = currentScope; bootstrapAtRef.current = 0; }, [currentScope]);
   const [snapshot, setSnapshot] = useState<SyncSnapshot>({
     connection: "CHECKING",
     pendingCount: 0,
@@ -107,15 +114,17 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     if (!user?.farmId) {
-      setSnapshot((current) => ({ ...current, connection: isAuthenticated ? "AUTH_REQUIRED" : "OFFLINE", items: [], pendingCount: 0, issueCount: 0 }));
+      setSnapshot((current) => ({ ...current, connection: isAuthenticated ? "AUTH_REQUIRED" : "OFFLINE", items: [], pendingCount: 0, issueCount: 0, syncingCount: 0 }));
       return [] as OutboxOperation[];
     }
     try {
+      const scope = `${user.userId}:${user.farmId}`;
       const items = await listOutbox(user.userId, user.farmId);
       const pending = items.filter((item) => pendingStatuses([item.status])).length;
       const issues = items.filter((item) => ["CONFLICT", "REJECTED", "AUTH_REQUIRED"].includes(item.status)).length;
       const syncing = items.filter((item) => item.status === "SYNCING").length;
       const lastSuccessfulSync = await getLastSuccessfulSync();
+      if (scopeRef.current !== scope) return [];
       setSnapshot((current) => ({ ...current, items, pendingCount: pending, issueCount: issues, syncingCount: syncing, lastSuccessfulSync, storageAvailable: true }));
       return items;
     } catch {
@@ -129,6 +138,7 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
     try {
       const farmId = user.farmId;
       const data = await offlineApi.bootstrap();
+      if (scopeRef.current !== `${user.userId}:${farmId}`) return;
       await saveOfflineBootstrap(user.userId, farmId, data);
       await Promise.all([
         saveBatchSnapshots(user.userId, farmId, data.batches),
@@ -156,37 +166,43 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
         await refresh();
         return;
       }
+      if (authRequired || isAuthRequired()) {
+        await refresh();
+        setSnapshot((current) => ({ ...current, connection: "AUTH_REQUIRED", syncingCount: 0 }));
+        return;
+      }
+      const scope = `${user.userId}:${user.farmId}`;
       setSnapshot((current) => ({ ...current, connection: "CHECKING" }));
-      if (!(await serverReachable())) {
+      const reachable = await serverReachable();
+      if (scopeRef.current !== scope) return;
+      if (!reachable) {
         setSnapshot((current) => ({ ...current, connection: navigator.onLine ? "SERVER_UNREACHABLE" : "OFFLINE" }));
         await refresh();
         return;
       }
+      if (scopeRef.current !== scope) return;
       if (Date.now() - bootstrapAtRef.current > 5 * 60_000) {
         await hydrateOfflineBootstrap();
         bootstrapAtRef.current = Date.now();
       }
 
-      const blockedBatches = new Set<number>();
-      let items = await refresh();
-      const eligible = () => items.filter((item) =>
-        (item.status === "PENDING" || (item.status === "RETRY_WAIT" && (!item.nextAttemptAt || item.nextAttemptAt <= new Date().toISOString())))
-        && !blockedBatches.has(item.batchId));
+      if (isAuthRequired()) {
+        await refresh();
+        setSnapshot((current) => ({ ...current, connection: "AUTH_REQUIRED", syncingCount: 0 }));
+        return;
+      }
 
-      while (eligible().length > 0) {
-        const selectedByBatch = new Map<number, OutboxOperation>();
-        for (const item of eligible()) {
-          if (!selectedByBatch.has(item.batchId)) selectedByBatch.set(item.batchId, item);
-          if (selectedByBatch.size >= 25) break;
-        }
-        const selected = [...selectedByBatch.values()].sort((a, b) => a.sequence - b.sequence);
+      let failureConnection: SyncConnection | null = null;
+      while (scopeRef.current === scope && !isAuthRequired()) {
+        const owner = uuid();
+        const selected = await claimOutboxOperations(user.userId, user.farmId, owner, Date.now(), LEASE_MS);
         if (selected.length === 0) break;
         setSnapshot((current) => ({ ...current, connection: "SYNCING", syncingCount: selected.length }));
-        await Promise.all(selected.map((item) => updateOutboxOperation(item.operationId, {
-          status: "SYNCING",
-          lastAttemptAt: new Date().toISOString(),
-        })));
+        const renewal = window.setInterval(() => {
+          void renewOutboxClaims(selected.map((item) => item.operationId), owner, Date.now() + LEASE_MS).catch(() => undefined);
+        }, LEASE_MS / 3);
 
+        try {
         const body: SyncOperationsRequest = {
           deviceId: await getDeviceId(),
           operations: selected.map((item) => ({
@@ -198,20 +214,31 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
             payload: item.payload,
           })),
         };
-        try {
+          if (scopeRef.current !== scope) break;
           const response = await syncApi.operations(body);
-          for (const result of response.results) {
-            const item = selected.find((candidate) => candidate.operationId === result.operationId);
-            if (!item) continue;
+          for (const item of selected) {
+            const result = response.results.find((candidate) => candidate.operationId === item.operationId);
+            if (!result) {
+              await updateClaimedOutboxOperation(item.operationId, owner, { status: "RETRY_WAIT", attemptCount: item.attemptCount + 1, nextAttemptAt: new Date(Date.now() + backoff(item.attemptCount)).toISOString(), lastErrorCode: "MISSING_RESULT", lastErrorMessage: "The server did not acknowledge this record; it will retry automatically.", leaseOwner: undefined, leaseUntil: undefined });
+              continue;
+            }
+            if (item.entityType === "DAILY_RECORD" && (result.status === "APPLIED" || result.status === "ALREADY_APPLIED")
+              && (result.serverId == null || !Number.isSafeInteger(result.serverId) || result.serverId <= 0)) {
+              await updateClaimedOutboxOperation(item.operationId, owner, { status: "RETRY_WAIT", attemptCount: item.attemptCount + 1, nextAttemptAt: new Date(Date.now() + backoff(item.attemptCount)).toISOString(), lastErrorCode: "MISSING_RECORD_ID", lastErrorMessage: "The server acknowledgement was incomplete; this measurement will retry.", leaseOwner: undefined, leaseUntil: undefined });
+              continue;
+            }
             if (result.status === "APPLIED" || result.status === "ALREADY_APPLIED") {
               if (result.serverId != null) {
                 try { await commitSyncedSelectionSession(item, result.serverId, result.serverTime); } catch { /* A server acknowledgement must not be retried because local snapshots are full. */ }
               }
-              await deleteOutboxOperation(item.operationId);
+              if (!await updateClaimedOutboxOperation(item.operationId, owner, null)) continue;
               queryClient.invalidateQueries({ queryKey: qk.batches.all });
               queryClient.invalidateQueries({ queryKey: qk.inputs });
               queryClient.invalidateQueries({ queryKey: qk.alertsFarmRoot });
               queryClient.invalidateQueries({ queryKey: qk.alertsFarmSummary });
+              if (item.entityType === "DAILY_RECORD") {
+                queryClient.invalidateQueries({ queryKey: qk.batches.detail(item.batchId) });
+              }
               if (item.entityType === "SEX_COMPOSITION") {
                 queryClient.invalidateQueries({ queryKey: qk.batches.sexComposition(item.batchId) });
                 queryClient.invalidateQueries({ queryKey: qk.batches.detail(item.batchId) });
@@ -240,40 +267,75 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
               queryClient.invalidateQueries({ queryKey: qk.tasks });
               queryClient.invalidateQueries({ queryKey: qk.vaccinationPrograms });
             } else if (result.status === "AUTH_REQUIRED") {
-              await updateOutboxOperation(item.operationId, { status: "AUTH_REQUIRED", lastErrorMessage: result.message ?? "Sign in to sync this record." });
-              blockedBatches.add(item.batchId);
+              await updateClaimedOutboxOperation(item.operationId, owner, { status: "AUTH_REQUIRED", lastErrorMessage: result.message ?? "Sign in to sync this record.", leaseOwner: undefined, leaseUntil: undefined });
             } else if (result.status === "CONFLICT") {
-              await updateOutboxOperation(item.operationId, { status: "CONFLICT", lastErrorCode: result.status, lastErrorMessage: result.message ?? "Review this record before syncing." });
-              blockedBatches.add(item.batchId);
+              await updateClaimedOutboxOperation(item.operationId, owner, { status: "CONFLICT", lastErrorCode: result.status, lastErrorMessage: result.message ?? "Review this record before syncing.", leaseOwner: undefined, leaseUntil: undefined });
             } else if (result.status === "REJECTED") {
-              await updateOutboxOperation(item.operationId, { status: "REJECTED", lastErrorCode: result.status, lastErrorMessage: result.message ?? "This record needs review." });
-              blockedBatches.add(item.batchId);
+              await updateClaimedOutboxOperation(item.operationId, owner, { status: "REJECTED", lastErrorCode: result.status, lastErrorMessage: result.message ?? "This record needs review.", leaseOwner: undefined, leaseUntil: undefined });
             } else {
-              await updateOutboxOperation(item.operationId, { status: "RETRY_WAIT", attemptCount: item.attemptCount + 1, nextAttemptAt: new Date(Date.now() + backoff(item.attemptCount)).toISOString(), lastErrorCode: result.status, lastErrorMessage: result.message ?? "The server will be tried again." });
+              await updateClaimedOutboxOperation(item.operationId, owner, { status: "RETRY_WAIT", attemptCount: item.attemptCount + 1, nextAttemptAt: new Date(Date.now() + backoff(item.attemptCount)).toISOString(), lastErrorCode: result.status, lastErrorMessage: result.message ?? "The server will be tried again.", leaseOwner: undefined, leaseUntil: undefined });
             }
           }
           await setLastSuccessfulSync(new Date().toISOString());
-          items = await refresh();
+          await refresh();
         } catch (error) {
           const isAuth = error instanceof ApiError && error.status === 401;
-          await Promise.all(selected.map((item) => updateOutboxOperation(item.operationId, {
+          failureConnection = isAuth ? "AUTH_REQUIRED" : "SERVER_UNREACHABLE";
+          await Promise.all(selected.map((item) => updateClaimedOutboxOperation(item.operationId, owner, {
             status: isAuth ? "AUTH_REQUIRED" : "RETRY_WAIT",
             attemptCount: item.attemptCount + 1,
             nextAttemptAt: isAuth ? undefined : new Date(Date.now() + backoff(item.attemptCount)).toISOString(),
             lastErrorCode: isAuth ? "401" : "NETWORK",
             lastErrorMessage: isAuth ? "Sign in again to sync this record." : "Server not reachable; it will retry automatically.",
+            leaseOwner: undefined,
+            leaseUntil: undefined,
           })));
           setSnapshot((current) => ({ ...current, connection: isAuth ? "AUTH_REQUIRED" : "SERVER_UNREACHABLE" }));
-          items = await refresh();
+          await refresh();
           break;
+        } finally {
+          window.clearInterval(renewal);
         }
       }
+      if (scopeRef.current !== scope) return;
       const finalItems = await refresh();
-      setSnapshot((current) => ({ ...current, connection: finalItems.some((item) => item.status === "AUTH_REQUIRED") ? "AUTH_REQUIRED" : navigator.onLine ? "ONLINE" : "OFFLINE", syncingCount: 0 }));
+      setSnapshot((current) => ({ ...current, connection: isAuthRequired() || finalItems.some((item) => item.status === "AUTH_REQUIRED") ? "AUTH_REQUIRED" : failureConnection ?? (navigator.onLine ? "ONLINE" : "OFFLINE"), syncingCount: 0 }));
     })();
     runRef.current = run;
-    try { await run; } finally { runRef.current = null; }
-  }, [hydrateOfflineBootstrap, isAuthenticated, isLoading, queryClient, refresh, user]);
+    try { await run; } finally {
+      runRef.current = null;
+      if (scopeRef.current !== currentScope && scopeRef.current) window.setTimeout(() => { void syncRef.current(); }, 0);
+    }
+  }, [authRequired, currentScope, hydrateOfflineBootstrap, isAuthenticated, isLoading, queryClient, refresh, user]);
+  useLayoutEffect(() => { syncRef.current = syncNow; }, [syncNow]);
+
+  // Reauthentication only releases records for the active user and farm.
+  useEffect(() => {
+    if (isLoading || authRequired || isAuthRequired() || !currentScope || !user?.farmId) return;
+    let active = true;
+    void retryOutboxIssues(user.userId, user.farmId).then(() => {
+      if (active) void syncNow();
+    }).catch(() => { if (active) void refresh(); });
+    return () => { active = false; };
+  // The scope transition, rather than a refresh of the user object, is the trigger.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authRequired, currentScope, isLoading, user]);
+
+  useEffect(() => {
+    if (authRequired || !currentScope || !navigator.onLine || !snapshot.items.length) return;
+    const heads = new Map<number, OutboxOperation>();
+    for (const item of snapshot.items) if (!heads.has(item.batchId)) heads.set(item.batchId, item);
+    const times = [...heads.values()].flatMap((item) => {
+      if (item.status === "PENDING") return [Date.now()];
+      if (item.status === "RETRY_WAIT") return [Date.parse(item.nextAttemptAt ?? "") || Date.now()];
+      if (item.status === "SYNCING") return [item.leaseUntil ?? Date.now()];
+      return [];
+    });
+    if (!times.length) return;
+    const minimumDelay = snapshot.connection === "SERVER_UNREACHABLE" ? 30_000 : 250;
+    const timer = window.setTimeout(() => { void syncNow(); }, Math.max(minimumDelay, Math.min(...times) - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [authRequired, currentScope, snapshot.connection, snapshot.items, syncNow]);
 
   const scheduleSync = useCallback((delay = 250) => {
     if (retryTimer.current) window.clearTimeout(retryTimer.current);
@@ -281,11 +343,11 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
   }, [syncNow]);
 
   const retryIssues = useCallback(async () => {
-    if (!user?.farmId || !isAuthenticated) return;
+    if (!user?.farmId || !isAuthenticated || authRequired || isAuthRequired()) return;
     await retryOutboxIssues(user.userId, user.farmId);
     await refresh();
     await syncNow();
-  }, [isAuthenticated, refresh, syncNow, user]);
+  }, [authRequired, isAuthenticated, refresh, syncNow, user]);
 
   const enqueue = useCallback(async ({ entityType, batchId, payload, occurredAt }: EnqueueInput) => {
     if (!user?.farmId || !isAuthenticated) throw new Error("Sign in before saving a farm record.");
@@ -297,7 +359,9 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
       userId: user.userId,
       farmId: user.farmId,
       batchId,
-      payload: { ...payload, operationId },
+      payload: entityType === "DAILY_RECORD"
+        ? { ...payload, operationId, ownerUserId: user.userId, ownerFarmId: user.farmId }
+        : { ...payload, operationId },
       occurredAt,
       queuedAt: new Date().toISOString(),
     });

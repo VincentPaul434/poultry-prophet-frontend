@@ -4,7 +4,7 @@
 // Renders the 4+1 action buttons and manages all form dialogs internally.
 // Import and drop onto any page that needs inline event logging.
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowLeftRight,
@@ -195,7 +195,7 @@ function EventDateControl({
         </div>
         <button
           type="button"
-          className="shrink-0 text-xs font-semibold text-primary underline-offset-4 hover:underline"
+          className="shrink-0 text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
           onClick={() => onShowOverrideChange(!showOverride)}
         >
           {showOverride ? "Use today" : "Ibang date"}
@@ -218,7 +218,7 @@ function TagPill({ label, selected, onToggle }: { label: string; selected: boole
       onClick={onToggle}
       aria-pressed={selected}
       className={cn(
-        "flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-all active:scale-95",
+        "flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-2 text-sm font-medium transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
         selected
           ? "border-primary bg-primary text-primary-foreground shadow-sm"
           : "border-border bg-background text-foreground hover:border-primary/50 hover:bg-muted"
@@ -249,6 +249,7 @@ export function VitalsStatus({ batchId }: { batchId: string }) {
 type SexChoice = "MALE" | "FEMALE" | "UNCLASSIFIED" | "MIXED" | "";
 
 function MortalityForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
+  const id = useId();
   const createEvent = useCreateEvent(batchId);
   const { data: sexComposition } = useSexComposition(Number(batchId));
   const [count, setCount] = useState("1");
@@ -358,44 +359,44 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} allowPopulationRestore={canLogWithNoPopulation} />
       <div className="grid grid-cols-2 gap-2.5">
-        <EventDateControl id="population-event-date" date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} />
-        <div className="space-y-1.5"><Label className="text-sm font-semibold">{isCountCorrection ? "Signed adjustment" : "How many?"}</Label><Input type="number" min={isCountCorrection ? undefined : 1} max={!isCountCorrection && !addsPopulation ? population : undefined} step={1} required value={count} onChange={(e) => setCount(e.target.value)} placeholder={isCountCorrection ? "+2 or -1" : undefined} className="h-11 rounded-lg text-center text-base font-bold" /></div>
+        <EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} />
+        <div className="space-y-1.5"><Label htmlFor={`${id}-count`} className="text-sm font-semibold">{isCountCorrection ? "Signed adjustment" : "How many?"}</Label><Input id={`${id}-count`} type="number" min={isCountCorrection ? undefined : 1} max={!isCountCorrection && !addsPopulation ? population : undefined} step={1} required value={count} onChange={(e) => setCount(e.target.value)} placeholder={isCountCorrection ? "+2 or -1" : undefined} className="h-11 rounded-lg text-center text-base font-bold" /></div>
       </div>
       <div className="space-y-1.5">
-        <Label className="text-sm font-semibold">What happened?</Label>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {LOSS_CATEGORIES.map((category) => <button key={category.type} type="button" aria-pressed={lossType === category.type} onClick={() => setLossType(category.type)} className={cn("min-h-11 rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-colors", lossType === category.type ? "border-destructive bg-destructive/10 text-destructive" : "border-border hover:bg-muted")}>{lossType === category.type ? "✓ " : ""}{category.label}</button>)}
+        <span id={`${id}-event-type`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">What happened?</span>
+        <div role="group" aria-labelledby={`${id}-event-type`} className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {LOSS_CATEGORIES.map((category) => <button key={category.type} type="button" aria-pressed={lossType === category.type} onClick={() => setLossType(category.type)} className={cn("min-h-11 rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", lossType === category.type ? "border-destructive bg-destructive/10 text-destructive" : "border-border hover:bg-muted")}>{lossType === category.type ? "✓ " : ""}{category.label}</button>)}
         </div>
         {selectedCategory && <p className="text-xs text-muted-foreground">{selectedCategory.hint}</p>}
       {lossType === "SALE" && (
         <div className="space-y-1.5">
-          <Label className="text-sm font-semibold">Sale purpose <span className="font-normal text-muted-foreground">(optional)</span></Label>
-          <NativeSelect value={salePurpose} onChange={(event) => setSalePurpose(event.target.value as typeof salePurpose)}>
+          <Label htmlFor={`${id}-sale-purpose`} className="text-sm font-semibold">Sale purpose <span className="font-normal text-muted-foreground">(optional)</span></Label>
+          <NativeSelect id={`${id}-sale-purpose`} value={salePurpose} onChange={(event) => setSalePurpose(event.target.value as typeof salePurpose)}>
             <option value="">Not specified</option>
             <option value="BREEDING">Sold as breeder</option>
             <option value="OTHER">Other purpose</option>
           </NativeSelect>
           <p className="text-xs text-muted-foreground">This describes the sale only. It does not change the batch stage.</p>
           <div className="space-y-1.5">
-            <Label className="text-sm font-semibold">Total amount received <span className="font-normal text-muted-foreground">(PHP) *</span></Label>
-            <Input type="number" min="0.01" step="0.01" value={saleAmount} onChange={(event) => setSaleAmount(event.target.value)} placeholder="e.g. 2500" className="h-11" />
+            <Label htmlFor={`${id}-sale-amount`} className="text-sm font-semibold">Total amount received <span className="font-normal text-muted-foreground">(PHP) *</span></Label>
+            <Input id={`${id}-sale-amount`} type="number" min="0.01" step="0.01" value={saleAmount} onChange={(event) => setSaleAmount(event.target.value)} placeholder="e.g. 2500" className="h-11" />
             <p className="text-xs text-muted-foreground">Enter the total for all birds in this sale, not a per-bird price. It creates one auditable income record.</p>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div className="space-y-1.5"><Label className="text-sm font-semibold">Buyer <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={saleBuyer} onChange={(event) => setSaleBuyer(event.target.value)} placeholder="Buyer or customer" className="h-11" /></div>
-            <div className="space-y-1.5"><Label className="text-sm font-semibold">Reference <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={saleReference} onChange={(event) => setSaleReference(event.target.value)} placeholder="Receipt or note" className="h-11" /></div>
+            <div className="space-y-1.5"><Label htmlFor={`${id}-sale-buyer`} className="text-sm font-semibold">Buyer <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id={`${id}-sale-buyer`} value={saleBuyer} onChange={(event) => setSaleBuyer(event.target.value)} placeholder="Buyer or customer" className="h-11" /></div>
+            <div className="space-y-1.5"><Label htmlFor={`${id}-sale-reference`} className="text-sm font-semibold">Reference <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id={`${id}-sale-reference`} value={saleReference} onChange={(event) => setSaleReference(event.target.value)} placeholder="Receipt or note" className="h-11" /></div>
           </div>
         </div>
       )}
       </div>
       {lossType && (
         <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
-          <Label className="text-sm font-semibold">Which birds were affected?</Label>
+          <span id={`${id}-sex`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Which birds were affected?</span>
           {sexProjectionReady ? (
             <>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div role="group" aria-labelledby={`${id}-sex`} className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {(["MALE", "FEMALE", "UNCLASSIFIED", "MIXED"] as const).map((choice) => (
-                  <button key={choice} type="button" aria-pressed={sexChoice === choice} onClick={() => setSexChoice(choice)} className={cn("rounded-lg border px-2 py-2 text-xs font-semibold", sexChoice === choice ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted")}>
+                  <button key={choice} type="button" aria-pressed={sexChoice === choice} onClick={() => setSexChoice(choice)} className={cn("rounded-lg border px-2 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", sexChoice === choice ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted")}>
                     {choice === "UNCLASSIFIED" ? "Unclassified" : choice[0] + choice.slice(1).toLowerCase()}
                   </button>
                 ))}
@@ -407,7 +408,7 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
             : <p className="text-xs text-muted-foreground">Record the whole-batch male/female count first. This event will update the total population only.</p>}
         </div>
       )}
-      <div className="space-y-1.5"><Label className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you observe?" className="resize-none rounded-lg" /></div>
+      <div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea id={`${id}-notes`} rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you observe?" className="resize-none rounded-lg" /></div>
       <InlineError message={formError} />
       <Button type="submit" variant="destructive" className="h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || (population <= 0 && !canLogWithNoPopulation)}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save population event"}</Button>
     </form>
@@ -417,6 +418,7 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
 // ─── Form: Health concern ─────────────────────────────────────────────────────
 
 function HealthForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
+  const id = useId();
   const createEvent = useCreateEvent(batchId);
   const [count, setCount] = useState("1");
   const [severity, setSeverity] = useState("");
@@ -440,10 +442,10 @@ function HealthForm({ batchId, population, onDone }: { batchId: string; populati
   return (
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id="health-event-date" date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label className="text-sm font-semibold">Affected birds</Label><Input type="number" min={1} max={population} required value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg text-center font-bold" /></div></div>
-      <div className="space-y-1.5"><Label className="text-sm font-semibold">Concern level</Label><div className="grid grid-cols-3 gap-2">{[{ v: "MINOR", label: "Mild" }, { v: "MODERATE", label: "Serious" }, { v: "MAJOR", label: "Urgent" }].map((item) => <button key={item.v} type="button" aria-pressed={severity === item.v} onClick={() => setSeverity(item.v)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold", severity === item.v ? "border-warning bg-warning-muted text-warning-ink" : "border-border hover:bg-muted")}>{item.label}</button>)}</div></div>
-      <div className="space-y-1.5"><Label className="text-sm font-semibold">Signs noticed</Label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{HEALTH_SYMPTOMS.map((item) => <TagPill key={item} label={item} selected={symptoms.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
-      <div className="space-y-1.5"><Label className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you observe?" className="resize-none rounded-lg" /></div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label htmlFor={`${id}-count`} className="text-sm font-semibold">Affected birds</Label><Input id={`${id}-count`} type="number" min={1} max={population} required value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg text-center font-bold" /></div></div>
+      <div className="space-y-1.5"><span id={`${id}-concern`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Concern level</span><div role="group" aria-labelledby={`${id}-concern`} className="grid grid-cols-3 gap-2">{[{ v: "MINOR", label: "Mild" }, { v: "MODERATE", label: "Serious" }, { v: "MAJOR", label: "Urgent" }].map((item) => <button key={item.v} type="button" aria-pressed={severity === item.v} onClick={() => setSeverity(item.v)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", severity === item.v ? "border-warning bg-warning-muted text-warning-ink" : "border-border hover:bg-muted")}>{item.label}</button>)}</div></div>
+      <div className="space-y-1.5"><span id={`${id}-signs`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Signs noticed</span><div role="group" aria-labelledby={`${id}-signs`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{HEALTH_SYMPTOMS.map((item) => <TagPill key={item} label={item} selected={symptoms.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
+      <div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea id={`${id}-notes`} rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you observe?" className="resize-none rounded-lg" /></div>
       <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || population <= 0}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save sickness report"}</Button>
     </form>
   );
@@ -452,6 +454,7 @@ function HealthForm({ batchId, population, onDone }: { batchId: string; populati
 // ─── Form: Treatment ──────────────────────────────────────────────────────────
 
 function TreatmentForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
+  const id = useId();
   const createInput = useCreateFarmInput();
   const { data: farmProducts } = useFarmProducts(false);
   const [farmProductId, setFarmProductId] = useState<number | null>(null);
@@ -500,13 +503,13 @@ function TreatmentForm({ batchId, population, onDone }: { batchId: string; popul
   return (
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
-      {farmProducts && farmProducts.length > 0 && <div className="space-y-1.5"><Label className="text-sm font-semibold">Product from farm stock</Label><NativeSelect value={farmProductId ?? ""} onChange={(e) => { const value = e.target.value ? Number(e.target.value) : null; const selected = farmProducts.find((item) => item.id === value); setFarmProductId(value); if (selected) { setProductName(selected.brandName); setProductType(selected.productType); } }}><option value="">Product not listed</option>{farmProducts.map((item) => <option key={item.id} value={item.id}>{item.brandName} · {item.stockOnHand} {item.stockUnit}{item.lowStock ? " · low stock" : ""}</option>)}</NativeSelect></div>}
-      <div className="grid grid-cols-[minmax(0,1fr)_9rem] gap-2.5"><div className="space-y-1.5"><Label className="text-sm font-semibold">Product / brand</Label><Input required value={productName} onChange={(e) => { setProductName(e.target.value); setFarmProductId(null); }} placeholder="e.g. Baby Stag Booster" className="h-11 rounded-lg" /></div><div className="space-y-1.5"><Label className="text-sm font-semibold">Units used {farmProductId ? <span className="font-normal text-destructive">required</span> : <span className="font-normal text-muted-foreground">optional</span>}</Label><Input required={Boolean(farmProductId)} type="number" min="0.001" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder={selectedProduct?.stockUnit ?? "If known"} className="h-11 rounded-lg" />{selectedProduct && <p className="text-[11px] text-muted-foreground">Available: {selectedProduct.stockOnHand} {selectedProduct.stockUnit}{estimatedCost != null ? ` · Estimated batch cost ₱${estimatedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : " · Cost unavailable"}</p>}</div></div>
-      <div className="space-y-1.5"><Label className="text-sm font-semibold">Product type</Label><div className="grid grid-cols-3 gap-2 sm:grid-cols-5">{[{ v: "FEED", label: "Feed" }, { v: "VITAMIN", label: "Vitamin" }, { v: "MEDICINE", label: "Medicine" }, { v: "VACCINE", label: "Vaccine" }, { v: "OTHER", label: "Other" }].map((item) => <button key={item.v} type="button" aria-pressed={productType === item.v} onClick={() => setProductType(item.v as typeof productType)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-xs font-semibold", productType === item.v ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{item.label}</button>)}</div></div>
-      {purposeRequired && <div className="space-y-1.5"><Label className="text-sm font-semibold">Purpose</Label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{MEDICINE_PURPOSES.map((item) => <button key={item} type="button" aria-pressed={purpose === item} onClick={() => setPurpose(item)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-left text-sm font-medium", purpose === item ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{purpose === item ? "✓ " : ""}{item}</button>)}</div></div>}
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id="product-event-date" date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label className="text-sm font-semibold">Applied to</Label><div className="flex h-11 gap-1.5"><button type="button" aria-pressed={allBirds} onClick={() => setAllBirds(true)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold", allBirds ? "border-success bg-success-muted text-success" : "border-border")}>All {population}</button><button type="button" aria-pressed={!allBirds} onClick={() => setAllBirds(false)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold", !allBirds ? "border-success bg-success-muted text-success" : "border-border")}>Some</button></div></div></div>
-      {!allBirds && <Input type="number" min={1} max={population} value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg" placeholder={`1 – ${population}`} />}
-      <details open={showDetails} onToggle={(e) => setShowDetails(e.currentTarget.open)} className="rounded-lg border px-3"><summary className="flex min-h-10 cursor-pointer items-center text-sm font-semibold">More details <span className="ml-1 font-normal text-muted-foreground">(optional)</span></summary><div className="space-y-2 pb-3"><Input value={dose} onChange={(e) => setDose(e.target.value)} placeholder="Dose guidance or application note" className="h-10 rounded-lg" /><Textarea rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Notes" className="resize-none rounded-lg" /></div></details>
+      {farmProducts && farmProducts.length > 0 && <div className="space-y-1.5"><Label htmlFor={`${id}-stock`} className="text-sm font-semibold">Product from farm stock</Label><NativeSelect id={`${id}-stock`} value={farmProductId ?? ""} onChange={(e) => { const value = e.target.value ? Number(e.target.value) : null; const selected = farmProducts.find((item) => item.id === value); setFarmProductId(value); if (selected) { setProductName(selected.brandName); setProductType(selected.productType); } }}><option value="">Product not listed</option>{farmProducts.map((item) => <option key={item.id} value={item.id}>{item.brandName} · {item.stockOnHand} {item.stockUnit}{item.lowStock ? " · low stock" : ""}</option>)}</NativeSelect></div>}
+      <div className="grid grid-cols-[minmax(0,1fr)_9rem] gap-2.5"><div className="space-y-1.5"><Label htmlFor={`${id}-product`} className="text-sm font-semibold">Product / brand</Label><Input id={`${id}-product`} required value={productName} onChange={(e) => { setProductName(e.target.value); setFarmProductId(null); }} placeholder="e.g. Baby Stag Booster" className="h-11 rounded-lg" /></div><div className="space-y-1.5"><Label htmlFor={`${id}-quantity`} className="text-sm font-semibold">Units used {farmProductId ? <span className="font-normal text-destructive">required</span> : <span className="font-normal text-muted-foreground">optional</span>}</Label><Input id={`${id}-quantity`} required={Boolean(farmProductId)} type="number" min="0.001" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder={selectedProduct?.stockUnit ?? "If known"} className="h-11 rounded-lg" />{selectedProduct && <p className="text-[11px] text-muted-foreground">Available: {selectedProduct.stockOnHand} {selectedProduct.stockUnit}{estimatedCost != null ? ` · Estimated batch cost ₱${estimatedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : " · Cost unavailable"}</p>}</div></div>
+      <div className="space-y-1.5"><span id={`${id}-type`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Product type</span><div role="group" aria-labelledby={`${id}-type`} className="grid grid-cols-3 gap-2 sm:grid-cols-5">{[{ v: "FEED", label: "Feed" }, { v: "VITAMIN", label: "Vitamin" }, { v: "MEDICINE", label: "Medicine" }, { v: "VACCINE", label: "Vaccine" }, { v: "OTHER", label: "Other" }].map((item) => <button key={item.v} type="button" aria-pressed={productType === item.v} onClick={() => setProductType(item.v as typeof productType)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", productType === item.v ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{item.label}</button>)}</div></div>
+      {purposeRequired && <div className="space-y-1.5"><span id={`${id}-purpose`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Purpose</span><div role="group" aria-labelledby={`${id}-purpose`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{MEDICINE_PURPOSES.map((item) => <button key={item} type="button" aria-pressed={purpose === item} onClick={() => setPurpose(item)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", purpose === item ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{purpose === item ? "✓ " : ""}{item}</button>)}</div></div>}
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><span id={`${id}-applied-to`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Applied to</span><div role="group" aria-labelledby={`${id}-applied-to`} className="flex h-11 gap-1.5"><button type="button" aria-pressed={allBirds} onClick={() => setAllBirds(true)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", allBirds ? "border-success bg-success-muted text-success" : "border-border")}>All {population}</button><button type="button" aria-pressed={!allBirds} onClick={() => setAllBirds(false)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", !allBirds ? "border-success bg-success-muted text-success" : "border-border")}>Some</button></div></div></div>
+      {!allBirds && <Input aria-label="Number of birds treated" type="number" min={1} max={population} value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg" placeholder={`1 – ${population}`} />}
+      <details open={showDetails} onToggle={(e) => setShowDetails(e.currentTarget.open)} className="rounded-lg border px-3"><summary className="flex min-h-10 cursor-pointer items-center text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">More details <span className="ml-1 font-normal text-muted-foreground">(optional)</span></summary><div className="space-y-2 pb-3"><Input aria-label="Dose guidance or application note" value={dose} onChange={(e) => setDose(e.target.value)} placeholder="Dose guidance or application note" className="h-10 rounded-lg" /><Textarea aria-label="Product notes" rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Notes" className="resize-none rounded-lg" /></div></details>
       <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createInput.isPending || population <= 0}>{createInput.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save product record"}</Button>
     </form>
   );
@@ -515,6 +518,7 @@ function TreatmentForm({ batchId, population, onDone }: { batchId: string; popul
 // ─── Form: Behavior ───────────────────────────────────────────────────────────
 
 function BehaviorForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
+  const id = useId();
   const createEvent = useCreateEvent(batchId);
   const [signs, setSigns] = useState<string[]>([]);
   const [concern, setConcern] = useState("");
@@ -533,9 +537,9 @@ function BehaviorForm({ batchId, population, onDone }: { batchId: string; popula
   return (
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
-      <div className="space-y-1.5"><Label className="text-sm font-semibold">Signs noticed</Label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{BEHAVIOR_SIGNS.map((item) => <TagPill key={item} label={item} selected={signs.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
-      <div className="space-y-1.5"><Label className="text-sm font-semibold">Attention level</Label><div className="grid grid-cols-3 gap-2">{[{ v: "LOW", label: "Watch" }, { v: "MEDIUM", label: "Check" }, { v: "HIGH", label: "Now" }].map((item) => <button key={item.v} type="button" aria-pressed={concern === item.v} onClick={() => setConcern(item.v)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold", concern === item.v ? "border-warning bg-warning-muted text-warning-ink" : "border-border hover:bg-muted")}>{item.label}</button>)}</div></div>
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id="behavior-event-date" date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you see?" className="h-11 rounded-lg" /></div></div>
+      <div className="space-y-1.5"><span id={`${id}-signs`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Signs noticed</span><div role="group" aria-labelledby={`${id}-signs`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{BEHAVIOR_SIGNS.map((item) => <TagPill key={item} label={item} selected={signs.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
+      <div className="space-y-1.5"><span id={`${id}-attention`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Attention level</span><div role="group" aria-labelledby={`${id}-attention`} className="grid grid-cols-3 gap-2">{[{ v: "LOW", label: "Watch" }, { v: "MEDIUM", label: "Check" }, { v: "HIGH", label: "Now" }].map((item) => <button key={item.v} type="button" aria-pressed={concern === item.v} onClick={() => setConcern(item.v)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", concern === item.v ? "border-warning bg-warning-muted text-warning-ink" : "border-border hover:bg-muted")}>{item.label}</button>)}</div></div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id={`${id}-notes`} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you see?" className="h-11 rounded-lg" /></div></div>
       <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || population <= 0}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save behavior note"}</Button>
     </form>
   );
@@ -544,6 +548,7 @@ function BehaviorForm({ batchId, population, onDone }: { batchId: string; popula
 // ─── Form: Daily vitals ───────────────────────────────────────────────────────
 
 function VitalsForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
+  const id = useId();
   const createRecord = useCreateRecord(batchId);
   const [form, setForm] = useState({ recordDate: todayIso(), temperatureC: "", feedIntakeG: "", waterIntakeMl: "", feedQuality: "MEASURED", waterQuality: "MEASURED", behaviorNotes: "" });
   const [formError, setFormError] = useState("");
@@ -555,15 +560,15 @@ function VitalsForm({ batchId, population, onDone }: { batchId: string; populati
     if (form.temperatureC === "" && form.feedIntakeG === "" && form.waterIntakeMl === "" && !form.behaviorNotes.trim()) { setFormError("Enter at least one measurement or note."); return; }
     try {
       await createRecord.mutateAsync({ recordDate: form.recordDate, temperatureC: form.temperatureC === "" ? null : Number(form.temperatureC), feedIntakeG: form.feedIntakeG === "" ? null : Number(form.feedIntakeG), waterIntakeMl: form.waterIntakeMl === "" ? null : Number(form.waterIntakeMl), behaviorNotes: form.behaviorNotes || null, temperatureQuality: form.temperatureC === "" ? "UNAVAILABLE" : "MEASURED", feedQuality: form.feedIntakeG === "" ? "UNAVAILABLE" : form.feedQuality as "MEASURED" | "ESTIMATED" | "UNAVAILABLE", waterQuality: form.waterIntakeMl === "" ? "UNAVAILABLE" : form.waterQuality as "MEASURED" | "ESTIMATED" | "UNAVAILABLE" });
-      toast.success("Measurement record saved"); onDone();
-    } catch (err) { setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again."); }
+      toast.success("Measurement saved on this device and queued for sync"); onDone();
+    } catch (err) { setFormError(err instanceof Error ? err.message : "Failed to save. Check the connection and try again."); }
   }
   return (
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
       <p className="rounded-lg border border-success-border bg-success-muted px-3 py-2 text-xs text-success">Optional lang: record only what the farm actually measures. Hindi kailangan araw-araw.</p>
-      <EventDateControl id="measurement-date" date={form.recordDate} onChange={(value) => set("recordDate", value)} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) set("recordDate", todayIso()); }} />
-      <div className="grid grid-cols-2 gap-2.5"><div className="space-y-1.5"><Label className="text-sm font-semibold">Temperature °C <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input type="number" step="0.1" min={0} max={60} value={form.temperatureC} onChange={(e) => set("temperatureC", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label className="text-sm font-semibold">Feed grams <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input type="number" step="0.1" min={0} value={form.feedIntakeG} onChange={(e) => set("feedIntakeG", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label className="text-sm font-semibold">Water ml <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input type="number" step="0.1" min={0} value={form.waterIntakeMl} onChange={(e) => set("waterIntakeMl", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label className="text-sm font-semibold">Note <span className="font-normal text-muted-foreground">(optional)</span></Label><Input value={form.behaviorNotes} onChange={(e) => set("behaviorNotes", e.target.value)} placeholder="e.g. cold / normal" className="h-11 rounded-lg" /></div></div>
+      <EventDateControl id={`${id}-date`} date={form.recordDate} onChange={(value) => set("recordDate", value)} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) set("recordDate", todayIso()); }} />
+      <div className="grid grid-cols-2 gap-2.5"><div className="space-y-1.5"><Label htmlFor={`${id}-temperature`} className="text-sm font-semibold">Temperature °C <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input id={`${id}-temperature`} type="number" step="0.1" min={0} max={60} value={form.temperatureC} onChange={(e) => set("temperatureC", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label htmlFor={`${id}-feed`} className="text-sm font-semibold">Feed grams <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input id={`${id}-feed`} type="number" step="0.1" min={0} value={form.feedIntakeG} onChange={(e) => set("feedIntakeG", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label htmlFor={`${id}-water`} className="text-sm font-semibold">Water ml <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input id={`${id}-water`} type="number" step="0.1" min={0} value={form.waterIntakeMl} onChange={(e) => set("waterIntakeMl", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label htmlFor={`${id}-note`} className="text-sm font-semibold">Note <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id={`${id}-note`} value={form.behaviorNotes} onChange={(e) => set("behaviorNotes", e.target.value)} placeholder="e.g. cold / normal" className="h-11 rounded-lg" /></div></div>
       <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createRecord.isPending || population <= 0}>{createRecord.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save measurement"}</Button>
     </form>
   );

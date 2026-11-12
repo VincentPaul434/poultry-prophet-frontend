@@ -105,6 +105,7 @@ async function mockFinanceBackend(page: Page, mode: SeriesMode) {
   await page.route("**/api/backend/**", async (route) => {
     const requestUrl = new URL(route.request().url());
     const path = requestUrl.pathname.replace("/api/backend", "");
+    if (path === "/auth/refresh") return route.fulfill({ json: { token: "finance-layout-e2e-token", userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 } });
 
     if (path === "/farm") {
       return route.fulfill({ json: { id: 1, name: "Fixture Farm", location: "Test", description: null } });
@@ -141,14 +142,7 @@ async function mockFinanceBackend(page: Page, mode: SeriesMode) {
 
 async function openFinance(page: Page, view?: "report" | "transactions") {
   await page.addInitScript(() => {
-    window.localStorage.setItem("pp_auth_token", "finance-layout-e2e-token");
-    window.localStorage.setItem("pp_auth_user", JSON.stringify({
-      userId: 1,
-      email: "manager@example.test",
-      fullName: "Fixture Manager",
-      role: "MANAGER",
-      farmId: 1,
-    }));
+    if (!window.localStorage.getItem("pp_auth_session")) window.localStorage.setItem("pp_auth_session", JSON.stringify({ sessionId: "test-session", user: { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 } }));
   });
 
   await page.goto(view ? `/finance?view=${view}` : "/finance");

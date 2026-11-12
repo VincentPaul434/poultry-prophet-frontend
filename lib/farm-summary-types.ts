@@ -36,24 +36,18 @@ export interface FarmSummaryAnalytics {
     otherEvents: number;
   }>;
   finance: {
-    currency: string;
-    income: string;
-    saleIncome: string;
+    currency: string | null;
+    income: string | null;
+    saleIncome: string | null;
     saleTransactionCount: number;
-    expense: string;
-    net: string;
+    expense: string | null;
+    net: string | null;
     transactionCount: number;
-    series: Array<{
-      periodStart: string;
-      periodEnd: string;
-      label: string;
-      income: string;
-      expense: string;
-      net: string;
-    }>;
-    categories: Array<{ category: string; amount: string }>;
+    series: FinanceCurrencySummary["series"];
+    categories: FinanceCurrencySummary["categories"];
     available: boolean;
     limitation: string;
+    byCurrency?: FinanceCurrencySummary[];
   };
   tasks: {
     total: number;
@@ -75,6 +69,19 @@ export interface FarmSummaryAnalytics {
   };
   inputTypes: Record<string, number>;
   limitations: string[];
+}
+
+export interface FinanceCurrencySummary {
+  currency: string;
+  income: string;
+  saleIncome: string;
+  saleTransactionCount: number;
+  expense: string;
+  net: string;
+  transactionCount: number;
+  series: Array<{ periodStart: string; periodEnd: string; label: string; income: string; expense: string; net: string }>;
+  categories: Array<{ category: string; amount: string }>;
+  available: boolean;
 }
 
 export interface BatchComparison {

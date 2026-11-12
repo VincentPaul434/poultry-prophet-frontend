@@ -94,6 +94,7 @@ const sampleEvents = [
 async function mockHandlerBackend(page: Page) {
   await page.route("**/api/backend/**", async (route) => {
     const path = new URL(route.request().url()).pathname.replace("/api/backend", "");
+    if (path === "/auth/refresh") return route.fulfill({ json: { token: "record-picker-e2e-token", userId: 2, email: "handler@example.test", fullName: "Fixture Handler", role: "HANDLER", farmId: 1 } });
 
     if (path === "/farm") return route.fulfill({ json: { id: 1, name: "Sunrise Farm", location: null, description: null } });
     if (path === "/alerts") return route.fulfill({ json: [] });
@@ -106,6 +107,7 @@ async function mockHandlerBackend(page: Page) {
     if (path === "/batches/2") return route.fulfill({ json: batches[1] });
     if (path === "/batches/2/events") return route.fulfill({ json: sampleEvents });
     if (path === "/batches/2/records") return route.fulfill({ json: [] });
+    if (path === "/inventory/products") return route.fulfill({ json: [] });
     if (path === "/batches/dashboard") return route.fulfill({ json: dashboardItems() });
     if (path === "/tasks/handler-queue/summary") return route.fulfill({ json: { now: 0, upcoming: 0, overdue: 0, completed: 0 } });
     if (path === "/tasks/handler-queue") return route.fulfill({ json: { items: [], page: 0, size: 10, totalItems: 0, totalPages: 0, hasPrevious: false, hasNext: false } });
@@ -116,14 +118,7 @@ async function mockHandlerBackend(page: Page) {
 
 async function openPicker(page: Page) {
   await page.addInitScript(() => {
-    window.localStorage.setItem("pp_auth_token", "record-picker-e2e-token");
-    window.localStorage.setItem("pp_auth_user", JSON.stringify({
-      userId: 2,
-      email: "handler@example.test",
-      fullName: "Fixture Handler",
-      role: "HANDLER",
-      farmId: 1,
-    }));
+    if (!window.localStorage.getItem("pp_auth_session")) window.localStorage.setItem("pp_auth_session", JSON.stringify({ sessionId: "test-session", user: { userId: 2, email: "handler@example.test", fullName: "Fixture Handler", role: "HANDLER", farmId: 1 } }));
   });
 
   await page.goto("/dashboard");
@@ -134,6 +129,86 @@ async function openPicker(page: Page) {
 test.describe("Record batch picker", () => {
   test.beforeEach(async ({}, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("mobile-chromium-"), "This suite is reserved for mobile Chromium projects.");
+  });
+
+  test("keeps offline recording scoped after refresh rejection until the same handler signs in", async ({ page }) => {
+    await mockHandlerBackend(page);
+    let syncCalls = 0;
+    await page.route("**/api/backend/sync/v2/operations", async route => {
+      syncCalls++;
+      const body = route.request().postDataJSON() as { operations: { operationId: string }[] };
+      await route.fulfill({ json: { results: body.operations.map(item => ({ operationId: item.operationId, status: "APPLIED" })) } });
+    });
+    await openPicker(page);
+    await page.getByRole("button", { name: /hatch-0001/ }).click();
+    await expect(page.getByRole("heading", { name: "Record an event" })).toBeVisible();
+    await page.route("**/api/backend/auth/refresh", route => route.fulfill({ status: 400, json: { message: "Refresh token expired" } }));
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Record an event" })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pp_auth_session") ?? "null")?.authRequired)).toBe(true);
+    await page.getByRole("button", { name: "Health concern" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "Mild" }).click();
+    await dialog.getByRole("group", { name: "Signs noticed" }).getByRole("button").first().click();
+    await dialog.getByRole("button", { name: "Save sickness report" }).click();
+    await expect(dialog).toBeHidden();
+    const queued = async () => page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("poultry-prophet-offline-v1");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const rows = await new Promise<{ userId: number; farmId: number; status: string }[]>((resolve, reject) => {
+        const request = db.transaction("outbox").objectStore("outbox").getAll();
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      return rows;
+    });
+    await expect.poll(async () => (await queued()).length).toBe(1);
+    expect((await queued())[0]).toMatchObject({ userId: 2, farmId: 1, status: "PENDING" });
+    expect(syncCalls).toBe(0);
+    // A previous sync attempt can also leave the head explicitly auth-blocked.
+    await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("poultry-prophet-offline-v1");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction("outbox", "readwrite");
+        const store = tx.objectStore("outbox");
+        const request = store.getAll();
+        request.onsuccess = () => store.put({ ...request.result[0], status: "AUTH_REQUIRED" });
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error);
+      });
+      db.close();
+    });
+    const original = { userId: 2, farmId: 1, email: "handler@example.test", fullName: "Fixture Handler", role: "HANDLER", token: "original-access" };
+    const different = { ...original, userId: 3, farmId: 2, email: "other@example.test", token: "other-access" };
+    let active = different;
+    await page.route("**/api/backend/auth/login", route => {
+      active = (route.request().postDataJSON() as { email: string }).email === original.email ? original : different;
+      return route.fulfill({ json: active });
+    });
+    await page.route("**/api/backend/auth/refresh", route => route.fulfill({ json: active }));
+    await page.getByRole("button", { name: /sign in to send|mag-sign in para maipadala/i }).first().click();
+    await expect(page).toHaveURL(/\/login$/);
+    await page.getByLabel(/^(email|email address)$/i).fill(different.email);
+    await page.getByLabel(/^password$/i).fill("password-for-test");
+    await page.getByRole("button", { name: /^(mag-sign in|sign in|log in|login)$/i }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    expect(syncCalls).toBe(0);
+    expect((await queued())[0]).toMatchObject({ userId: 2, farmId: 1, status: "AUTH_REQUIRED" });
+    await page.goto("/login", { waitUntil: "networkidle" });
+    await page.getByLabel(/^(email|email address)$/i).fill(original.email);
+    await page.getByLabel(/^password$/i).fill("password-for-test");
+    await page.getByRole("button", { name: /^(mag-sign in|sign in|log in|login)$/i }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await expect.poll(() => syncCalls).toBe(1);
+    await expect.poll(async () => (await queued()).length).toBe(0);
   });
 
   test("shows the themed picker and filters active batches", async ({ page }) => {
@@ -189,5 +264,71 @@ test.describe("Record batch picker", () => {
     await page.getByRole("button", { name: "Bird count change" }).click();
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page.getByRole("dialog").getByRole("heading", { name: "Population change" })).toBeVisible();
+  });
+
+  test("names recording fields and supports keyboard operation", async ({ page }) => {
+    await mockHandlerBackend(page);
+    await page.route("**/api/backend/inventory/products**", (route) => route.fulfill({ json: [{ id: 1, brandName: "Fixture medicine", productType: "MEDICINE", stockOnHand: 10, stockUnit: "bottles", active: true }] }));
+    await page.route("**/api/backend/batches/2/sex-composition", (route) => route.fulfill({ json: { maleCount: 100, femaleCount: 100, unclassifiedCount: 0, projectionStatus: "VALID" } }));
+    await openPicker(page);
+    await page.getByRole("button", { name: /hatch-0001/ }).click();
+
+    const trigger = page.getByRole("button", { name: "Bird count change" });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByLabel("How many?")).toBeVisible();
+    await dialog.getByText("How many?", { exact: true }).click();
+    await expect(dialog.getByLabel("How many?")).toBeFocused();
+    await expect(dialog.getByRole("group", { name: "What happened?" })).toBeVisible();
+    await dialog.getByRole("button", { name: "Ibang date" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(dialog.getByLabel("Different date")).toBeVisible();
+    await dialog.getByRole("button", { name: "Sale", exact: true }).focus();
+    await page.keyboard.press("Space");
+    await expect(dialog.getByRole("group", { name: "What happened?" }).getByRole("button", { name: /Sale/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(dialog.getByLabel(/Sale purpose/)).toBeVisible();
+    await expect(dialog.getByLabel(/Total amount received/)).toBeVisible();
+    await expect(dialog.getByLabel(/Buyer/)).toBeVisible();
+    await expect(dialog.getByLabel(/Reference/)).toBeVisible();
+    await expect(dialog.getByLabel(/Notes/)).toBeVisible();
+    await dialog.getByRole("button", { name: "Mixed", exact: true }).click();
+    await expect(dialog.getByRole("group", { name: "Which birds were affected?" })).toBeVisible();
+    await expect(dialog.getByLabel("Male allocation", { exact: true })).toBeVisible();
+    await expect(dialog.getByLabel("Female allocation")).toBeVisible();
+    await expect(dialog.getByLabel("Unclassified allocation")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(trigger).toBeFocused();
+
+    await page.getByRole("button", { name: "Health concern" }).click();
+    await expect(dialog.getByLabel("Affected birds")).toBeVisible();
+    await expect(dialog.getByLabel(/Notes/)).toBeVisible();
+    await expect(dialog.getByRole("group", { name: "Concern level" })).toBeVisible();
+    await expect(dialog.getByRole("group", { name: "Signs noticed" })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: "Feed or medicine used" }).click();
+    await expect(dialog.getByLabel("Product from farm stock")).toBeVisible();
+    await expect(dialog.getByLabel("Product / brand")).toBeVisible();
+    await expect(dialog.getByLabel(/Units used/)).toBeVisible();
+    await expect(dialog.getByRole("group", { name: "Product type" })).toBeVisible();
+    await expect(dialog.getByRole("group", { name: "Applied to" })).toBeVisible();
+    await dialog.getByRole("button", { name: "Some", exact: true }).click();
+    await expect(dialog.getByLabel("Number of birds treated")).toBeVisible();
+    await dialog.getByText("More details", { exact: false }).focus();
+    await page.keyboard.press("Enter");
+    await expect(dialog.getByLabel("Dose guidance or application note")).toBeVisible();
+    await expect(dialog.getByLabel("Product notes")).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: "Behavior observed" }).click();
+    await expect(dialog.getByLabel(/Notes/)).toBeVisible();
+    await expect(dialog.getByRole("group", { name: "Attention level" })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await page.getByRole("button", { name: /Measurements/ }).click();
+    for (const name of [/Temperature °C/, /Feed grams/, /Water ml/, /^Note/]) {
+      await expect(dialog.getByLabel(name)).toBeVisible();
+    }
   });
 });

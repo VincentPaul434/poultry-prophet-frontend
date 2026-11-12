@@ -68,6 +68,7 @@ function mergeEvents(events: BatchEvent[], queued: BatchEvent[], limit: number) 
 export function useBatchEvents(batchId: number | string, limit = 30, enabled = true) {
   const { user } = useAuth();
   return useQuery({
+    networkMode: "always",
     queryKey: qk.batches.events(batchId, limit),
     queryFn: async () => {
       try {
@@ -105,6 +106,7 @@ export function useCreateEvent(batchId: number | string) {
   const queryClient = useQueryClient();
   const { enqueue } = useOfflineSync();
   return useMutation({
+    networkMode: "always",
     mutationFn: async (body: CreateBatchEventRequest) => {
       const operationId = body.operationId ?? crypto.randomUUID();
       await enqueue({

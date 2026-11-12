@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Activity, CalendarDays, ChevronDown, GitCompareArrows, HeartPulse, LayoutDashboard, WalletCards } from "lucide-react";
 import { useBatches } from "@/hooks/use-batches";
 import { useBatchComparison, useOperationsAnalytics } from "@/hooks/use-operations";
-import type { AnalyticsScope, BatchComparison, FarmSummaryAnalytics } from "@/lib/farm-summary-types";
+import type { AnalyticsScope, BatchComparison, FarmSummaryAnalytics, FinanceCurrencySummary } from "@/lib/farm-summary-types";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -33,7 +33,8 @@ function daysAgo(days: number) {
 function money(value: string, currency = "PHP") {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "No record";
-  return new Intl.NumberFormat("en-PH", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
+  const formatted = amount.toLocaleString("en-PH", { maximumFractionDigits: 2 });
+  return currency === "PHP" ? `₱${formatted}` : `${currency} ${formatted}`;
 }
 
 function count(value: number | null | undefined) {
@@ -306,7 +307,14 @@ function ActivityFact({ label, value }: { label: string; value: string }) {
 }
 
 function FinancialSection({ data, href }: { data: FarmSummaryAnalytics["finance"]; href: string }) {
-  const scopeNote = financeScopeNote(data.limitation);
+  const reports = data.byCurrency ?? (data.currency && data.income != null && data.expense != null && data.net != null
+    ? [{ ...data, currency: data.currency, income: data.income, saleIncome: data.saleIncome ?? "0", expense: data.expense, net: data.net }]
+    : []);
+  return <div className="space-y-6">{reports.length > 1 && <p className="text-sm text-muted-foreground">Currencies are shown separately; no conversion is applied.</p>}{reports.map((report) => <FinancialCurrencySection key={report.currency} data={report} limitation={data.limitation} href={href} />)}</div>;
+}
+
+function FinancialCurrencySection({ data, limitation, href }: { data: FinanceCurrencySummary; limitation: string; href: string }) {
+  const scopeNote = financeScopeNote(limitation);
   const netValue = data.available ? money(data.net, data.currency) : "No record";
   const incomeValue = data.available ? money(data.income, data.currency) : "No record";
   const expenseValue = data.available ? money(data.expense, data.currency) : "No record";
@@ -314,9 +322,9 @@ function FinancialSection({ data, href }: { data: FarmSummaryAnalytics["finance"
   const incomeWidth = data.available ? Math.max(Number(data.income) > 0 ? 2 : 0, Number(data.income) / largest * 100) : 0;
   const expenseWidth = data.available ? Math.max(Number(data.expense) > 0 ? 2 : 0, Number(data.expense) / largest * 100) : 0;
 
-  return <section className="space-y-5" aria-labelledby="financial-snapshot-heading">
+  return <section className="space-y-5" aria-labelledby={`financial-snapshot-${data.currency}`}>
     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-      <div><h2 id="financial-snapshot-heading" className="ledger-card-title text-2xl sm:text-3xl">Financial snapshot</h2><p className="mt-1 text-sm text-muted-foreground">Recorded cash for the selected period.</p></div>
+      <div><h2 id={`financial-snapshot-${data.currency}`} className="ledger-card-title text-2xl sm:text-3xl">Financial snapshot</h2><p className="mt-1 text-sm font-medium">{data.currency}</p><p className="mt-1 text-sm text-muted-foreground">Recorded cash for the selected period.</p></div>
       <span className="text-sm text-muted-foreground">{data.transactionCount} posted transaction{data.transactionCount === 1 ? "" : "s"}</span>
     </div>
     <div className="grid overflow-hidden rounded-[1.75rem] bg-[#194b37] text-white shadow-xl shadow-[#194b37]/10 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,1fr)]">

@@ -1,5 +1,10 @@
-const CACHE_NAME = "poultry-prophet-shell-v6";
+const VERSION = new URL(self.location.href).searchParams.get("version") || "legacy-v7";
+const CACHE_NAME = `poultry-prophet-shell-${VERSION}`;
 const OFFLINE_URL = "/offline";
+
+function isImmutableAsset(url) {
+  return url.pathname.startsWith("/_next/static/") && /(?:^|[-.])[a-f0-9]{8,}\.[a-z0-9]+$/i.test(url.pathname);
+}
 
 async function cacheSuccessfulResponse(request, response) {
   if (response.status !== 200 || response.type === "opaque") return;
@@ -21,7 +26,7 @@ async function precacheDashboard(cache) {
     const html = await response.text();
     const assetUrls = [...html.matchAll(/(?:src|href)=["']([^"']*\/_next\/static\/[^"']+)["']/g)]
       .map((match) => new URL(match[1], self.location.origin))
-      .filter((url) => url.origin === self.location.origin);
+      .filter((url) => url.origin === self.location.origin && isImmutableAsset(url));
 
     await Promise.all(assetUrls.map(async (url) => {
       try {
@@ -57,23 +62,28 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
-  if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
+  if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname === "/api" || url.pathname.startsWith("/api/")) return;
 
-  if (request.mode === "navigate") {
+  if (request.mode === "navigate" || !isImmutableAsset(url)) {
     event.respondWith((async () => {
       try {
-        const response = await fetch(request);
+        const response = await fetch(request, { cache: "no-cache" });
         await cacheSuccessfulResponse(request, response);
         return response;
       } catch {
-        return (await caches.match(request)) || (await caches.match(OFFLINE_URL));
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        if (request.mode === "navigate") return cache.match(OFFLINE_URL);
+        throw new TypeError("Network unavailable and no cached response exists.");
       }
     })());
     return;
   }
 
   event.respondWith((async () => {
-    const cached = await caches.match(request);
+    const cache = await caches.open(CACHE_NAME);
+    const cached = await cache.match(request);
     if (cached) return cached;
     const response = await fetch(request);
     await cacheSuccessfulResponse(request, response);

@@ -1,102 +1,79 @@
-// Small wrapper around localStorage for the access token, refresh token, and
-// cached auth profile. Centralised so the axios interceptor, auth context and
-// route guards all agree on the same keys and stay SSR-safe.
-
+// Only the non-secret profile and session identifier persist across tabs.
 import type { AuthResponse } from "./types";
 
-const TOKEN_KEY = "pp_auth_token";
-const REFRESH_TOKEN_KEY = "pp_auth_refresh_token";
-const USER_KEY = "pp_auth_user";
 export const AUTH_SESSION_KEY = "pp_auth_session";
-
+export const AUTH_STATE_EVENT = "poultry-auth-state";
+const REVISION_KEY = "pp_auth_revision";
+const LEGACY_KEYS = ["pp_auth_token", "pp_auth_refresh_token", "pp_auth_user"];
 export type StoredUser = Omit<AuthResponse, "token" | "refreshToken" | "refreshTokenExpiresAt">;
+export type ClientAuthResponse = StoredUser & { token: string };
+type StoredSession = { sessionId: string; user: StoredUser; refreshUncertain?: boolean; authRequired?: boolean };
+let accessToken: string | null = null;
+let tokenSessionId: string | null = null;
 
-type StoredSession = {
-  token: string;
-  refreshToken: string | null;
-  refreshTokenExpiresAt: string | null;
-  user: StoredUser;
-};
-
-function getSession(): StoredSession | null {
+function session(): StoredSession | null {
   if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
   if (!raw) return null;
   try {
-    const session = JSON.parse(raw) as StoredSession;
-    return typeof session.token === "string" && session.user ? session : null;
-  } catch {
-    return null;
-  }
+    const value = JSON.parse(raw);
+    // Never migrate legacy bearer credentials into the new session.
+    if (typeof value.sessionId !== "string" || !value.user || "token" in value || "refreshToken" in value) {
+      window.localStorage.removeItem(AUTH_SESSION_KEY);
+      return null;
+    }
+    return value as StoredSession;
+  } catch { window.localStorage.removeItem(AUTH_SESSION_KEY); return null; }
 }
 
-export function isAuthStorageKey(key: string | null) {
-  return key === null || key === AUTH_SESSION_KEY || key === TOKEN_KEY || key === REFRESH_TOKEN_KEY || key === USER_KEY;
+export function purgeLegacyCredentials() {
+  if (typeof window === "undefined") return;
+  for (const key of LEGACY_KEYS) window.localStorage.removeItem(key);
+  session();
 }
-
-export function hasCurrentAccessToken(token: string) {
-  const payload = token.split(".")[1];
-  if (!payload || typeof atob === "undefined") return true;
-  try {
-    const claims = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/"))) as { exp?: number };
-    return typeof claims.exp !== "number" || claims.exp * 1000 > Date.now() + 30_000;
-  } catch {
-    // Older or opaque tokens can still be verified by the API's 401 response.
-    return true;
-  }
+export function getSessionScope(): string | null {
+  const current = session();
+  return current ? JSON.stringify([current.sessionId, current.user.userId, current.user.farmId]) : null;
 }
-
+export function isAuthStorageKey(key: string | null) { return key === null || key === AUTH_SESSION_KEY || LEGACY_KEYS.includes(key); }
 export function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return getSession()?.token ?? window.localStorage.getItem(TOKEN_KEY);
+  const current = session();
+  return !current?.authRequired && current?.sessionId === tokenSessionId ? accessToken : null;
 }
-
-export function getRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return getSession()?.refreshToken ?? window.localStorage.getItem(REFRESH_TOKEN_KEY);
+export function getStoredUser(): StoredUser | null { return session()?.user ?? null; }
+export function isAuthRequired() { return !!session()?.authRequired; }
+export function markAuthRequired() {
+  const current = session();
+  accessToken = null;
+  tokenSessionId = null;
+  if (!current) return;
+  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ sessionId: current.sessionId, user: current.user, authRequired: true }));
+  if (typeof window.dispatchEvent === "function") window.dispatchEvent(new Event(AUTH_STATE_EVENT));
 }
-
-export function getStoredUser(): StoredUser | null {
-  if (typeof window === "undefined") return null;
-  const sessionUser = getSession()?.user;
-  if (sessionUser) return sessionUser;
-  const raw = window.localStorage.getItem(USER_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as StoredUser;
-  } catch {
-    return null;
-  }
+export function isRefreshUncertain() { return !!session()?.refreshUncertain; }
+export function markRefreshUncertain() {
+  const current = session();
+  if (current) window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ ...current, refreshUncertain: true }));
 }
-
-export function saveSession(auth: AuthResponse): StoredUser {
-  const user: StoredUser = {
-    userId: auth.userId,
-    email: auth.email,
-    fullName: auth.fullName,
-    role: auth.role,
-    farmId: auth.farmId,
-  };
+export function getAuthRevision() { return typeof window === "undefined" ? null : window.localStorage.getItem(REVISION_KEY); }
+export function saveSession(auth: ClientAuthResponse, preserveSession = false): StoredUser {
+  const user: StoredUser = { userId: auth.userId, email: auth.email, fullName: auth.fullName, role: auth.role, farmId: auth.farmId };
+  const previous = preserveSession ? session() : null;
+  const sessionId = previous?.sessionId ?? crypto.randomUUID();
   if (typeof window !== "undefined") {
-    // Publish the complete rotation in one storage write. Other tabs must
-    // never observe a new access token paired with the old refresh token.
-    window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({
-      token: auth.token,
-      refreshToken: auth.refreshToken || null,
-      refreshTokenExpiresAt: auth.refreshTokenExpiresAt || null,
-      user,
-    } satisfies StoredSession));
-    window.localStorage.removeItem(TOKEN_KEY);
-    window.localStorage.removeItem(REFRESH_TOKEN_KEY);
-    window.localStorage.removeItem(USER_KEY);
+    purgeLegacyCredentials();
+    if (!preserveSession) window.localStorage.setItem(REVISION_KEY, crypto.randomUUID());
+    window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ sessionId, user }));
   }
+  accessToken = auth.token;
+  tokenSessionId = sessionId;
   return user;
 }
-
 export function clearSession() {
+  accessToken = null;
+  tokenSessionId = null;
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(TOKEN_KEY);
-  window.localStorage.removeItem(REFRESH_TOKEN_KEY);
-  window.localStorage.removeItem(USER_KEY);
+  for (const key of LEGACY_KEYS) window.localStorage.removeItem(key);
+  window.localStorage.setItem(REVISION_KEY, crypto.randomUUID());
   window.localStorage.removeItem(AUTH_SESSION_KEY);
 }

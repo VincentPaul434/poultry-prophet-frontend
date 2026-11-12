@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 
 // Client-side gate for authenticated areas. Waits for the auth context to
-// hydrate from localStorage, then redirects unauthenticated users to /login.
+// restore the session, then redirects unauthenticated users to /login.
 // Optionally restricts to managers.
 export function RouteGuard({
   children,

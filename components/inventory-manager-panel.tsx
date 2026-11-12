@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Loader2, PackagePlus, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
+import { todayIso } from "@/lib/format";
 import { useCreateFarmProduct, useFarmProducts, usePendingInventoryReview, useRetryPendingInventory, useStockInProduct } from "@/hooks/use-operations";
 import type { InputProductType } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
@@ -67,7 +68,7 @@ export function InventoryManagerPanel() {
   async function submitStock(event: React.FormEvent) {
     event.preventDefault();
     if (!selectedId || !stockQuantity || purchaseQuantity <= 0 || blockedByUnvaluedStock || (!freeOfCharge && (!stockUnitCost || purchaseUnitCost <= 0))) return;
-    await stockIn.mutateAsync({ productId: selectedId, body: { quantity: purchaseQuantity, purchaseUnitCost: freeOfCharge ? 0 : purchaseUnitCost, freeOfCharge, stockDate: new Date().toISOString().slice(0, 10) } });
+    await stockIn.mutateAsync({ productId: selectedId, body: { quantity: purchaseQuantity, purchaseUnitCost: freeOfCharge ? 0 : purchaseUnitCost, freeOfCharge, stockDate: todayIso() } });
     toast.success("Stock updated.");
     setStockQuantity(""); setStockUnitCost(""); setFreeOfCharge(false); setShowStock(false);
   }

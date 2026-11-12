@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { getNavigationBuildId } from "next/dist/client/navigation-build-id";
 import { toast } from "sonner";
 import { useLocale } from "@/components/locale-provider";
 
@@ -40,7 +41,18 @@ export function ServiceWorkerRegistration() {
       return;
     }
 
-    void navigator.serviceWorker.register("/sw.js", { scope: "/" }).then((registration) => {
+    // Next initializes this with the deployment ID (when configured) or build ID
+    // before hydration. Changing the script URL installs a fresh cache per build.
+    const version = getNavigationBuildId();
+    if (!version) {
+      reportFailure(new Error("The app deployment identifier is unavailable."));
+      return;
+    }
+
+    void navigator.serviceWorker.register(`/sw.js?version=${encodeURIComponent(version)}`, {
+      scope: "/",
+      updateViaCache: "none",
+    }).then((registration) => {
       const watchInstall = () => {
         const worker = registration.installing;
         if (!worker) return;

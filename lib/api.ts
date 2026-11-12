@@ -4,11 +4,11 @@
 // normalises errors. These are consumed by the React Query hooks in /hooks.
 
 import { ApiError, apiClient } from "./api-client";
+import type { ClientAuthResponse } from "./auth-storage";
 import type { BatchComparison, FarmSummaryAnalytics } from "./farm-summary-types";
 import type {
   Alert,
   AlertSummary,
-  AuthResponse,
   Batch,
   BatchDashboardItem,
   BatchEvent,
@@ -98,15 +98,10 @@ type Id = number | string;
 // ---- Auth ----
 export const authApi = {
   login: (body: LoginRequest) =>
-    apiClient.post<AuthResponse>("/auth/login", body).then((r) => r.data),
+    apiClient.post<ClientAuthResponse>("/auth/login", body).then((r) => r.data),
   register: (body: RegisterRequest) =>
-    apiClient.post<AuthResponse>("/auth/register", body).then((r) => r.data),
-  refresh: (refreshToken: string) =>
-    apiClient.post<AuthResponse>("/auth/refresh", { refreshToken }).then((r) => r.data),
-  logout: (refreshToken?: string) =>
-    apiClient
-      .post<void>("/auth/logout", refreshToken ? { refreshToken } : undefined)
-      .then((r) => r.data),
+    apiClient.post<ClientAuthResponse>("/auth/register", body).then((r) => r.data),
+  logout: () => apiClient.post<void>("/auth/logout", {}).then((r) => r.data),
 };
 
 export const syncApi = {
@@ -130,9 +125,9 @@ export const testLabApi = {
 
 // ---- Account (the caller's own profile/password) ----
 export const accountApi = {
-  // Returns a fresh AuthResponse: email is the JWT subject, so it reissues the token.
+  // The backend returns an updated profile and fresh credentials.
   updateProfile: (body: UpdateProfileRequest) =>
-    apiClient.put<AuthResponse>("/account/profile", body).then((r) => r.data),
+    apiClient.put<ClientAuthResponse>("/account/profile", body).then((r) => r.data),
   changePassword: (body: ChangePasswordRequest) =>
     apiClient.put<void>("/account/password", body).then((r) => r.data),
 };
@@ -332,7 +327,7 @@ export const inviteApi = {
   pending: () =>
     apiClient.get<InviteResponse[]>("/invites/pending").then((r) => r.data),
   accept: (token: string) =>
-    apiClient.post<AuthResponse>(`/invites/${token}/accept`).then((r) => r.data),
+    apiClient.post<ClientAuthResponse>(`/invites/${token}/accept`).then((r) => r.data),
   decline: (token: string) =>
     apiClient.post<void>(`/invites/${token}/decline`).then((r) => r.data),
 };

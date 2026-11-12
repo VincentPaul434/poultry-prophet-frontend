@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, CloudOff, Loader2, LockKeyhole, RefreshCw, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import { useLocale } from "@/components/locale-provider";
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils";
  */
 export function SyncStatusIndicator({ compact = false }: { compact?: boolean }) {
   const { snapshot, syncNow } = useOfflineSync();
+  const router = useRouter();
   const { language, t } = useLocale();
   const taglish = language === "taglish";
   const [announcement, setAnnouncement] = useState("");
@@ -29,10 +31,10 @@ export function SyncStatusIndicator({ compact = false }: { compact?: boolean }) 
 
   const label = storageUnavailable
     ? t("status.offlineStorageUnavailable")
-    : hasIssues
-      ? snapshot.issueCount + (taglish ? " kailangang ayusin" : " needs help")
-      : snapshot.connection === "AUTH_REQUIRED"
+    : snapshot.connection === "AUTH_REQUIRED"
       ? (taglish ? "Mag-sign in para maipadala ang " : "Sign in to send ") + pending
+      : hasIssues
+      ? snapshot.issueCount + (taglish ? " kailangang ayusin" : " needs help")
       : snapshot.connection === "SYNCING"
         ? (taglish ? "Ipinapadala…" : "Sending…")
         : snapshot.connection === "CHECKING"
@@ -69,20 +71,16 @@ export function SyncStatusIndicator({ compact = false }: { compact?: boolean }) 
       : "text-success";
 
   async function handleAction() {
+    if (snapshot.connection === "AUTH_REQUIRED") {
+      router.push("/login");
+      return;
+    }
     if (hasIssues) {
       const message = taglish
         ? "May record na hindi naipadala. Sabihan ang manager para ma-review."
         : "One record was not sent. Please ask the manager to review it.";
       setAnnouncement(message);
       toast.warning(message);
-      return;
-    }
-    if (snapshot.connection === "AUTH_REQUIRED") {
-      const message = taglish
-        ? "Ligtas ang record sa phone. Mag-sign in ulit para maipadala."
-        : "Your records are safe on this phone. Sign in again to send them.";
-      setAnnouncement(message);
-      toast.info(message);
       return;
     }
     await syncNow();

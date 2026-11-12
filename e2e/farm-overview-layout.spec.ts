@@ -22,13 +22,13 @@ const summary = {
   limitations: [],
 };
 
-async function openFarmOverview(page: Page) {
+async function openFarmOverview(page: Page, overview = summary) {
   await page.addInitScript(() => {
-    window.localStorage.setItem("pp_auth_token", "farm-overview-e2e-token");
-    window.localStorage.setItem("pp_auth_user", JSON.stringify({ userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }));
+    if (!window.localStorage.getItem("pp_auth_session")) window.localStorage.setItem("pp_auth_session", JSON.stringify({ sessionId: "test-session", user: { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 } }));
   });
   await page.route("**/api/backend/**", async (route) => {
     const path = new URL(route.request().url()).pathname.replace("/api/backend", "");
+    if (path === "/auth/refresh") return route.fulfill({ json: { token: "farm-overview-e2e-token", userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 } });
     if (path === "/farm") return route.fulfill({ json: { id: 1, name: "North Field Farm", location: "Test", description: null } });
     if (path === "/alerts") return route.fulfill({ json: [] });
     if (path === "/alerts/summary") return route.fulfill({ json: { activeTotal: 0, critical: 0, warning: 0, info: 0 } });
@@ -36,7 +36,7 @@ async function openFarmOverview(page: Page) {
     if (path === "/health") return route.fulfill({ json: { status: "UP" } });
     if (path === "/offline/bootstrap") return route.fulfill({ json: { userId: 1, farmId: 1, batches: [], dashboard: [], products: [], tasks: [], vaccinationPlans: {}, overviews: {}, events: {}, inputs: {} } });
     if (path === "/batches") return route.fulfill({ json: [{ id: 1, name: "North flock", status: "ACTIVE" }, { id: 2, name: "South flock", status: "ACTIVE" }] });
-    if (path === "/analytics/operations/v2") return route.fulfill({ json: summary });
+    if (path === "/analytics/operations/v2") return route.fulfill({ json: overview });
     if (path === "/analytics/batches/compare") return route.fulfill({ json: { requestedWindowDays: 30, effectiveWindowDays: 30, timeZone: "Asia/Manila", warnings: [], batches: [] } });
     return route.fulfill({ json: {} });
   });
@@ -84,4 +84,16 @@ test("keeps the snapshot within the mobile viewport", async ({ page }, testInfo)
   await expect(page.getByRole("heading", { name: "Financial snapshot" })).toBeVisible();
   const financeWidths = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: window.innerWidth }));
   expect(financeWidths.document).toBeLessThanOrEqual(financeWidths.viewport + 1);
+});
+
+
+test("shows separate currency snapshots", async ({ page }) => {
+  const php = { ...summary.finance, income: "1000", expense: "300", net: "700", transactionCount: 2 };
+  const usd = { ...summary.finance, currency: "USD", income: "50", expense: "20", net: "30", transactionCount: 2 };
+  const mixed = { ...summary, finance: { ...summary.finance, byCurrency: [php, usd] } };
+  await openFarmOverview(page, mixed);
+  await page.getByRole("navigation", { name: "Farm overview sections" }).getByRole("button", { name: "Finance" }).click();
+  await expect(page.getByText("Currencies are shown separately; no conversion is applied.")).toBeVisible();
+  await expect(page.getByText("₱700", { exact: true })).toBeVisible();
+  await expect(page.getByText("USD 30", { exact: true })).toBeVisible();
 });

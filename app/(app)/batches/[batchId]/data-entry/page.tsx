@@ -8,7 +8,7 @@ import { useBatchEvents, useBatchEventPage, useBatchEventReport } from "@/hooks/
 import { useHandlers } from "@/hooks/use-reference";
 import { useAuth } from "@/lib/auth-context";
 import { LOGGING_ORIGINS, parseLoggingOrigin } from "@/lib/logging-navigation";
-import { todayIso } from "@/lib/format";
+import { shiftCalendarDate, todayIso } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageBackLink } from "@/components/page-back-link";
 import { BatchLogSection, EventTimeline } from "@/components/batch-log-section";
@@ -62,9 +62,7 @@ function readEventFilters(searchParams: ReturnType<typeof useSearchParams>): Eve
 function eventDates(filters: EventFilterState) {
   if (filters.period === "custom") return { start: filters.start, end: filters.end };
   const end = todayIso();
-  const startDate = new Date(`${end}T00:00:00`);
-  startDate.setDate(startDate.getDate() - (filters.period === "7d" ? 6 : filters.period === "90d" ? 89 : 29));
-  return { start: startDate.toISOString().slice(0, 10), end };
+  return { start: shiftCalendarDate(end, -(filters.period === "7d" ? 6 : filters.period === "90d" ? 89 : 29)), end };
 }
 
 function updateEventUrl(
