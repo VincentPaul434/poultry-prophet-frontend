@@ -1,37 +1,33 @@
-import { BenefitStrip } from "@/components/landing/benefit-strip";
-import { BackToTopButton } from "@/components/landing/back-to-top-button";
-import { CapabilityGrid } from "@/components/landing/capability-grid";
-import { LandingCta } from "@/components/landing/landing-cta";
+import { Outfit } from "next/font/google";
+import { AboutSection } from "@/components/landing/about-section";
+import { FaqSection } from "@/components/landing/faq-section";
 import { LandingFooter } from "@/components/landing/landing-footer";
-import { LandingHeader } from "@/components/landing/landing-header";
 import { LandingHero } from "@/components/landing/landing-hero";
-import { OfflineWorkflow } from "@/components/landing/offline-workflow";
-import { RoleDemo } from "@/components/landing/role-demo";
-import { SystemProcessDemo } from "@/components/landing/system-process-demo";
+import { RecordsSection } from "@/components/landing/records-section";
+import { RolesSection } from "@/components/landing/roles-section";
+import { SiteHeader } from "@/components/landing/site-header";
+import { cn } from "@/lib/utils";
+
+const outfit = Outfit({ subsets: ["latin"], variable: "--font-landing" });
 
 export default function Home() {
   return (
-    <div id="page-top" className="min-h-svh overflow-x-hidden bg-[#f7f1e7] text-[#173d2a]">
+    <div className={cn(outfit.variable, "pp-landing min-h-svh overflow-x-clip bg-(--pp-paper) font-(family-name:--font-landing) text-(--pp-ink)")}>
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-xl focus:bg-white focus:px-4 focus:py-3 focus:text-sm focus:font-bold focus:text-[#173d2a] focus:shadow-xl"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-white focus:px-5 focus:py-3 focus:text-sm focus:font-medium focus:text-(--pp-green) focus:shadow-lg"
       >
         Lumaktaw sa nilalaman
       </a>
-      <LandingHeader />
-
+      <SiteHeader />
       <main id="main-content" lang="fil">
         <LandingHero />
-        <BenefitStrip />
-        <SystemProcessDemo />
-        <OfflineWorkflow />
-        <CapabilityGrid />
-        <RoleDemo />
-        <LandingCta />
+        <AboutSection />
+        <RecordsSection />
+        <RolesSection />
+        <FaqSection />
       </main>
-
       <LandingFooter />
-      <BackToTopButton />
     </div>
   );
 }

@@ -20,7 +20,7 @@ test.describe("Mobile responsive smoke tests", () => {
   test("landing page fits the mobile viewport", async ({ page }) => {
     await page.goto("/");
 
-    await expect(page.getByRole("heading", { name: /Mas madaling farm work/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Malinaw na tala, mula kulungan hanggang report/i })).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 
