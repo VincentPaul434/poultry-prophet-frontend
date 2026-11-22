@@ -45,19 +45,15 @@ self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then(async (cache) => {
     await cache.addAll([OFFLINE_URL, "/icon.svg"]);
     await precacheDashboard(cache);
-    await self.skipWaiting();
+    // Use the browser's waiting lifecycle. Taking over an open document can
+    // mix its old Next chunks with a new worker while records are pending.
+    // The update activates after all pages controlled by the old worker close.
   }));
 });
 
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((cacheNames) => Promise.all(
-      cacheNames
-        .filter((name) => name.startsWith("poultry-prophet-shell-") && name !== CACHE_NAME)
-        .map((name) => caches.delete(name)),
-    )).then(() => self.clients.claim()),
-  );
-});
+// Do not claim existing documents or delete other deployments' caches here.
+// An old document may still require its own assets. Cache retirement requires
+// a separate readiness/retention protocol; it must never touch the outbox.
 
 self.addEventListener("fetch", (event) => {
   const request = event.request;

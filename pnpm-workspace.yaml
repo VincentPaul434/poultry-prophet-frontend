@@ -1,3 +1,7 @@
 allowBuilds:
   sharp: true
   unrs-resolver: true
+
+# GHSA-g3hv-75wg-m249: patch only modern minimatch users; ESLint v3 consumers retain their API.
+overrides:
+  "minimatch@>=7.0.0 <11.0.1": 11.0.1

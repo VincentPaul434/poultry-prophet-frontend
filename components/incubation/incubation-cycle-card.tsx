@@ -38,26 +38,27 @@ function activeProgress(cycle: IncubationCycle) {
   if (!cycle.expectedHatchDate) return null;
   const total = daysBetween(cycle.loadedDate, cycle.expectedHatchDate);
   if (total == null || total === 0) return { elapsed: 0, total: 0, percent: 100 };
-  const end = cycle.expectedHatchDate < todayIso() ? cycle.expectedHatchDate : todayIso();
-  const elapsed = Math.min(total, daysBetween(cycle.loadedDate, end) ?? 0);
+  const elapsed = daysBetween(cycle.loadedDate, todayIso()) ?? 0;
   return { elapsed, total, percent: Math.min(100, Math.round((elapsed / total) * 100)) };
 }
 
-export function IncubationCycleCard({ cycle, onOpen }: { cycle: IncubationCycle; onOpen: (cycle: IncubationCycle) => void }) {
-  const { t } = useLocale();
+export function IncubationCycleCard({ cycle, isManager, onOpen }: { cycle: IncubationCycle; isManager: boolean; onOpen: (cycle: IncubationCycle) => void }) {
+  const { t, language } = useLocale();
   const active = cycle.status !== "COMPLETED" && cycle.status !== "CANCELLED";
   const due = active && Boolean(cycle.expectedHatchDate && cycle.expectedHatchDate <= todayIso());
+  const dueToday = due && cycle.expectedHatchDate === todayIso();
+  const dueLabel = language === "taglish" ? (dueToday ? "Inaasahang pagpisa ngayon" : "Lampas na sa expected hatch date") : (dueToday ? "Hatch due today" : "Hatch overdue");
   const progress = activeProgress(cycle);
   const context = [cycle.incubatorCode, cycle.bloodline].filter(Boolean).join(" · ");
   const label = `${cycle.cycleName}. ${statusLabel(cycle.status, t)}. ${cycle.eggsLoaded} ${t("incubation.eggs")}.`;
 
   return (
-    <Card className={cn("overflow-hidden rounded-2xl shadow-none transition-colors hover:border-primary/40", due && "border-warning/60")}>
+    <Card className={cn("min-w-0 gap-0 overflow-hidden rounded-2xl py-0 shadow-none transition-colors [--card-spacing:0px] hover:border-primary/40", due && "border-warning/60")}>
       <Button variant="ghost"
         type="button"
-        className="w-full text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+        className="h-auto w-full flex-col items-stretch justify-start gap-0 rounded-none p-0 text-left whitespace-normal hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/60"
         onClick={() => onOpen(cycle)}
-        aria-label={`${t("incubation.openDetails")}: ${label}`}
+        aria-label={`${t("incubation.openDetails")}: ${label}${due ? ` ${dueLabel}.` : ""}`}
         data-testid="incubation-cycle-card"
       >
         <div className={cn("h-1 w-full", due ? "bg-warning" : cycle.status === "COMPLETED" ? "bg-success" : cycle.status === "CANCELLED" ? "bg-destructive/60" : "bg-primary")} />
@@ -69,12 +70,12 @@ export function IncubationCycleCard({ cycle, onOpen }: { cycle: IncubationCycle;
             <div className="min-w-0 flex-1">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="truncate font-semibold">{cycle.cycleName}</h2>
+                  <h2 className="line-clamp-2 font-semibold leading-5" title={cycle.cycleName}>{cycle.cycleName}</h2>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">{context || `${t("incubation.loaded")} ${formatDate(cycle.loadedDate)}`}</p>
                 </div>
                 <Badge className={cn("shrink-0 rounded-full border-0 text-[11px]", statusClass(cycle.status))}>{statusLabel(cycle.status, t)}</Badge>
               </div>
-              {due && <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-warning-ink"><AlertTriangle className="size-3.5" aria-hidden="true" />{t("incubation.dueReview")}</p>}
+              {due && <p className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-warning-ink"><AlertTriangle className="size-3.5" aria-hidden="true" />{dueLabel}</p>}
             </div>
             <ChevronRight className="mt-2 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           </div>
@@ -95,6 +96,8 @@ export function IncubationCycleCard({ cycle, onOpen }: { cycle: IncubationCycle;
             </div>
           )}
 
+          {due && <p className="flex items-center gap-1 border-t pt-3 text-sm font-semibold text-primary">{isManager ? t("incubation.hatchResult") : t("incubation.openDetails")} <ChevronRight className="size-4" aria-hidden="true" /></p>}
+          {cycle.status === "COMPLETED" && isManager && !cycle.createdBatchId && (cycle.hatchedCount ?? 0) > 0 && <p className="flex items-center gap-1 border-t pt-3 text-sm font-semibold text-primary">{t("incubation.createBatch")} <ChevronRight className="size-4" aria-hidden="true" /></p>}
           {!active && <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
             <span className="flex min-w-0 items-center gap-1.5 truncate"><CalendarClock className="size-3.5 shrink-0" aria-hidden="true" />{t("incubation.actualDate")}: {formatDate(cycle.actualHatchDate)}</span>
             <span className="shrink-0 font-semibold text-primary">{t("incubation.openDetails")}</span>

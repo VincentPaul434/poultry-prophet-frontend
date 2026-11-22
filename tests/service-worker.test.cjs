@@ -12,6 +12,7 @@ function worker(version = 'build-one', stores = new Map()) {
   let calls = [];
   let body = 'fresh';
   let status = 200;
+  const lifecycleCalls = { skipWaiting: 0, claim: 0 };
   const key = request => typeof request === 'string' || request instanceof URL ? new URL(request, origin).href : request.url;
   const caches = {
     async open(name) {
@@ -30,7 +31,7 @@ function worker(version = 'build-one', stores = new Map()) {
   const self = {
     location: new URL(`${origin}/sw.js?version=${version}`),
     addEventListener(type, handler) { handlers[type] = handler; },
-    skipWaiting: async () => {}, clients: { claim: async () => {} },
+    skipWaiting: async () => { lifecycleCalls.skipWaiting++; }, clients: { claim: async () => { lifecycleCalls.claim++; } },
   };
   const fetch = async request => {
     calls.push(key(request));
@@ -39,8 +40,8 @@ function worker(version = 'build-one', stores = new Map()) {
   };
   vm.runInNewContext(fs.readFileSync('public/sw.js', 'utf8'), { self, caches, fetch, URL, Response, Promise });
   return {
-    stores, calls, set online(value) { online = value; }, set body(value) { body = value; }, set status(value) { status = value; },
-    async lifecycle(type) { let pending; handlers[type]({ waitUntil(promise) { pending = promise; } }); await pending; },
+    stores, calls, lifecycleCalls, set online(value) { online = value; }, set body(value) { body = value; }, set status(value) { status = value; },
+    async lifecycle(type) { let pending; handlers[type]?.({ waitUntil(promise) { pending = promise; } }); await pending; },
     async request(path, options = {}) {
       const request = { url: new URL(path, origin).href, method: 'GET', mode: 'cors', ...options };
       let pending;
@@ -50,19 +51,20 @@ function worker(version = 'build-one', stores = new Map()) {
   };
 }
 
-function registration(buildId) {
+function registration(buildId, { environment = 'production', registrations = [], cacheApi = {}, controller = {}, notifications = [] } = {}) {
   const calls = [];
   const navigationBuildId = require('next/dist/client/navigation-build-id');
   navigationBuildId.setNavigationBuildId(buildId);
   const source = ts.transpileModule(fs.readFileSync('components/service-worker-registration.tsx', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
-  const registration = { installing: null, addEventListener() {} };
+  const registration = { active: { state: "activated" }, installing: null, addEventListener() {} };
   const context = {
-    exports: {}, process: { env: { NODE_ENV: 'production' } },
-    navigator: { serviceWorker: { register: async (...args) => { calls.push(args); return registration; } } },
-    console,
+    exports: {}, process: { env: { NODE_ENV: environment } },
+    window: { location: { origin }, caches: cacheApi }, caches: cacheApi,
+    navigator: { serviceWorker: { controller, getRegistrations: async () => registrations, register: async (...args) => { calls.push(args); return registration; } } },
+    console, URL,
     require(name) {
       if (name === 'react') return { useEffect: fn => fn() };
-      if (name === 'sonner') return { toast: { error() {} } };
+      if (name === 'sonner') return { toast: { error() {}, info: (...args) => notifications.push(args) } };
       if (name === '@/components/locale-provider') return { useLocale: () => ({ t: key => key }) };
       if (name === 'next/dist/client/navigation-build-id') return navigationBuildId;
       throw new Error(`Unexpected import ${name}`);
@@ -117,10 +119,17 @@ test('offline navigation uses offline page for an uncached route', async () => {
   assert.equal(await (await sw.request('/unknown', { mode: 'navigate' })).text(), 'precache /offline');
 });
 
-test('activation removes older app caches without touching unrelated caches', async () => {
+test('worker lifecycle never takes over an open page or deletes its deployment assets', async () => {
   const stores = new Map([['poultry-prophet-shell-old', new Map()], ['other-app', new Map()]]);
-  const sw = worker('build-two', stores); await sw.lifecycle('install'); await sw.lifecycle('activate');
-  assert.deepEqual([...stores.keys()].sort(), ['other-app', 'poultry-prophet-shell-build-two']);
+  const oldCache = stores.get('poultry-prophet-shell-old');
+  oldCache.set(`${origin}/_next/static/chunks/old-abcdef123456.js`, new Response('old required code'));
+  const sw = worker('build-two', stores);
+  await sw.lifecycle('install');
+  assert.equal(sw.lifecycleCalls.skipWaiting, 0, 'updates must wait until existing controlled pages close');
+  await sw.lifecycle('activate');
+  assert.equal(sw.lifecycleCalls.claim, 0, 'do not take over documents rendered by another deployment');
+  assert.equal(await oldCache.get(`${origin}/_next/static/chunks/old-abcdef123456.js`).text(), 'old required code');
+  assert.deepEqual([...stores.keys()].sort(), ['other-app', 'poultry-prophet-shell-build-two', 'poultry-prophet-shell-old']);
 });
 
 test('a new deployment cannot read an older deployment cache before activation', async () => {
@@ -150,4 +159,41 @@ test('API, cross-origin, and non-GET requests bypass the worker', async () => {
   assert.equal(await sw.request('/api'), undefined);
   assert.equal(await sw.request('https://other.example/image.png'), undefined);
   assert.equal(await sw.request('/dashboard', { method: 'POST' }), undefined);
+});
+
+
+test('ordinary development disables only its own worker and preserves deployment caches', async () => {
+  const unregistered = [];
+  const deleted = [];
+  const makeRegistration = (scope, scriptURL, name) => ({ scope, active: { scriptURL }, unregister: async () => { unregistered.push(name); } });
+  registration('development', {
+    environment: 'development',
+    registrations: [
+      makeRegistration(`${origin}/`, `${origin}/sw.js?version=previous`, 'farm'),
+      makeRegistration(`${origin}/other/`, `${origin}/other/sw.js`, 'other'),
+    ],
+    cacheApi: { keys: async () => ['poultry-prophet-shell-old', 'other-app'], delete: async name => { deleted.push(name); } },
+  });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(unregistered, ['farm']);
+  assert.deepEqual(deleted, [], 'an older open farm tab may still need its cached assets');
+});
+
+test('first install asks for an online refresh while the current page is uncontrolled', async () => {
+  const notifications = [];
+  registration('first-install', { controller: null, notifications });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(notifications.length, 1, 'an uncontrolled page must not silently look prepared');
+  assert.equal(notifications[0][0], 'status.offlineRefreshRequired');
+  assert.equal(notifications[0][1].description, 'status.offlineRefreshHint');
+  assert.equal(notifications[0][1].position, 'bottom-center', 'persistent setup notice must not cover the mobile header');
+  assert.equal(notifications[0][1].closeButton, true, 'the user can dismiss the notice');
+  assert.equal(notifications[0][1].duration, 8_000, 'setup guidance must not float over content indefinitely');
+  assert.equal(notifications[0][1].style.pointerEvents, 'none', 'informational text must not intercept form or navigation taps');
+});
+test('an already controlled page is not asked to reload when its update waits', async () => {
+  const notifications = [];
+  registration('next-install', { controller: { scriptURL: `${origin}/sw.js?version=previous` }, notifications });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(notifications.length, 0);
 });

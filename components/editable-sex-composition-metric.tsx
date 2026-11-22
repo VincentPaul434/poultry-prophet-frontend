@@ -130,14 +130,14 @@ export function EditableSexCompositionMetric({ batch, fallback, readOnly = false
     }
   }
 
-  const metric = <div className={cn("min-w-0 bg-card px-3 py-3.5 text-left sm:px-4", !readOnly && "transition-colors hover:bg-muted/40")}>
+  const metric = <div className={cn("h-full w-full min-w-0 bg-card px-3 py-3.5 text-left sm:px-4", !readOnly && "transition-colors hover:bg-muted/40")}>
     <div className="flex items-center justify-between gap-2"><p className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("sexComposition.maleFemale")}</p>{!readOnly && (displayed ? <Pencil className="size-3.5 shrink-0 text-primary" aria-hidden="true" /> : <Plus className="size-3.5 shrink-0 text-primary" aria-hidden="true" />)}</div>
     <p className="mt-1 truncate text-xl font-bold tracking-tight tabular-nums sm:text-2xl">{isLoading && !displayed ? "…" : metricValue}</p>
     {pendingLabel && <span className="mt-1 block size-1.5 rounded-full bg-warning" title={pendingLabel} aria-label={pendingLabel} />}
   </div>;
 
   return <>
-    {readOnly ? metric : <Button type="button" variant="ghost" className="h-auto min-w-0 p-0 text-left" aria-label={accessibleLabel} onClick={startEdit}>{metric}</Button>}
+    {readOnly ? metric : <Button type="button" variant="ghost" className="h-full w-full min-w-0 rounded-none border-0 p-0 text-left" aria-label={accessibleLabel} onClick={startEdit}>{metric}</Button>}
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="grid max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-lg grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-4 py-4 pr-12 sm:px-5"><DialogTitle>{displayed ? t("sexComposition.editTitle") : t("sexComposition.recordTitle")}</DialogTitle><DialogDescription>{t("sexComposition.description")}</DialogDescription></DialogHeader>

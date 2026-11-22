@@ -14,9 +14,9 @@ import { PageBackLink } from "@/components/page-back-link";
 import { BatchLogSection, EventTimeline } from "@/components/batch-log-section";
 import { useLocale } from "@/components/locale-provider";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { EventTypeChart } from "@/components/event-type-chart";
 import { Card, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import type { BatchEvent, EventType } from "@/lib/types";
@@ -55,7 +55,7 @@ function readEventFilters(searchParams: ReturnType<typeof useSearchParams>): Eve
     search: searchParams.get("q") ?? "",
     populationOnly: searchParams.get("populationOnly") === "true",
     page: Math.max(0, Number(searchParams.get("page") ?? 0) || 0),
-    view: view === "records" ? "records" : "report",
+    view: view === "records" || view === "history" ? "records" : "report",
   };
 }
 
@@ -141,7 +141,7 @@ function EventHistoryPageContent({
   const batchDay = batch ? daysElapsed(batch.hatchDate ?? batch.startDate) : null;
 
   return (
-    <div className={isManager ? "mx-auto flex h-full min-h-0 w-full max-w-[90rem] flex-col space-y-6" : "mx-auto max-w-3xl space-y-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))]"}>
+    <div className={isManager ? "mx-auto flex w-full max-w-[90rem] flex-col space-y-6" : "mx-auto max-w-3xl space-y-6 pb-[calc(6.5rem+env(safe-area-inset-bottom))]"}>
 
       {/* Header */}
       <div>
@@ -153,7 +153,7 @@ function EventHistoryPageContent({
         {isManager || isHistoryView ? (
           <>
             <h1 className="text-2xl font-bold">Event Log</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">{batch?.name ?? "Batch"} — full history of logged events</p>
+            <p className="mt-0.5 text-sm text-muted-foreground">{batch?.name ?? "Batch"} — logged events</p>
           </>
         ) : (
           <div className="flex items-start gap-3">
@@ -205,11 +205,11 @@ function EventHistoryPageContent({
       {/* Manager analytics and event list; handlers retain the offline field timeline. */}
       {isManager ? <ManagerEventReport batchId={batchId} /> : <section className="space-y-3">
         <div className="flex items-end justify-between gap-3">
-          <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t("record.activityHistory")}</h2>
+          <h2 className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">{t("record.recentActivity")}</h2>
           <span className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">{events ? `${events.length} ${t("record.recordsCount")}` : ""}</span>
         </div>
         {isLoading ? (
-          <div className="space-y-2" aria-label="Loading activity history">
+          <div role="status" aria-busy="true" className="space-y-2" aria-label="Loading activity history">
             {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-2xl" />)}
           </div>
         ) : isError && !events ? (
@@ -243,11 +243,16 @@ function ManagerEventReport({ batchId }: { batchId: string }) {
     search: filters.search.trim() || undefined,
     populationOnly: filters.populationOnly,
   };
-  const report = useBatchEventReport(batchId, commonParams);
+  const report = useBatchEventReport(batchId, { ...commonParams, type: undefined });
   const records = useBatchEventPage(batchId, { ...commonParams, page: filters.page, size: 20 });
   const data = report.data;
   const rows = records.data?.items ?? [];
-  const max = Math.max(1, ...(data?.overTime ?? []).map((item) => item.count));
+
+  const summaryMetrics = [
+    { label: "Records", value: data?.totalRecords ?? "—" },
+    { label: "Birds lost", value: data?.birdsLost ?? "—" },
+    { label: "Health", value: data?.healthConcerns ?? "—", fullWidthOnMobile: true },
+  ];
   return <div className="flex min-h-0 flex-1 flex-col space-y-4">
     <div className="flex gap-2 border-b pb-2 lg:hidden"><Button type="button" variant={filters.view === "report" ? "default" : "outline"} onClick={() => updateEventUrl(router, pathname, searchParams, { view: "report" })}>Report</Button><Button type="button" variant={filters.view === "records" ? "default" : "outline"} onClick={() => updateEventUrl(router, pathname, searchParams, { view: "records" })}>Records</Button></div>
     <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-card/30 p-3">
@@ -262,18 +267,25 @@ function ManagerEventReport({ batchId }: { batchId: string }) {
       <Input aria-label="Search events" placeholder="Search title or notes" value={filters.search} onChange={(event) => updateEventUrl(router, pathname, searchParams, { search: event.target.value, page: 0 })} className="min-w-48 flex-1" />
       <Button type="button" variant={filters.populationOnly ? "default" : "outline"} onClick={() => updateEventUrl(router, pathname, searchParams, { populationOnly: !filters.populationOnly, page: 0 })}>Population only</Button>
     </div>
-    <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(22rem,1fr)]">
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.5fr)]">
       <div className={filters.view === "records" ? "hidden lg:block" : "min-h-0 space-y-4 pr-1"}>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{[
-          ["Records", data?.totalRecords ?? "—"], ["Birds lost", data?.birdsLost ?? "—"], ["Health", data?.healthConcerns ?? "—"], ["Movement", data?.populationMovements ?? "—"],
-        ].map(([label, value]) => <Card key={label} className="shadow-none"><CardContent className="p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-bold tabular-nums">{value}</p></CardContent></Card>)}</div>
-        <Card className="shadow-none"><CardContent className="space-y-3 p-4"><div className="flex items-end justify-between"><div><p className="font-semibold">Events over time</p><p className="text-xs text-muted-foreground">All filtered records, not just the visible page.</p></div><Badge variant="outline">Deaths: {data?.deathRecords ?? "—"}</Badge></div><div className="flex h-36 items-end gap-1 border-b">{(data?.overTime ?? []).map((item) => <div key={item.date} title={`${item.date}: ${item.count}`} className="flex-1 rounded-t bg-primary/70" style={{ height: `${Math.max(item.count > 0 ? 8 : 1, item.count / max * 100)}%` }} />)}</div><div className="flex flex-wrap gap-2 text-xs text-muted-foreground"><span>Concern: {Object.entries(data?.concernDistribution ?? {}).map(([key, value]) => `${key} ${value}`).join(" · ") || "No data"}</span><span>Categories: {Object.keys(data?.categoryDistribution ?? {}).length}</span></div></CardContent></Card>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{summaryMetrics.map(({ label, value, fullWidthOnMobile }) => <Card key={label} className={fullWidthOnMobile ? "col-span-2 shadow-none sm:col-span-1" : "shadow-none"}><CardContent className="p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-bold tabular-nums">{value}</p></CardContent></Card>)}</div>
+        <EventTypeChart distribution={data?.categoryDistribution ?? {}} selected={filters.type} loading={report.isLoading} error={report.isError} onRetry={() => void report.refetch()} onSelect={(type) => updateEventUrl(router, pathname, searchParams, { type: type as EventFilterState["type"], page: 0, view: "records" })} />
       </div>
-      <div className={filters.view === "report" ? "hidden lg:flex lg:min-h-0 lg:flex-col" : "flex min-h-0 flex-col"}>
-        <div className="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">{rows.map((event) => <Button variant="ghost" type="button" key={event.id} onClick={() => setSelected(event)} className="w-full rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/50"><div className="flex items-start justify-between gap-2"><span className="font-semibold">{event.title}</span><span className="text-xs text-muted-foreground">{event.eventDate}</span></div><p className="mt-1 text-xs text-muted-foreground">{event.eventType.replaceAll("_", " ")} · {event.affectedCount} affected · {event.concernLevel ?? "UNRATED"}</p></Button>)}{rows.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">No events match these filters.</p>}</div>
+      <div className={filters.view === "report" ? "hidden lg:flex lg:min-h-0 lg:min-w-0 lg:flex-col" : "flex min-h-0 min-w-0 flex-col"}>
+        <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">{filters.type === "ALL" ? "Event records" : eventLabel(filters.type)}</h2>{filters.type !== "ALL" && <Button size="sm" variant="outline" onClick={() => updateEventUrl(router, pathname, searchParams, { type: "ALL", page: 0 })}>Clear type filter</Button>}</div>
+        {records.isLoading && !records.data ? <p role="status" className="py-8 text-center text-sm text-muted-foreground">Loading events…</p> : records.isError && !records.data ? <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning-border bg-warning-muted/50 p-4 text-sm text-warning-ink"><span>Could not load events.</span><Button type="button" size="sm" variant="outline" onClick={() => void records.refetch()}>Try again</Button></div> : rows.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No events match these filters.</p> : <>
+          <p className="mt-3 text-xs text-muted-foreground">Select an event for details. Scroll sideways to see all columns.</p>
+          <div role="region" aria-label="Event records table" tabIndex={0} className="mt-2 min-h-64 max-h-[60dvh] min-w-0 flex-1 overflow-auto rounded-xl border bg-card focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60 lg:max-h-none">
+            <table className="w-full min-w-[38rem] text-left text-sm">
+              <thead className="sticky top-0 z-20 bg-muted text-xs text-muted-foreground"><tr><th scope="col" className="sticky left-0 z-30 w-44 min-w-44 bg-muted px-3 py-3 font-semibold">Event</th><th scope="col" className="px-3 py-3 font-semibold">Date</th><th scope="col" className="px-3 py-3 font-semibold">Type</th><th scope="col" className="px-3 py-3 text-right font-semibold">Affected</th><th scope="col" className="px-3 py-3 font-semibold">Concern</th></tr></thead>
+              <tbody className="divide-y">{rows.map((event) => <tr key={event.id} className="hover:bg-muted/30"><th scope="row" className="sticky left-0 z-10 w-44 min-w-44 bg-card px-3 py-3 align-top font-semibold"><button type="button" className="min-h-11 w-full break-words text-left text-primary underline-offset-2 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60" onClick={() => setSelected(event)}>{event.title}</button></th><td className="whitespace-nowrap px-3 py-3 align-top tabular-nums">{event.eventDate}</td><td className="min-w-36 px-3 py-3 align-top">{eventLabel(event.eventType)}</td><td className="px-3 py-3 text-right align-top tabular-nums">{event.affectedCount}</td><td className="whitespace-nowrap px-3 py-3 align-top">{eventLabel(event.concernLevel ?? "UNRATED")}</td></tr>)}</tbody>
+            </table>
+          </div>
+        </>}
         {records.data && <div className="mt-3 flex shrink-0 items-center justify-between border-t pt-3 text-sm text-muted-foreground"><span>{records.data.totalItems} records</span><div className="flex items-center gap-2"><Button size="sm" variant="outline" disabled={!records.data.hasPrevious} onClick={() => updateEventUrl(router, pathname, searchParams, { page: Math.max(0, filters.page - 1) })}>Previous</Button><span>{records.data.page + 1}/{Math.max(1, records.data.totalPages)}</span><Button size="sm" variant="outline" disabled={!records.data.hasNext} onClick={() => updateEventUrl(router, pathname, searchParams, { page: filters.page + 1 })}>Next</Button></div></div>}
       </div>
     </div>
-    <Dialog open={selected != null} onOpenChange={(open) => !open && setSelected(null)}><DialogContent><DialogHeader><DialogTitle>{selected?.title ?? "Event details"}</DialogTitle></DialogHeader>{selected && <div className="space-y-2 text-sm"><p><strong>Type:</strong> {selected.eventType.replaceAll("_", " ")}</p><p><strong>Date:</strong> {selected.eventDate}</p><p><strong>Handler:</strong> {selected.handlerName}</p><p><strong>Concern:</strong> {selected.concernLevel ?? "UNRATED"} {selected.severityLabel ? `(${selected.severityLabel})` : ""}</p><p><strong>Affected:</strong> {selected.affectedCount}</p>{selected.details && <p><strong>Notes:</strong> {selected.details}</p>}</div>}</DialogContent></Dialog>
+    <Dialog open={selected != null} onOpenChange={(open) => !open && setSelected(null)}><DialogContent><DialogHeader><DialogTitle>{selected?.title ?? "Event details"}</DialogTitle><DialogDescription>Details recorded for this batch event.</DialogDescription></DialogHeader>{selected && <div className="space-y-2 text-sm"><p><strong>Type:</strong> {selected.eventType.replaceAll("_", " ")}</p><p><strong>Date:</strong> {selected.eventDate}</p><p><strong>Handler:</strong> {selected.handlerName}</p><p><strong>Concern:</strong> {selected.concernLevel ?? "UNRATED"} {selected.severityLabel ? `(${selected.severityLabel})` : ""}</p><p><strong>Affected:</strong> {selected.affectedCount}</p>{selected.details && <p><strong>Notes:</strong> {selected.details}</p>}</div>}</DialogContent></Dialog>
   </div>;
 }

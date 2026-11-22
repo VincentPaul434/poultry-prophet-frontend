@@ -5,7 +5,6 @@ import { LoginForm } from "@/components/login-form";
 export default function LoginPage() {
   return (
     <AuthShell
-      eyebrow="Mag-sign in"
       title="Balikan ang iyong farm."
       description="Ilagay ang account na ginagamit mo sa Poultry Prophet."
       footer={

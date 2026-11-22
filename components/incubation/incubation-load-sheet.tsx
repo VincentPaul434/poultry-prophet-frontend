@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { todayIso } from "@/lib/format";
+import { formatDate, shiftCalendarDate, todayIso } from "@/lib/format";
 import type { CreateIncubationCycleRequest } from "@/lib/types";
 
 type LoadDraft = CreateIncubationCycleRequest;
@@ -26,10 +26,11 @@ const initialDraft = (): LoadDraft => ({
 });
 
 export function IncubationLoadSheet({ open, onOpenChange, pending, onSubmit }: { open: boolean; onOpenChange: (open: boolean) => void; pending: boolean; onSubmit: (draft: CreateIncubationCycleRequest) => Promise<void> }) {
-  const { t } = useLocale();
+  const { t, language } = useLocale();
   const isMobile = useIsMobile();
   const [draft, setDraft] = useState<LoadDraft>(initialDraft);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const expected = draft.expectedHatchDate || (/^\d{4}-\d{2}-\d{2}$/.test(draft.loadedDate) && Number.isFinite(Date.parse(`${draft.loadedDate}T00:00:00Z`)) ? shiftCalendarDate(draft.loadedDate, 21) : null);
 
   function setValue<K extends keyof LoadDraft>(key: K, value: LoadDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -71,6 +72,7 @@ export function IncubationLoadSheet({ open, onOpenChange, pending, onSubmit }: {
               <div className="space-y-2"><Label htmlFor="loaded-date">{t("incubation.dateLoaded")} <span className="text-destructive">*</span></Label><div className="relative"><CalendarDays className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input id="loaded-date" required type="date" max={todayIso()} value={draft.loadedDate} onChange={(event) => setValue("loadedDate", event.target.value)} className="pl-9" /></div></div>
               <div className="space-y-2"><Label htmlFor="eggs-loaded">{t("incubation.eggsLoaded")} <span className="text-destructive">*</span></Label><Input id="eggs-loaded" required type="number" min="1" step="1" inputMode="numeric" value={draft.eggsLoaded || ""} onChange={(event) => setValue("eggsLoaded", Number(event.target.value))} placeholder="200" className="h-11 text-lg font-semibold" /></div>
             </div>
+            {expected && <p className="rounded-xl border border-border bg-card px-4 py-3 text-sm"><span className="font-semibold">{t("incubation.expectedDate")}: {formatDate(expected)}</span><span className="mt-1 block text-xs leading-5 text-muted-foreground">{draft.expectedHatchDate ? (language === "taglish" ? "Petsa na iyong pinili." : "Date you selected.") : (language === "taglish" ? "Default ay 21 araw mula sa pag-load. Maaaring baguhin sa optional na detalye." : "Defaults to 21 days after loading. You can change this in optional details.")}</span></p>}
             <details open={detailsOpen} onToggle={(event) => setDetailsOpen(event.currentTarget.open)} className="rounded-2xl border px-4">
               <summary className="cursor-pointer list-none py-4 text-sm font-semibold"><span className="flex items-center justify-between gap-3">{t("incubation.optionalDetails")}<span className="text-xs font-normal text-muted-foreground">{t("incubation.moreDetails")}</span></span></summary>
               <div className="grid gap-4 border-t py-4 sm:grid-cols-2">

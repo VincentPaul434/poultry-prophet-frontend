@@ -14,6 +14,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { flushSync } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { accountApi, authApi, inviteApi } from "./api";
@@ -116,12 +117,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const updateProfile = useCallback((body: UpdateProfileRequest) => establish(() => accountApi.updateProfile(body), true), [establish]);
 
   const logout = useCallback(async () => {
-    clearSession();
-    const revision = getAuthRevision();
-    setUser(null);
-    setAuthRequired(false);
-    queryClient.clear();
-    router.push("/login");
+    let revision: string | null = null;
+    // Commit the unauthenticated state before navigating. A normal batched
+    // update can unmount the protected layout before Next applies the route.
+    flushSync(() => {
+      clearSession();
+      revision = getAuthRevision();
+      setUser(null);
+      setAuthRequired(false);
+      queryClient.clear();
+    });
+    router.replace("/login");
     try {
       await logoutIfCurrent(revision, () => authApi.logout());
     } catch {

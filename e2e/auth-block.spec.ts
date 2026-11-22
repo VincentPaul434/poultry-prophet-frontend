@@ -54,6 +54,48 @@ async function mockBackend(page: Page, baseURL: string) {
   });
 }
 
+async function seedAuthLease(page: Page, expiresAt: number) {
+  await page.evaluate(async (expiration) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("poultry-prophet-auth-lock", 1);
+      request.onupgradeneeded = () => request.result.createObjectStore("leases");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("leases", "readwrite");
+      tx.objectStore("leases").put({ owner: "test-old-tab", fence: 42, expiresAt: expiration }, "credentials");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+    db.close();
+  }, expiresAt);
+}
+
+async function offlineSentinel(page: Page, write = false) {
+  return page.evaluate(async (shouldWrite) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("poultry-prophet-offline-v1");
+      request.onupgradeneeded = () => request.result.createObjectStore("outbox", { keyPath: "operationId" });
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const sentinel = { operationId: "test-preserved-offline-record", userId: 999, farmId: 999, batchId: 999, status: "PENDING", payload: { note: "keep this offline record" } };
+    const result = await new Promise<unknown>((resolve, reject) => {
+      const tx = db.transaction("outbox", shouldWrite ? "readwrite" : "readonly");
+      const store = tx.objectStore("outbox");
+      if (shouldWrite) store.put(sentinel);
+      const request = store.get(sentinel.operationId);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+      tx.onabort = () => reject(tx.error);
+    });
+    db.close();
+    return result;
+  }, write);
+}
+
 test.use({ serviceWorkers: "block" });
 
 test.describe("Authentication forms", () => {
@@ -94,7 +136,65 @@ test.describe("Authentication forms", () => {
     await page.getByLabel(/^(email|email address)$/i).fill(email);
     await page.getByLabel(/^password$/i).fill(password);
     await page.getByRole("button", { name: /^(mag-sign in|sign in|log in|login)$/i }).click();
-    await expect(page.getByText("Unable to safely coordinate sign-in across tabs.")).toBeVisible();
+    await expect(page.getByText("Sign-in coordination is unavailable. Close other app tabs, check that browser storage is enabled, and try again.")).toBeVisible();
+    expect(calls).toBe(0);
+  });
+
+  test("recovers an abandoned sign-in lock without deleting offline work", async ({ page }) => {
+    let calls = 0;
+    await page.route("**/api/backend/auth/login", route => { calls++; return route.fulfill({ json: authResponse() }); });
+    await page.goto("/login", { waitUntil: "networkidle" });
+    await seedAuthLease(page, Date.now() - 60_000);
+    const saved = await offlineSentinel(page, true);
+    await page.getByLabel(/^(email|email address)$/i).fill(email);
+    await page.getByLabel(/^password$/i).fill(password);
+    await page.getByRole("button", { name: /^(mag-sign in|sign in|log in|login)$/i }).click();
+    const confirmation = page.getByRole("checkbox", { name: "I closed the other Poultry Prophet tabs and sign-in requests have finished" });
+    const reset = page.getByRole("button", { name: "Reset sign-in lock" });
+    await expect(confirmation).toBeVisible();
+    await expect(reset).toBeDisabled();
+    expect(calls).toBe(0);
+    await confirmation.check();
+    await reset.click();
+    await expect(reset).toBeHidden();
+    expect(await offlineSentinel(page)).toEqual(saved);
+    await page.getByRole("button", { name: /^(mag-sign in|sign in|log in|login)$/i }).click();
+    await expect(page).toHaveURL(/\/dashboard\/?(?:[?#].*)?$/);
+    expect(calls).toBe(1);
+    expect(await offlineSentinel(page)).toEqual(saved);
+  });
+
+  test("does not reset a lease that became active during recovery", async ({ page }) => {
+    await page.addInitScript(() => Object.defineProperty(navigator, "locks", { value: undefined }));
+    let calls = 0;
+    await page.route("**/api/backend/auth/login", route => { calls++; return route.fulfill({ json: authResponse() }); });
+    await page.goto("/login", { waitUntil: "networkidle" });
+    await seedAuthLease(page, Date.now() - 60_000);
+    await page.getByLabel(/^(email|email address)$/i).fill(email);
+    await page.getByLabel(/^password$/i).fill(password);
+    await page.getByRole("button", { name: /^(mag-sign in|sign in|log in|login)$/i }).click();
+    await expect(page.getByRole("checkbox", { name: "I closed the other Poultry Prophet tabs and sign-in requests have finished" })).toBeVisible();
+    const activeUntil = Date.now() + 120_000;
+    await seedAuthLease(page, activeUntil);
+    await page.getByRole("checkbox", { name: "I closed the other Poultry Prophet tabs and sign-in requests have finished" }).check();
+    await page.getByRole("button", { name: "Reset sign-in lock" }).click();
+    await expect(page).toHaveURL(/\/login\/?(?:[?#].*)?$/);
+    await expect(page.getByRole("checkbox", { name: "I closed the other Poultry Prophet tabs and sign-in requests have finished" })).toBeVisible();
+    const activeLease = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open("poultry-prophet-auth-lock", 1);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const result = await new Promise<unknown>((resolve, reject) => {
+        const request = db.transaction("leases").objectStore("leases").get("credentials");
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      return result;
+    });
+    expect(activeLease).toEqual({ owner: "test-old-tab", fence: 42, expiresAt: activeUntil });
     expect(calls).toBe(0);
   });
 

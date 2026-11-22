@@ -9,10 +9,11 @@ import Link from "next/link";
 import { Bell, Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useFarmAlertPage, useFarmAlertSummary, useAcknowledgeFarmAlert } from "@/hooks/use-analytics";
+import { useIncubationAttention } from "@/hooks/use-incubation-attention";
 import { useBatches } from "@/hooks/use-batches";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import type { Alert as AlertRecord, Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -31,24 +32,32 @@ const severityConfig: Record<Severity, { label: string; badgeClass: string; stat
 };
 
 export default function AlertsPage() {
-  const { isManager } = useAuth();
+  const { isManager, authRequired } = useAuth();
   const [showAll, setShowAll] = useState(false);
   const [page, setPage] = useState(0);
   const [severity, setSeverity] = useState<Severity | "ALL">("ALL");
   const [sort, setSort] = useState("priority");
-  const alerts = useFarmAlertPage({ activeOnly: !showAll, page, size: 20, severity: severity === "ALL" ? undefined : severity, sort });
-  const summary = useFarmAlertSummary();
-  const { data: batches } = useBatches();
+  const alerts = useFarmAlertPage({ activeOnly: !showAll, page, size: 20, severity: severity === "ALL" ? undefined : severity, sort }, !authRequired);
+  const summary = useFarmAlertSummary(!authRequired);
+  const incubationAttention = useIncubationAttention(!authRequired);
+  const { data: batches } = useBatches({ enabled: !authRequired });
   const acknowledgeAllMutation = useAcknowledgeFarmAlert();
 
   const batchName = (batchId: number) =>
     batches?.find((b) => b.id === batchId)?.name ?? `Batch #${batchId}`;
 
   const items = alerts.data?.items ?? [];
+  const hatchReminders = incubationAttention.data ?? [];
+  const visibleHatchReminders = severity === "ALL" || severity === "WARNING" ? hatchReminders : [];
   const alertErrorMessage = alerts.error instanceof ApiError
     ? alerts.error.message
     : "The alert service could not be reached. Check the backend connection and try again.";
   const unacknowledgedItems = items.filter((alert) => !alert.acknowledged);
+  const needsSignIn = authRequired || [alerts.error, summary.error, incubationAttention.error]
+    .some((error) => error instanceof ApiError && error.status === 401);
+  const incubationErrorMessage = incubationAttention.error instanceof ApiError
+    ? incubationAttention.error.status === 0 ? "Check your connection and try again." : incubationAttention.error.message
+    : "Please try again.";
 
   async function acknowledgeAll() {
     if (unacknowledgedItems.length === 0) return;
@@ -60,20 +69,31 @@ export default function AlertsPage() {
     }
   }
 
+  if (needsSignIn) {
+    return <div className="mx-auto w-full max-w-5xl space-y-5">
+      <PageHeader title="Alerts" titleClassName="text-3xl sm:text-4xl" description="Batch alerts and incubation reminders." />
+      <section aria-labelledby="alerts-sign-in-heading" className="rounded-xl border bg-card p-5 sm:p-6">
+        <h2 id="alerts-sign-in-heading" className="text-base font-semibold">Sign in to view alerts</h2>
+        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">Sign in again to see current batch alerts and incubation reminders. Your offline records are still on this device.</p>
+        <Link href="/login" className={cn(buttonVariants({ variant: "default" }), "mt-4 min-h-11")}>Sign in again</Link>
+      </section>
+    </div>;
+  }
+
   return (
     <div className="mx-auto flex h-full min-h-[calc(100dvh-8rem)] w-full max-w-5xl min-w-0 flex-col gap-4 sm:gap-5">
       <div className="flex flex-col gap-4">
         <PageHeader
           title="Alerts"
           titleClassName="text-3xl sm:text-4xl"
-          description={showAll ? "All alerts across your batches." : "Unacknowledged alerts across your batches."}
+          description={showAll ? "Batch alerts and current incubation reminders." : "Unacknowledged batch alerts and incubation reminders."}
           className="sm:items-end"
         />
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <AlertStat label="Active" value={summary.data?.activeTotal ?? "—"} />
+          <AlertStat label="Active" value={summary.data && incubationAttention.data ? summary.data.activeTotal + hatchReminders.length : "—"} />
           <AlertStat label="Critical" value={summary.data?.critical ?? "—"} className={severityConfig.CRITICAL.statClass} />
-          <AlertStat label="Warning" value={summary.data?.warning ?? "—"} className={severityConfig.WARNING.statClass} />
+          <AlertStat label="Warning" value={summary.data && incubationAttention.data ? summary.data.warning + hatchReminders.length : "—"} className={severityConfig.WARNING.statClass} />
           <AlertStat label="Info" value={summary.data?.info ?? "—"} className={severityConfig.INFO.statClass} />
         </div>
 
@@ -108,6 +128,15 @@ export default function AlertsPage() {
         </div>
       </div>
 
+      {incubationAttention.isError && <Alert variant="destructive"><Bell /><AlertTitle>Incubation reminders unavailable</AlertTitle><AlertDescription>{incubationErrorMessage} <Button type="button" variant="outline" size="sm" disabled={incubationAttention.isFetching} onClick={() => incubationAttention.refetch()}>Try again</Button></AlertDescription></Alert>}
+      {visibleHatchReminders.length > 0 && <section aria-labelledby="incubation-reminders-heading" className="space-y-3 rounded-xl border border-warning-border bg-card p-4">
+        <div><h2 id="incubation-reminders-heading" className="font-semibold">Incubation needs attention</h2><p className="mt-1 text-sm text-muted-foreground">These reminders clear when the hatch results or batch are recorded.</p></div>
+        <ul className="divide-y divide-border">{visibleHatchReminders.map((reminder) => <li key={reminder.cycleId} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+          <div className="min-w-0"><p className="font-semibold">{reminder.cycleName}</p><p className="text-sm text-muted-foreground">{reminder.kind === "BATCH_NEEDED" ? `${reminder.hatchedCount} chicks recorded · create a batch` : `${reminder.kind === "HATCH_DUE_TODAY" ? "Hatch expected today" : "Hatch date passed"} · ${formatDate(reminder.expectedHatchDate)}`}</p></div>
+          <Link href={`/incubation?cycleId=${reminder.cycleId}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "min-h-10")}>{isManager ? reminder.kind === "BATCH_NEEDED" ? "Create batch" : "Review hatch" : "View incubation"}</Link>
+        </li>)}</ul>
+      </section>}
+
       {alerts.isLoading && (
         <Card className="overflow-hidden py-0 shadow-none">
           <div className="divide-y">
@@ -130,7 +159,7 @@ export default function AlertsPage() {
         </Alert>
       )}
 
-      {alerts.data && items.length === 0 && (
+      {alerts.data && items.length === 0 && visibleHatchReminders.length === 0 && !incubationAttention.isLoading && !incubationAttention.isError && (
         <Card className="border-dashed shadow-none">
           <CardContent className="flex flex-col items-center gap-3 p-10 text-center sm:p-16">
             <div className="flex justify-center">

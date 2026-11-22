@@ -10,7 +10,7 @@ async function loadLock(page: Page) {
   await page.addScriptTag({ content: `window.authLock = {}; (function(exports){${script}})(window.authLock);` });
 }
 
-test("an expired in-flight lease is never stolen and cannot be cleared by its old owner", async ({ context }) => {
+test("an expired in-flight lease is never stolen and is released when its owner finishes", async ({ context }) => {
   await context.route("http://localhost:3000/auth-lock-test", route => route.fulfill({ contentType: "text/html", body: "<html></html>" }));
   const first = await context.newPage();
   const second = await context.newPage();
@@ -48,10 +48,47 @@ test("an expired in-flight lease is never stolen and cannot be cleared by its ol
   });
   expect(next).toEqual({ ran: false, failed: true });
   await first.evaluate(() => (window as unknown as { release: () => void }).release());
-  await expect.poll(() => first.evaluate(() => (window as unknown as { outcome: string }).outcome)).toBe("failed-closed");
+  await expect.poll(() => first.evaluate(() => (window as unknown as { outcome: string }).outcome)).toBe("released");
   const retry = await second.evaluate(async () => {
     const w = window as unknown as { authLock: { withIndexedDbAuthLock: (fn: () => Promise<void>) => Promise<void> } };
     try { await w.authLock.withIndexedDbAuthLock(async () => {}); return false; } catch { return true; }
+  });
+  expect(retry).toBe(false);
+});
+
+test("an expired lease is released after the still-matching owner finishes even if renewal already failed", async ({ context }) => {
+  await context.route("http://localhost:3000/auth-lock-test", route => route.fulfill({ contentType: "text/html", body: "<html></html>" }));
+  const page = await context.newPage();
+  await loadLock(page);
+  await page.evaluate(() => {
+    const w = window as unknown as { authLock: { withIndexedDbAuthLock: (fn: () => Promise<void>) => Promise<void> }; release: () => void; started: boolean; outcome: string };
+    void w.authLock.withIndexedDbAuthLock(async () => { w.started = true; await new Promise<void>(resolve => { w.release = resolve; }); })
+      .then(() => { w.outcome = "released"; }, () => { w.outcome = "failed-closed"; });
+  });
+  await expect.poll(() => page.evaluate(() => (window as unknown as { started: boolean }).started)).toBe(true);
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("poultry-prophet-auth-lock", 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("leases", "readwrite");
+      const store = tx.objectStore("leases");
+      const request = store.get("credentials");
+      request.onsuccess = () => store.put({ ...request.result, expiresAt: 0 }, "credentials");
+      tx.oncomplete = () => resolve();
+      tx.onabort = () => reject(tx.error);
+    });
+    db.close();
+  });
+  // Let the real renewal interval observe the expired lease while the operation is still pending.
+  await page.waitForTimeout(3_500);
+  await page.evaluate(() => (window as unknown as { release: () => void }).release());
+  await expect.poll(() => page.evaluate(() => (window as unknown as { outcome: string }).outcome)).toBe("released");
+  const retry = await page.evaluate(async () => {
+    const w = window as unknown as { authLock: { withIndexedDbAuthLock: (fn: () => Promise<void>) => Promise<void> } };
+    try { await w.authLock.withIndexedDbAuthLock(async () => {}); return true; } catch { return false; }
   });
   expect(retry).toBe(true);
 });

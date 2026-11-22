@@ -35,7 +35,7 @@ export function FaqSection() {
               Mga madalas itanong
             </h2>
           </div>
-          <p className="max-w-sm text-[15px] leading-7 text-(--pp-ink)/70">
+          <p className="max-w-sm text-base leading-7 text-(--pp-ink)/70">
             Bago magsimula, narito ang mga sagot sa mga karaniwang tanong ng mga farm owner at handler.
           </p>
         </Reveal>
@@ -43,19 +43,16 @@ export function FaqSection() {
         <div className="mt-14 grid items-stretch gap-10 lg:grid-cols-[1.1fr_0.9fr]">
           <Reveal>
           <Accordion defaultValue={[FAQS[0].q]} className="gap-4">
-            {FAQS.map((item, index) => (
+            {FAQS.map((item) => (
               <AccordionItem
                 key={item.q}
                 value={item.q}
                 className="rounded-3xl border border-(--pp-green)/20 bg-white px-6 transition-colors not-last:border-b data-open:border-(--pp-lime-strong) data-open:bg-(--pp-lime)"
               >
                 <AccordionTrigger className="gap-4 py-5 text-base font-medium text-(--pp-ink) hover:no-underline **:data-[slot=accordion-trigger-icon]:size-7 **:data-[slot=accordion-trigger-icon]:rounded-full **:data-[slot=accordion-trigger-icon]:bg-(--pp-mist) **:data-[slot=accordion-trigger-icon]:p-1.5 **:data-[slot=accordion-trigger-icon]:text-(--pp-green)">
-                  <span className="flex items-baseline gap-4">
-                    <span className="w-6 text-sm tabular-nums text-(--pp-green)/60">{String(index + 1).padStart(2, "0")}</span>
-                    {item.q}
-                  </span>
+                  <span className="min-w-0 text-left">{item.q}</span>
                 </AccordionTrigger>
-                <AccordionContent className="pl-10 text-[15px] leading-7 text-(--pp-ink)/80">
+                <AccordionContent className="pr-10 text-base leading-7 text-(--pp-ink)/80">
                   <p>{item.a}</p>
                 </AccordionContent>
               </AccordionItem>

@@ -4,9 +4,10 @@ import { createContext, useCallback, useContext, useEffect, useLayoutEffect, use
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "./api-client";
 import { offlineApi, syncApi } from "./api";
+import { deliverSyncOperations } from "./sync-delivery";
 import { qk } from "./query-keys";
 import { useAuth } from "./auth-context";
-import { isAuthRequired } from "./auth-storage";
+import { getSessionScope, getStoredUser, isAuthRequired } from "./auth-storage";
 import {
   claimOutboxOperations,
   commitSyncedSelectionSession,
@@ -172,6 +173,9 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
         return;
       }
       const scope = `${user.userId}:${user.farmId}`;
+      const sessionScope = getSessionScope();
+      const storedUser = getStoredUser();
+      if (!sessionScope || storedUser?.userId !== user.userId || storedUser.farmId !== user.farmId) return;
       setSnapshot((current) => ({ ...current, connection: "CHECKING" }));
       const reachable = await serverReachable();
       if (scopeRef.current !== scope) return;
@@ -215,7 +219,8 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
           })),
         };
           if (scopeRef.current !== scope) break;
-          const response = await syncApi.operations(body);
+          const response = { results: await deliverSyncOperations(body, request => syncApi.operations(request, sessionScope),
+            () => scopeRef.current === scope && getSessionScope() === sessionScope && !isAuthRequired()) };
           for (const item of selected) {
             const result = response.results.find((candidate) => candidate.operationId === item.operationId);
             if (!result) {

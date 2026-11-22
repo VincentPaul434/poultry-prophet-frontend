@@ -8,14 +8,18 @@ import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Activity, CalendarDays, ChevronDown, GitCompareArrows, HeartPulse, LayoutDashboard, WalletCards } from "lucide-react";
-import { useBatches } from "@/hooks/use-batches";
+import { useBatches, useDashboardBatches } from "@/hooks/use-batches";
 import { useBatchComparison, useOperationsAnalytics } from "@/hooks/use-operations";
-import type { AnalyticsScope, BatchComparison, FarmSummaryAnalytics, FinanceCurrencySummary } from "@/lib/farm-summary-types";
+import type { AnalyticsScope, BatchComparison, FarmSummaryAnalytics } from "@/lib/farm-summary-types";
+import FinanceWorkspace from "@/components/finance-workspace";
+import { FarmBatchCharts } from "@/components/farm-batch-charts";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
+import { formatDate } from "@/lib/format";
+import { getEventLogHref } from "@/lib/logging-navigation";
 
 function formatLocalDate(value: Date) {
   const year = value.getFullYear();
@@ -32,13 +36,6 @@ function daysAgo(days: number) {
   const value = new Date();
   value.setDate(value.getDate() - days);
   return formatLocalDate(value);
-}
-
-function money(value: string, currency = "PHP") {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return "No record";
-  const formatted = amount.toLocaleString("en-PH", { maximumFractionDigits: 2 });
-  return currency === "PHP" ? `₱${formatted}` : `${currency} ${formatted}`;
 }
 
 function count(value: number | null | undefined) {
@@ -97,21 +94,6 @@ function updateOverviewUrl(
   router.replace(`${pathname}?${params.toString()}`, { scroll: false });
 }
 
-function financeHref(filters: OverviewFilters) {
-  const params = new URLSearchParams({
-    period: "custom",
-    start: filters.start,
-    end: filters.end,
-    location: filters.scope === "BATCH" && filters.batchId ? `batch:${filters.batchId}` : "all",
-    type: "ALL",
-    category: "ALL",
-    source: "ALL",
-    status: "POSTED",
-    view: "report",
-  });
-  return `/finance?${params.toString()}`;
-}
-
 function OperationsPageContent() {
   const { data: batches = [] } = useBatches();
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -128,7 +110,8 @@ function OperationsPageContent() {
     end,
     origin,
   };
-  const query = useOperationsAnalytics(params, section !== "compare" && (scope === "FARM" || Boolean(batchId)));
+  const usesOverviewAnalytics = section === "snapshot" || section === "activity";
+  const query = useOperationsAnalytics(params, usesOverviewAnalytics && (scope === "FARM" || Boolean(batchId)));
 
   return (
     <div className="operations-page ledger-page mx-auto w-full max-w-6xl space-y-7 sm:space-y-9">
@@ -139,16 +122,36 @@ function OperationsPageContent() {
         descriptionClassName="max-w-2xl text-sm leading-6"
       />
 
-      <nav aria-label="Farm overview sections" className="grid grid-cols-2 gap-2 rounded-[1.5rem] bg-card/70 p-2 sm:grid-cols-4">
+      <nav aria-label="Farm overview sections" className="grid grid-cols-2 gap-2 rounded-[1.5rem] bg-card/70 p-2 lg:grid-cols-4">
         {([
           { id: "snapshot", label: "Snapshot", detail: "Farm at a glance", icon: LayoutDashboard },
           { id: "activity", label: "Activity", detail: "Events over time", icon: Activity },
           { id: "finance", label: "Finance", detail: "Recorded cash", icon: WalletCards },
-          { id: "compare", label: "Compare", detail: "Batch differences", icon: GitCompareArrows },
-        ] as const).map(({ id, label, detail, icon: Icon }) => <Button variant="ghost" key={id} type="button" aria-current={section === id ? "page" : undefined} onClick={() => updateOverviewUrl(router, pathname, searchParams, { section: id })} className={cn("flex min-h-16 items-center gap-3 rounded-[1rem] px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60 sm:px-4", section === id ? "bg-primary text-primary-foreground shadow-[0_8px_20px_rgb(40_99_63_/_0.16)]" : "text-foreground hover:bg-muted/70")}><Icon className={cn("size-5 shrink-0", section === id ? "text-primary-foreground" : "text-primary")} aria-hidden="true" /><span className="min-w-0"><span className="block text-sm font-semibold">{label}</span><span className={cn("hidden truncate text-xs sm:block", section === id ? "text-primary-foreground/70" : "text-muted-foreground")}>{detail}</span></span></Button>)}
+          { id: "compare", label: "Batches", detail: "Charts and comparison", icon: GitCompareArrows },
+        ] as const).map(({ id, label, detail, icon: Icon }) => (
+          <Button
+            variant="outline"
+            key={id}
+            type="button"
+            aria-current={section === id ? "page" : undefined}
+            onClick={() => updateOverviewUrl(router, pathname, searchParams, { section: id })}
+            className={cn(
+              "flex h-auto min-h-16 min-w-0 cursor-pointer items-center justify-start gap-3 rounded-[1rem] px-3 py-2 text-left shadow-none transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60 sm:px-4",
+              section === id
+                ? "border-primary bg-primary text-primary-foreground hover:bg-[color-mix(in_oklch,var(--primary),black_10%)] hover:text-primary-foreground"
+                : "border-input bg-background text-foreground hover:border-primary/60 hover:bg-accent/70",
+            )}
+          >
+            <Icon className={cn("size-5 shrink-0", section === id ? "text-primary-foreground" : "text-primary")} aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold">{label}</span>
+              <span className={cn("hidden whitespace-normal text-xs leading-4 sm:block", section === id ? "text-primary-foreground" : "text-foreground/75")}>{detail}</span>
+            </span>
+          </Button>
+        ))}
       </nav>
 
-      {section !== "compare" && <section aria-label="Review window" className="rounded-[1.5rem] border border-border/70 bg-card p-3 sm:p-5">
+      {usesOverviewAnalytics && <section aria-label="Review window" className="rounded-[1.5rem] border border-border/70 bg-card p-3 sm:p-5">
         <Button variant="ghost" type="button" aria-expanded={filtersOpen} aria-controls="review-window-controls" onClick={() => setFiltersOpen((open) => !open)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-2 text-left focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60 sm:hidden"><span className="min-w-0"><span className="block text-sm font-semibold">Review window</span><span className="mt-0.5 block truncate text-xs text-muted-foreground">{scope === "FARM" ? "Whole farm" : "One batch"} · {start} to {end}</span></span><ChevronDown className={cn("size-4 shrink-0 text-muted-foreground transition-transform", filtersOpen && "rotate-180")} aria-hidden="true" /></Button>
         <div id="review-window-controls" className={cn("gap-6 lg:grid-cols-[minmax(12rem,0.72fr)_minmax(0,2.28fr)] lg:items-end sm:grid", filtersOpen ? "grid pt-4 sm:pt-0" : "hidden")}>
           <div className="hidden space-y-2 sm:block">
@@ -192,15 +195,28 @@ function OperationsPageContent() {
         </div>
       </section>}
 
-      {section !== "compare" && query.isLoading && <OverviewSkeleton />}
-      {section !== "compare" && query.isError && <p role="alert" className="rounded-[1.5rem] bg-destructive/8 px-4 py-3 text-sm text-destructive">Summary is not available. Please try again.</p>}
-      {section !== "compare" && scope === "BATCH" && !batchId && <p className="rounded-[1.5rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground">Choose a batch to view its summary.</p>}
+      {usesOverviewAnalytics && query.isLoading && <OverviewSkeleton />}
+      {usesOverviewAnalytics && query.isError && <p role="alert" className="rounded-[1.5rem] bg-destructive/8 px-4 py-3 text-sm text-destructive">Summary is not available. Please try again.</p>}
+      {usesOverviewAnalytics && scope === "BATCH" && !batchId && <p className="rounded-[1.5rem] bg-muted/45 px-4 py-3 text-sm text-muted-foreground">Choose a batch to view its summary.</p>}
       {section === "snapshot" && query.data && <Summary data={query.data} scope={scope} />}
       {section === "activity" && query.data && <ActivityOverview data={query.data} />}
-      {section === "finance" && query.data && <FinancialSection data={query.data.finance} href={financeHref(filters)} />}
-      {section === "compare" && <BatchComparisonPanel batches={batches.filter((batch) => batch.status !== "ARCHIVED" && (origin === "ALL" || origin === "REAL" && !batch.name.startsWith("[TEST COPY]") || origin === "SYNTHETIC" && batch.name.startsWith("[TEST COPY]")))} origin={origin} validation={validation} onOriginChange={(value) => updateOverviewUrl(router, pathname, searchParams, { origin: value })} />}
+      {section === "finance" && <FinanceWorkspace />}
+      {section === "compare" && <BatchChartsSection batches={batches} origin={origin} validation={validation} onOriginChange={(value) => updateOverviewUrl(router, pathname, searchParams, { origin: value })} />}
     </div>
   );
+}
+
+function BatchChartsSection({ batches, origin, validation, onOriginChange }: { batches: Array<{ id: number; name: string; status: string }>; origin: OverviewFilters["origin"]; validation: boolean; onOriginChange: (value: OverviewFilters["origin"]) => void }) {
+  const query = useDashboardBatches();
+  const matchesOrigin = (name: string) => origin === "ALL" || (origin === "REAL" ? !name.startsWith("[TEST COPY]") : name.startsWith("[TEST COPY]"));
+  return <div className="space-y-6">
+    {validation && <label className="grid max-w-52 gap-1.5 text-xs font-semibold text-muted-foreground">Data<NativeSelect className="h-11 rounded-lg bg-card px-3 font-medium shadow-none" value={origin} onChange={(event) => onOriginChange(event.target.value as OverviewFilters["origin"])}><option value="REAL">Real records</option><option value="SYNTHETIC">Test records</option><option value="ALL">All validation records</option></NativeSelect></label>}
+    <FarmBatchCharts items={(query.data ?? []).filter(({ batch }) => matchesOrigin(batch.name))} isLoading={query.isLoading} isError={query.isError} />
+    <details className="group rounded-2xl border border-border/70 bg-card">
+      <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60 [&::-webkit-details-marker]:hidden">Compare selected batches <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden="true" /></summary>
+      <div className="border-t border-border/70 p-3 sm:p-4"><BatchComparisonPanel batches={batches.filter((batch) => batch.status !== "ARCHIVED" && matchesOrigin(batch.name))} origin={origin} validation={false} onOriginChange={onOriginChange} /></div>
+    </details>
+  </div>;
 }
 
 function OverviewSkeleton() {
@@ -249,7 +265,16 @@ function BatchComparisonPanel({ batches, origin, validation, onOriginChange }: {
 }
 
 function ComparisonTable({ data }: { data: BatchComparison }) {
-  return <div className="space-y-3"><div className="flex flex-wrap gap-2 text-xs text-muted-foreground"><Badge variant="outline" className="border-0 bg-muted/60">First {data.effectiveWindowDays} days</Badge><span>All values are recorded facts; rates show their numerator and denominator.</span></div>{data.warnings.length > 0 && <div className="rounded-xl bg-warning-muted px-3 py-2.5 text-sm">{data.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}<div className="overflow-x-auto rounded-2xl bg-muted/25"><Table className="min-w-[48rem] w-full text-left text-sm"><TableHeader className="bg-muted/45 text-xs uppercase tracking-wide text-muted-foreground"><TableRow><TableHead className="px-3 py-2.5">Batch</TableHead><TableHead className="px-3 py-2.5">Population</TableHead><TableHead className="px-3 py-2.5">Health deaths</TableHead><TableHead className="px-3 py-2.5">Health concerns</TableHead><TableHead className="px-3 py-2.5">Product records</TableHead><TableHead className="px-3 py-2.5">Selection</TableHead></TableRow></TableHeader><TableBody>{data.batches.map((batch) => { const populationNeedsReview = batch.populationStatus === "RECONCILIATION_REQUIRED" || (batch.populationAtWindowEnd != null && batch.populationAtWindowEnd < 0); return <TableRow key={batch.batchId} className="border-t border-border/40 align-top"><TableHead className="px-3 py-3 font-semibold">{batch.batchName}<span className="mt-1 block text-xs font-normal text-muted-foreground">{batch.bloodline ?? "Bloodline not recorded"}</span></TableHead><TableCell className="px-3 py-3 tabular-nums">{populationNeedsReview ? <span className="block max-w-44 text-warning-ink"><span className="font-semibold">Needs review</span><span className="block text-xs font-normal">Initial: {batch.initialPopulation}</span><span className="mt-1 block text-xs font-normal leading-snug">{batch.populationWarning ?? "Population records need review."}</span><Link className="mt-2 inline-block font-semibold underline underline-offset-2" href={`/batches/${batch.batchId}/data-entry?from=operations`}>Review records →</Link></span> : `${batch.populationAtWindowEnd ?? "No record"} / ${batch.initialPopulation}`}</TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.healthRelatedDeaths}<span className="block text-xs text-muted-foreground">{batch.healthRelatedLossRatePercent == null ? "Rate unavailable" : `${batch.healthRelatedLossRatePercent}% of start`}</span></TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.healthConcerns}</TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.interventionRecords}</TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.selectionDataStatus === "AVAILABLE" ? `${batch.acceptedAtSelection} / ${batch.evaluatedAtSelection}` : "No record"}</TableCell></TableRow>; })}</TableBody></Table></div></div>;
+  return <div className="space-y-3">
+    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground"><Badge variant="outline" className="border-0 bg-muted/60">First {data.effectiveWindowDays} days from hatch</Badge><span>Dates and recorded facts are shown for each batch.</span></div>
+    <p className="text-xs leading-5 text-muted-foreground">Health-related loss is health deaths divided by starting birds. Accidental deaths and other population changes are excluded. Differences in bloodline, conditions and recording practices limit comparisons.</p>
+    {data.warnings.length > 0 && <div className="rounded-xl bg-warning-muted px-3 py-2.5 text-sm">{data.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
+    <p className="text-xs text-muted-foreground sm:hidden">Scroll sideways to see all comparison columns.</p>
+    <div className="overflow-x-auto rounded-2xl bg-muted/25" tabIndex={0} role="region" aria-label="Batch comparison table; scroll horizontally to see all columns"><Table className="min-w-[48rem] w-full text-left text-sm"><TableHeader className="bg-muted/45 text-xs uppercase tracking-wide text-muted-foreground"><TableRow><TableHead className="px-3 py-2.5">Batch and period</TableHead><TableHead className="px-3 py-2.5">Population</TableHead><TableHead className="px-3 py-2.5">Health deaths</TableHead><TableHead className="px-3 py-2.5">Health concerns</TableHead><TableHead className="px-3 py-2.5">Product records</TableHead><TableHead className="px-3 py-2.5">Selection</TableHead></TableRow></TableHeader><TableBody>{data.batches.map((batch) => {
+      const populationNeedsReview = batch.populationStatus === "RECONCILIATION_REQUIRED" || (batch.populationAtWindowEnd != null && batch.populationAtWindowEnd < 0);
+      return <TableRow key={batch.batchId} className="border-t border-border/40 align-top"><TableHead className="px-3 py-3 font-semibold">{batch.batchName}<span className="mt-1 block text-xs font-normal text-muted-foreground">{batch.bloodline ?? "Bloodline not recorded"}</span><span className="mt-1 block text-xs font-normal text-muted-foreground">{formatDate(batch.windowStart)} – {formatDate(batch.windowEnd)}</span>{batch.limitations?.map((limitation) => <span className="mt-1 block text-xs font-normal text-muted-foreground" key={limitation}>{limitation}</span>)}</TableHead><TableCell className="px-3 py-3 tabular-nums">{populationNeedsReview ? <span className="block max-w-44 text-warning-ink"><span className="font-semibold">Needs review</span><span className="block text-xs font-normal">Initial: {batch.initialPopulation}</span><span className="mt-1 block text-xs font-normal leading-snug">{batch.populationWarning ?? "Population records need review."}</span><Link className="mt-2 inline-block font-semibold underline underline-offset-2" href={getEventLogHref(batch.batchId)}>Review records →</Link></span> : `${batch.populationAtWindowEnd ?? "No record"} / ${batch.initialPopulation}`}</TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.healthRelatedDeaths}<span className="block text-xs text-muted-foreground">{populationNeedsReview || batch.initialPopulation <= 0 || batch.healthRelatedLossRatePercent == null ? "Rate unavailable" : `${batch.healthRelatedDeaths} / ${batch.initialPopulation} = ${batch.healthRelatedLossRatePercent}%`}</span></TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.healthConcerns}</TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.interventionRecords}</TableCell><TableCell className="px-3 py-3 tabular-nums">{batch.selectionDataStatus === "AVAILABLE" ? `${batch.acceptedAtSelection} / ${batch.evaluatedAtSelection}` : "No record"}</TableCell></TableRow>;
+    })}</TableBody></Table></div>
+  </div>;
 }
 
 function Summary({ data, scope }: { data: FarmSummaryAnalytics; scope: AnalyticsScope }) {
@@ -308,50 +333,6 @@ function ActivityOverview({ data }: { data: FarmSummaryAnalytics }) {
 
 function ActivityFact({ label, value }: { label: string; value: string }) {
   return <div className="bg-card px-5 py-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-2xl font-semibold tabular-nums">{value}</p></div>;
-}
-
-function FinancialSection({ data, href }: { data: FarmSummaryAnalytics["finance"]; href: string }) {
-  const reports = data.byCurrency ?? (data.currency && data.income != null && data.expense != null && data.net != null
-    ? [{ ...data, currency: data.currency, income: data.income, saleIncome: data.saleIncome ?? "0", expense: data.expense, net: data.net }]
-    : []);
-  return <div className="space-y-6">{reports.length > 1 && <p className="text-sm text-muted-foreground">Currencies are shown separately; no conversion is applied.</p>}{reports.map((report) => <FinancialCurrencySection key={report.currency} data={report} limitation={data.limitation} href={href} />)}</div>;
-}
-
-function FinancialCurrencySection({ data, limitation, href }: { data: FinanceCurrencySummary; limitation: string; href: string }) {
-  const scopeNote = financeScopeNote(limitation);
-  const netValue = data.available ? money(data.net, data.currency) : "No record";
-  const incomeValue = data.available ? money(data.income, data.currency) : "No record";
-  const expenseValue = data.available ? money(data.expense, data.currency) : "No record";
-  const largest = Math.max(Number(data.income) || 0, Number(data.expense) || 0, 1);
-  const incomeWidth = data.available ? Math.max(Number(data.income) > 0 ? 2 : 0, Number(data.income) / largest * 100) : 0;
-  const expenseWidth = data.available ? Math.max(Number(data.expense) > 0 ? 2 : 0, Number(data.expense) / largest * 100) : 0;
-
-  return <section className="space-y-5" aria-labelledby={`financial-snapshot-${data.currency}`}>
-    <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-      <div><h2 id={`financial-snapshot-${data.currency}`} className="ledger-card-title text-2xl sm:text-3xl">Financial snapshot</h2><p className="mt-1 text-sm font-medium">{data.currency}</p><p className="mt-1 text-sm text-muted-foreground">Recorded cash for the selected period.</p></div>
-      <span className="text-sm text-muted-foreground">{data.transactionCount} posted transaction{data.transactionCount === 1 ? "" : "s"}</span>
-    </div>
-    <div className="grid overflow-hidden rounded-[1.75rem] bg-[#194b37] text-white shadow-xl shadow-[#194b37]/10 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,1fr)]">
-      <article className="flex min-h-64 flex-col justify-between gap-8 p-6 sm:p-8" aria-label={`Net cash flow ${netValue}.`}>
-        <div><h3 className="text-lg font-medium text-white/85">Net cash flow</h3><p className="mt-1 text-sm text-white/60">Income less cash expenses</p></div>
-        <p className="break-words text-[clamp(2.5rem,6vw,4.5rem)] font-semibold leading-none tracking-[-0.06em] tabular-nums">{netValue}</p>
-      </article>
-      <div className="grid bg-white/[0.07] sm:grid-cols-2 lg:grid-cols-1">
-        <div className="flex flex-col justify-center gap-3 p-6 sm:p-8"><h3 className="text-sm font-medium text-white/75">Income</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{incomeValue}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#c6e5b4]" style={{ width: `${incomeWidth}%` }} /></div></div>
-        <div className="flex flex-col justify-center gap-3 border-t border-white/10 p-6 sm:border-l sm:border-t-0 sm:p-8 lg:border-l-0 lg:border-t"><h3 className="text-sm font-medium text-white/75">Cash expenses</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{expenseValue}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#e5b679]" style={{ width: `${expenseWidth}%` }} /></div></div>
-      </div>
-    </div>
-    <div className="flex flex-col gap-4 rounded-[1.5rem] bg-muted/50 p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-      <p className="max-w-2xl text-sm leading-6 text-muted-foreground">{data.available ? scopeNote : "No financial record is available for this period."}</p>
-      <Link href={href} className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">View finance</Link>
-    </div>
-  </section>;
-}
-
-function financeScopeNote(limitation: string) {
-  if (limitation.startsWith("Batch view")) return "Batch view excludes farm-wide costs not linked to this batch.";
-  if (limitation.startsWith("Farm view")) return "Farm view includes batch-linked and general farm records.";
-  return limitation;
 }
 
 function ActivityChart({ data }: { data: FarmSummaryAnalytics["activity"] }) {

@@ -7,9 +7,9 @@ import { shouldUseOfflineSnapshot } from "@/lib/api-client";
 import { qk } from "@/lib/query-keys";
 import type { ArchiveBatchRequest, Batch, CreateBatchRequest, DeleteBatchRequest } from "@/lib/types";
 import { useAuth } from "@/lib/auth-context";
-import { useOfflineSync } from "@/lib/offline-sync-provider";
 import type { StoredUser } from "@/lib/auth-storage";
 import {
+  removeDeletedBatchSnapshots,
   getBatchOverviewSnapshot,
   getBatchSnapshot,
   getBatchSnapshots,
@@ -134,12 +134,11 @@ export function useArchiveBatch() {
 
 export function useReconcileBatchPopulation() {
   const queryClient = useQueryClient();
-  const { retryIssues } = useOfflineSync();
   return useMutation({
-    mutationFn: (batchId: number | string) => batchApi.reconcilePopulation(batchId),
-    onSuccess: async (batch) => {
+    mutationFn: ({ batchId, expectedRevision }: { batchId: number | string; expectedRevision: string }) => batchApi.reconcilePopulation(batchId, expectedRevision),
+    onSuccess: (batch) => {
       invalidateBatchLifecycle(queryClient, batch.id);
-      await retryIssues();
+      void queryClient.invalidateQueries({ queryKey: ["analytics", "batch-comparison"] });
     },
   });
 }
@@ -153,13 +152,20 @@ export function useRestoreBatch() {
 }
 
 export function useDeleteBatch() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ batchId, body }: { batchId: number | string; body: DeleteBatchRequest }) => batchApi.delete(batchId, body),
-    onSuccess: (_, variables) => {
+    onSuccess: async (_, variables) => {
       const id = Number(variables.batchId);
+      if (user?.farmId) {
+        try { await removeDeletedBatchSnapshots(user.userId, user.farmId, id); } catch { /* Server deletion succeeded even when browser storage is unavailable. */ }
+      }
       queryClient.removeQueries({ queryKey: qk.batches.detail(id) });
       invalidateBatchLifecycle(queryClient, id);
+      for (const queryKey of [qk.finance, qk.inventory, qk.inputs, ["analytics"], ["incubation-cycles"], qk.alertsFarmRoot]) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
     },
   });
 }
@@ -212,6 +218,17 @@ export function useCreateBatch() {
       queryClient.invalidateQueries({ queryKey: qk.batches.dashboard() });
       // Seed the detail cache so navigating to the new batch is instant.
       queryClient.setQueryData(qk.batches.detail(created.id), created);
+    },
+  });
+}
+
+export function useUpdateBatchDerbyDate() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ batchId, derbyDate }: { batchId: number; derbyDate: string | null }) =>
+      batchApi.updateDerbyDate(batchId, derbyDate),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: qk.batches.all });
     },
   });
 }

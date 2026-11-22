@@ -71,24 +71,17 @@ export function useCreateFarmInput() {
     mutationFn: async (body: CreateFarmInputRequest) => {
       if (!body.batchId) return inputApi.create(body);
       const operationId = body.operationId ?? crypto.randomUUID();
-      const payload = { ...body, operationId };
+      // Freeze the occurrence time before the first send; a lost response must
+      // replay the same command instead of inventing a later timestamp.
+      const payload = { ...body, operationId, recordedAt: body.recordedAt ?? new Date().toISOString() };
 
-      // Online product/medicine records should be written immediately so the
-      // handler gets a server acknowledgement and the new record can appear
-      // in the batch log before the modal closes. The outbox remains the
-      // fallback for a genuine offline or temporarily unavailable connection.
-      if (typeof navigator === "undefined" || navigator.onLine) {
-        try {
-          return await inputApi.create(payload);
-        } catch (error) {
-          if (!(error instanceof ApiError) || ![0, 502, 503, 504].includes(error.status)) throw error;
-        }
-      }
-
+      // Commit the immutable intent before delivery. The scoped outbox sender
+      // owns network attempts and acknowledgements, including when online, so
+      // terminating the page during a request cannot lose the retry command.
       await enqueue({
         entityType: "FARM_INPUT",
         batchId: body.batchId,
-        occurredAt: body.recordedAt ?? new Date().toISOString(),
+        occurredAt: payload.recordedAt,
         payload,
       });
       return { queued: true, operationId };
@@ -234,7 +227,7 @@ function offlineTaskPage(tasks: HandlerTask[], filters: TaskPageFilters): PageRe
   };
 }
 
-function offlineTaskSummary(tasks: HandlerTask[], filters: Partial<TaskPageFilters> = {}): TaskSummaryResponse {
+function offlineTaskSummary(tasks: HandlerTask[], filters: Partial<TaskPageFilters> = {}, isManager = false): TaskSummaryResponse {
   const scoped = tasks.filter((task) => {
     if (filters.batchId != null && task.batchId !== filters.batchId) return false;
     if (filters.farmWide && task.batchId != null) return false;
@@ -243,7 +236,7 @@ function offlineTaskSummary(tasks: HandlerTask[], filters: Partial<TaskPageFilte
     if (filters.sourceType && task.sourceType !== filters.sourceType) return false;
     if (filters.assignmentScope && task.assignmentScope !== filters.assignmentScope) return false;
     if (filters.search && !task.title.toLowerCase().includes(filters.search.toLowerCase())) return false;
-    return !task.visibleFrom || new Date(task.visibleFrom).getTime() <= Date.now();
+    return isManager || !task.visibleFrom || new Date(task.visibleFrom).getTime() <= Date.now();
   });
   const open = scoped.filter((task) => ["TODO", "IN_PROGRESS", "BLOCKED"].includes(task.status));
   const now = Date.now();
@@ -389,7 +382,7 @@ export function useTaskSummary(filters: Partial<Omit<TaskPageFilters, "page" | "
         if (!shouldUseOfflineSnapshot(error) || !user?.farmId) throw error;
         const cached = await getOfflineBootstrap(user.userId, user.farmId);
         if (!cached) throw error;
-        return offlineTaskSummary(await applyPendingTaskOperations(user.userId, user.farmId, cached.tasks), filters);
+        return offlineTaskSummary(await applyPendingTaskOperations(user.userId, user.farmId, cached.tasks), filters, user.role === "MANAGER");
       }
     },
   });
@@ -439,12 +432,6 @@ export function useUpdateTaskStatus() {
       const operationId = body.operationId ?? (typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
       const payload = { ...body, operationId, occurredAt: body.occurredAt ?? new Date().toISOString(), taskId: id };
-      if (typeof navigator === "undefined" || navigator.onLine) {
-        try { return await taskApi.updateStatus(id, payload); }
-        catch (error) {
-          if (!(error instanceof ApiError) || ![0, 502, 503, 504].includes(error.status)) throw error;
-        }
-      }
       await enqueue({ entityType: "TASK_STATUS", batchId: batchId ?? 0, occurredAt: payload.occurredAt, payload });
       return { queued: true as const, operationId };
     },
@@ -488,16 +475,6 @@ export function useRecordSexComposition() {
         : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
       const payload = { ...body, operationId };
 
-      // Online records are authoritative immediately. Queue only when the browser
-      // or API is genuinely unavailable, matching the product and vaccination flows.
-      if (typeof navigator === "undefined" || navigator.onLine) {
-        try {
-          return await batchApi.recordSexComposition(batchId, payload);
-        } catch (error) {
-          if (!(error instanceof ApiError) || ![0, 502, 503, 504].includes(error.status)) throw error;
-        }
-      }
-
       const optimistic: SexComposition = {
         id: -Date.now(),
         farmId: 0,
@@ -519,7 +496,7 @@ export function useRecordSexComposition() {
       await enqueue({
         entityType: "SEX_COMPOSITION",
         batchId,
-        occurredAt: body.observedOn,
+        occurredAt: new Date().toISOString(),
         payload,
       });
       return { queued: true as const, operationId, composition: optimistic };
@@ -563,12 +540,7 @@ export function useCreateVaccinationProgram() {
     mutationFn: async (input: CreateVaccinationProgramRequest | { body: CreateVaccinationProgramRequest; batchId: number; replace: boolean }) => {
       const body = "body" in input ? input.body : input;
       const scheduleContext = "body" in input ? input : null;
-      if (!scheduleContext || (typeof navigator !== "undefined" && navigator.onLine)) {
-        try { return await vaccinationApi.createProgram(body); }
-        catch (error) {
-          if (!scheduleContext || !(error instanceof ApiError) || ![0, 502, 503, 504].includes(error.status)) throw error;
-        }
-      }
+      if (!scheduleContext) return vaccinationApi.createProgram(body);
       const operationId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
       await enqueue({
         entityType: "VACCINATION_SCHEDULE",
@@ -588,10 +560,6 @@ export function useAssignVaccinationProgram() {
     networkMode: "always",
     mutationFn: async ({ batchId, body }: { batchId: number; body: AssignVaccinationProgramRequest }) => {
       const operationId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-      if (typeof navigator === "undefined" || navigator.onLine) {
-        try { return await vaccinationApi.assign(batchId, body); }
-        catch (error) { if (!(error instanceof ApiError) || ![0, 502, 503, 504].includes(error.status)) throw error; }
-      }
       await enqueue({ entityType: "VACCINATION_SCHEDULE", batchId, occurredAt: new Date().toISOString(), payload: { action: "ASSIGN", programId: body.programId, operationId } });
       return { queued: true as const, operationId };
     },
@@ -610,10 +578,6 @@ export function useReplaceVaccinationProgram() {
     networkMode: "always",
     mutationFn: async ({ batchId, body }: { batchId: number; body: ReplaceVaccinationPlanRequest }) => {
       const operationId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-      if (typeof navigator === "undefined" || navigator.onLine) {
-        try { return await vaccinationApi.replace(batchId, body); }
-        catch (error) { if (!(error instanceof ApiError) || ![0, 502, 503, 504].includes(error.status)) throw error; }
-      }
       await enqueue({ entityType: "VACCINATION_SCHEDULE", batchId, occurredAt: new Date().toISOString(), payload: { action: "REPLACE", programId: body.programId, operationId } });
       return { queued: true as const, operationId };
     },
@@ -633,19 +597,13 @@ export function useRecordVaccination() {
     mutationFn: async ({ plan, body }: { plan: import("@/lib/types").VaccinationPlanItem; body: RecordVaccinationRequest }) => {
       const operationId = body.operationId ?? (typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
-      const payload = { ...body, operationId };
-      if (typeof navigator === "undefined" || navigator.onLine) {
-        try { return await vaccinationApi.record(plan.id, payload); }
-        catch (error) {
-          if (!(error instanceof ApiError) || ![0, 502, 503, 504].includes(error.status)) throw error;
-        }
-      }
-      await enqueue({ entityType: "VACCINATION_PLAN", batchId: plan.batchId, occurredAt: body.recordedAt ?? new Date().toISOString(), payload: { ...payload, planId: plan.id } });
-      return { queued: true as const, operationId };
+      const payload = { ...body, operationId, recordedAt: body.recordedAt ?? new Date().toISOString() };
+      await enqueue({ entityType: "VACCINATION_PLAN", batchId: plan.batchId, occurredAt: payload.recordedAt, payload: { ...payload, planId: plan.id } });
+      return { queued: true as const, operationId, recordedAt: payload.recordedAt };
     },
     onSuccess: (data, variables) => {
       if ("queued" in data && data.queued) {
-        const completedAt = variables.body.recordedAt ?? new Date().toISOString();
+        const completedAt = data.recordedAt;
         qc.setQueryData<import("@/lib/types").VaccinationPlanItem[]>(
           qk.batches.vaccinationPlan(variables.plan.batchId),
           (current) => current?.map((item) => item.id === variables.plan.id

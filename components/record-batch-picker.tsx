@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Bird, ChevronRight, ClipboardList, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
 import { useBatches } from "@/hooks/use-batches";
 import type { Batch } from "@/lib/types";
@@ -42,23 +42,27 @@ function PickerEmptyState({ icon: Icon, title, hint }: { icon: typeof Bird; titl
 
 function RecordBatchOption({ batch, origin, onSelected }: { batch: Batch; origin: LoggingOrigin; onSelected: () => void }) {
   const { t } = useLocale();
+  const router = useRouter();
   const needsReview = needsPopulationReview(batch);
   const stage = stageLabel(batch);
   const accessibleDescription = needsReview
     ? `${batch.name}. ${batch.initialPopulation} initial birds. ${t("record.countNeedsReview")}. ${stage}.`
     : `${batch.name}. ${batch.currentPopulation} of ${batch.initialPopulation} birds. ${stage}.`;
 
-  return <SheetClose
-    nativeButton={false}
-    render={<Link
-      href={getLoggingHref(batch.id, origin, true)}
-      onClick={onSelected}
-      aria-label={accessibleDescription}
-      className={cn(
-        "group grid min-h-[72px] grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-primary/10 bg-card px-3.5 py-3 text-left shadow-sm transition-all hover:border-primary/30 hover:shadow-md active:scale-[0.99] active:bg-primary/[0.04] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/30",
-        needsReview && "border-l-4 border-warning-border",
-      )}
-    />}
+  function handleSelect() {
+    router.push(getLoggingHref(batch.id, origin, true));
+    window.requestAnimationFrame(onSelected);
+  }
+
+  return <Button
+    type="button"
+    variant="ghost"
+    onClick={handleSelect}
+    aria-label={accessibleDescription}
+    className={cn(
+      "group grid min-h-[72px] w-full grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border border-primary/10 bg-card px-3.5 py-3 text-left shadow-sm transition-all hover:border-primary/30 hover:shadow-md active:scale-[0.99] active:bg-primary/[0.04] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-primary/30",
+      needsReview && "border-warning-border bg-warning-muted/20",
+    )}
   >
     <span className={cn("flex size-11 items-center justify-center rounded-xl", needsReview ? "bg-warning-muted text-warning-ink" : "bg-primary/10 text-primary")}>
       {needsReview ? <TriangleAlert className="size-5" aria-hidden="true" /> : <Bird className="size-5" aria-hidden="true" />}
@@ -68,12 +72,12 @@ function RecordBatchOption({ batch, origin, onSelected }: { batch: Batch; origin
       <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
         {needsReview ? <span className="font-bold tabular-nums text-warning-ink">{batch.initialPopulation} initial</span> : <><span className="font-bold tabular-nums text-foreground">{batch.currentPopulation} / {batch.initialPopulation}</span><span>{t("dashboard.birdsInBatch")}</span></>}
         <span aria-hidden="true">·</span>
-        <Badge variant="secondary" className="h-5 max-w-[8rem] truncate rounded-full bg-primary/10 px-2 text-[10px] font-semibold capitalize text-primary">{stage}</Badge>
-        {needsReview && <Badge variant="secondary" className="h-5 max-w-[8rem] truncate rounded-full px-2 text-[10px] font-semibold">{t("record.countNeedsReview")}</Badge>}
+        <Badge variant="secondary" className="h-5 max-w-[8rem] truncate rounded-full bg-primary/10 px-2 text-xs font-semibold capitalize text-primary">{stage}</Badge>
+        {needsReview && <Badge variant="secondary" className="h-5 max-w-[8rem] truncate rounded-full px-2 text-xs font-semibold">{t("record.countNeedsReview")}</Badge>}
       </span>
     </span>
     <ChevronRight className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" aria-hidden="true" />
-  </SheetClose>;
+  </Button>;
 }
 
 export function RecordBatchPicker({ open, onOpenChange, origin }: { open: boolean; onOpenChange: (open: boolean) => void; origin: LoggingOrigin }) {
@@ -97,6 +101,7 @@ export function RecordBatchPicker({ open, onOpenChange, origin }: { open: boolea
     <SheetContent
       side="bottom"
       showCloseButton={false}
+      data-testid="record-batch-picker"
       className="h-[min(90dvh,46rem)] max-h-[calc(100dvh-0.5rem)] gap-0 overflow-hidden rounded-t-[1.75rem] border-t-0 bg-muted/30 p-0 shadow-2xl"
     >
       <SheetHeader className="relative shrink-0 overflow-hidden bg-primary px-5 pb-8 pt-5 pr-16 text-primary-foreground">
@@ -108,7 +113,7 @@ export function RecordBatchPicker({ open, onOpenChange, origin }: { open: boolea
         <div className="relative z-10 flex items-start gap-3">
           <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-primary-foreground/15 text-primary-foreground"><ClipboardList className="size-5" aria-hidden="true" /></span>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2"><SheetTitle className="text-xl font-bold text-primary-foreground">{t("record.title")}</SheetTitle><Badge variant="secondary" className="h-5 rounded-full px-2 text-[10px] font-bold">{isLoading ? "…" : activeBatches.length} {t("record.activeBatches")}</Badge></div>
+            <div className="flex flex-wrap items-center gap-2"><SheetTitle className="text-xl font-bold text-primary-foreground">{t("record.title")}</SheetTitle><Badge variant="secondary" className="h-5 rounded-full px-2 text-xs font-bold">{isLoading ? "…" : activeBatches.length} {t("record.activeBatches")}</Badge></div>
             <SheetDescription className="mt-1 text-primary-foreground/75">{t("record.chooseBatch")}</SheetDescription>
           </div>
         </div>

@@ -21,7 +21,7 @@ const TYPES: Array<{ value: InputProductType; label: string }> = [
 ];
 
 export function InventoryManagerPanel() {
-  const { data: products, isLoading } = useFarmProducts(true);
+  const { data: products, isLoading, isError } = useFarmProducts(true);
   const createProduct = useCreateFarmProduct();
   const stockIn = useStockInProduct();
   const { data: pendingUses } = usePendingInventoryReview();
@@ -130,8 +130,10 @@ export function InventoryManagerPanel() {
         </DialogContent>
       </Dialog>
       {isLoading && <p className="text-sm text-muted-foreground">Loading products…</p>}
-      {!isLoading && activeProducts.length === 0 && <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No products yet. Add the usual medicine, vitamins, or feed packs.</p>}
-      {!isLoading && activeProducts.length > 0 && <div className="space-y-3 md:hidden">
+      {isError && <p role="alert" className="rounded-lg border border-warning-border bg-warning-muted/50 p-3 text-sm text-warning-ink">Could not load stock or check its demo history. Reconnect and try again.</p>}
+      {!isLoading && !isError && activeProducts.some((item) => item.demoStockHistory === undefined) && <p className="rounded-lg border border-warning-border bg-warning-muted/50 p-3 text-sm text-warning-ink">Demo stock history is unavailable. Verify stock and prices before relying on them.</p>}
+      {!isLoading && !isError && activeProducts.length === 0 && <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No products yet. Add the usual medicine, vitamins, or feed packs.</p>}
+      {!isLoading && !isError && activeProducts.length > 0 && <div className="space-y-3 md:hidden">
         {activeProducts.map((item) => {
           const typeLabel = TYPES.find((productType) => productType.value === item.productType)?.label ?? item.productType;
           const averageUnitCost = item.averageUnitCost == null ? null : Number(item.averageUnitCost);
@@ -142,6 +144,7 @@ export function InventoryManagerPanel() {
               <div className="min-w-0">
                 <h3 className="truncate text-base font-semibold">{item.brandName}</h3>
                 <p className="mt-0.5 text-sm text-muted-foreground">{typeLabel} · {item.stockUnit}</p>
+                {item.demoStockHistory && <p className="mt-1 text-xs font-semibold text-warning-ink">Demo stock in history · verify on hand and cost</p>}
               </div>
               {item.lowStock ? <Badge variant="secondary">Low stock</Badge> : item.valuationStatus === "UNVALUED" ? <Badge variant="outline">Cost needed</Badge> : <Badge variant="secondary">Tracked</Badge>}
             </div>
@@ -163,7 +166,7 @@ export function InventoryManagerPanel() {
           </article>;
         })}
       </div>}
-      {!isLoading && activeProducts.length > 0 && <div className="hidden overflow-hidden rounded-xl border md:block">
+      {!isLoading && !isError && activeProducts.length > 0 && <div className="hidden overflow-hidden rounded-xl border md:block">
         <Table>
           <TableHeader className="bg-muted/40">
             <TableRow>
@@ -187,6 +190,7 @@ export function InventoryManagerPanel() {
                 <TableCell className="min-w-52 whitespace-normal">
                   <p className="font-semibold">{item.brandName}</p>
                   {(item.productName || item.packageDescription) && <p className="mt-0.5 text-xs text-muted-foreground">{[item.productName, item.packageDescription].filter(Boolean).join(" · ")}</p>}
+                  {item.demoStockHistory && <p className="mt-1 text-xs font-semibold text-warning-ink">Demo stock in history · verify on hand and cost</p>}
                 </TableCell>
                 <TableCell>{typeLabel}</TableCell>
                 <TableCell className="text-muted-foreground">{item.stockUnit}</TableCell>

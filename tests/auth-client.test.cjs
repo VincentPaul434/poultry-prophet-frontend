@@ -16,6 +16,35 @@ const { apiClient, refreshAccessToken, logoutIfCurrent, shouldUseOfflineSnapshot
 const user = (id, farm, token) => ({ userId: id, farmId: farm, email: 'a@example.test', fullName: 'Test', role: 'MANAGER', token, refreshToken: `refresh-${token}`, refreshTokenExpiresAt: '2099-01-01' });
 Object.defineProperty(global, 'navigator', { configurable: true, value: { locks: { request: async (_name, fn) => fn() } } });
 
+test('a second tab waits for an active refresh before deciding whether sign-in is required', async () => {
+  data.clear();
+  storage.saveSession(user(1, 1, 'initial'));
+  storage.markRefreshUncertain(); // Another tab owns the lock and is rotating the cookie.
+  const oldLock = navigator.locks.request;
+  const oldPost = axios.post;
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let lockRequests = 0;
+  let posts = 0;
+  navigator.locks.request = async (_name, fn) => { lockRequests++; await gate; return fn(); };
+  axios.post = async () => { posts++; return { data: user(1, 1, 'second-tab-token') }; };
+  try {
+    const pending = refreshAccessToken();
+    await Promise.resolve();
+    assert.equal(lockRequests, 1, 'the second tab must wait for the existing credential lock');
+    assert.equal(storage.isAuthRequired(), false);
+    storage.saveSession(user(1, 1, 'first-tab-token'), true); // The first tab finishes successfully.
+    release();
+    assert.equal(await pending, 'second-tab-token');
+    assert.equal(posts, 1);
+    assert.equal(storage.isAuthRequired(), false);
+  } finally {
+    release();
+    navigator.locks.request = oldLock;
+    axios.post = oldPost;
+  }
+});
+
 test('a delayed logout never revokes a later signed-in session', async () => {
   data.clear();
   storage.saveSession(user(1, 1, 'old'));
@@ -193,4 +222,16 @@ test('a rejected refresh retains the offline identity and requires reauthenticat
   } finally {
     axios.post = originalPost;
   }
+});
+
+test('a session-bound command cannot dispatch under an account changed before Axios interception', async () => {
+  data.clear();storage.saveSession(user(1,1,'first-token'));
+  const expected=storage.getSessionScope(); const adapter=apiClient.defaults.adapter;let sent=0;
+  apiClient.defaults.adapter=async config=>{sent++;return {data:{},status:200,statusText:'OK',headers:{},config};};
+  try {
+    const pending=apiClient.post('/sync/v2/operations',{}, {_expectedSessionScope:expected});
+    storage.saveSession(user(2,2,'second-token'));
+    await assert.rejects(pending,error=>error.status===401);
+    assert.equal(sent,0);assert.equal(storage.getToken(),'second-token');
+  } finally {apiClient.defaults.adapter=adapter;}
 });

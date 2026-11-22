@@ -2,33 +2,31 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Loader2, Package, Save } from "lucide-react";
-import { toast } from "sonner";
+import { ChevronLeft, ChevronRight, Package } from "lucide-react";
 import { useBatches } from "@/hooks/use-batches";
-import { useCreateFarmInput, useFarmInputPage, useFarmProducts } from "@/hooks/use-operations";
-import { useLocalDraft } from "@/hooks/use-local-draft";
+import { useFarmInputPage } from "@/hooks/use-operations";
 import { useAuth } from "@/lib/auth-context";
-import { ApiError } from "@/lib/api-client";
 import type { InputProductType } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InventoryManagerPanel } from "@/components/inventory-manager-panel";
 import { PageHeader } from "@/components/page-header";
 
 const PRODUCT_TYPES: { value: InputProductType; label: string }[] = [
-  { value: "FEED", label: "Feed" }, { value: "VITAMIN", label: "Vitamin" }, { value: "MEDICINE", label: "Medicine" }, { value: "VACCINE", label: "Vaccine" }, { value: "OTHER", label: "Other" },
+  { value: "FEED", label: "Feed" },
+  { value: "VITAMIN", label: "Vitamin" },
+  { value: "MEDICINE", label: "Medicine" },
+  { value: "VACCINE", label: "Vaccine" },
+  { value: "OTHER", label: "Other" },
 ];
-const UNITS = ["packs", "sachets", "kg", "liters", "bottles", "Other"];
-function localDateTimeNow() { const now = new Date(); const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000); return local.toISOString().slice(0, 16); }
 
 export default function InputsPage() {
   const router = useRouter();
   const { user, isManager, isLoading: authLoading } = useAuth();
+
   useEffect(() => {
     if (!authLoading && user && !isManager) router.replace("/dashboard");
   }, [authLoading, isManager, router, user]);
@@ -42,77 +40,155 @@ export default function InputsPage() {
 }
 
 function ManagerInputsPage() {
-  const { user } = useAuth();
   const { data: batches } = useBatches();
-  const { data: farmProducts, isLoading: productsLoading } = useFarmProducts(false);
-  const create = useCreateFarmInput();
+  const [activeTab, setActiveTab] = useState<"inventory" | "history">("inventory");
   const [filterBatch, setFilterBatch] = useState("all");
   const [filterType, setFilterType] = useState<"ALL" | InputProductType>("ALL");
   const [historyPage, setHistoryPage] = useState(0);
-  const { data: logPage, isLoading } = useFarmInputPage({ page: historyPage, size: 20, batchId: filterBatch !== "all" && filterBatch !== "farm" ? Number(filterBatch) : undefined, farmWide: filterBatch === "farm", productType: filterType === "ALL" ? undefined : filterType });
+  const { data: logPage, isLoading } = useFarmInputPage({
+    page: historyPage,
+    size: 20,
+    batchId: filterBatch !== "all" && filterBatch !== "farm" ? Number(filterBatch) : undefined,
+    farmWide: filterBatch === "farm",
+    productType: filterType === "ALL" ? undefined : filterType,
+  });
   const logs = logPage?.items ?? [];
-  const [formError, setFormError] = useState("");
-  const [lastSaved, setLastSaved] = useState("");
-  const [activeTab, setActiveTab] = useState<"inventory" | "record" | "history">("inventory");
-  const [showOptional, setShowOptional] = useState(false);
-  const initialDraft = useMemo(() => ({ batchId: "", farmProductId: "", productType: "FEED" as InputProductType, brandName: "", productName: "", quantity: "", unit: "", purpose: "", notes: "", recordedAt: localDateTimeNow() }), []);
-  const draft = useLocalDraft(user ? `pp_draft:inputs:${user.userId}:${user.farmId ?? "none"}` : null, initialDraft);
-  const { batchId, farmProductId: savedFarmProductId, productType, productName, quantity, unit, purpose, notes, recordedAt } = draft.value;
-  const farmProductId = savedFarmProductId ?? "";
-  const batchNames = useMemo(() => new Map((batches ?? []).map((batch) => [batch.id, batch.name])), [batches]);
-  const activeProducts = useMemo(() => (farmProducts ?? []).filter((product) => product.active), [farmProducts]);
-  const filteredProducts = useMemo(() => activeProducts.filter((product) => product.productType === productType), [activeProducts, productType]);
-  const selectedProduct = useMemo(() => filteredProducts.find((product) => String(product.id) === farmProductId) ?? null, [filteredProducts, farmProductId]);
-  const visibleLogs = logs;
-
-  function selectProduct(value: string) {
-    const product = filteredProducts.find((item) => String(item.id) === value);
-    draft.setValue((current) => ({ ...current, farmProductId: value, productType: product?.productType ?? current.productType, brandName: product?.brandName ?? "", productName: product?.productName ?? "", unit: product?.stockUnit ?? "" }));
-  }
-
-  function selectType(value: string) {
-    const nextType = value as InputProductType;
-    draft.setValue((current) => {
-      const currentProduct = activeProducts.find((item) => String(item.id) === current.farmProductId);
-      if (currentProduct && currentProduct.productType !== nextType) return { ...current, farmProductId: "", productType: nextType, brandName: "", productName: "", unit: "" };
-      return { ...current, productType: nextType };
-    });
-  }
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault(); setFormError("");
-    if (!batchId) return setFormError("Select the batch that received this product.");
-    if (!selectedProduct) return setFormError("Select a product from farm inventory.");
-    if ((productType === "MEDICINE" || productType === "VACCINE") && !purpose.trim()) return setFormError("Add the purpose for this medicine or vaccine.");
-    if (quantity && (!Number.isFinite(Number(quantity)) || Number(quantity) <= 0)) return setFormError("Quantity must be greater than zero, or leave it blank.");
-    try {
-      await create.mutateAsync({ batchId: Number(batchId), recordedAt: recordedAt ? new Date(recordedAt).toISOString() : null, productType, brandName: selectedProduct.brandName, productName: productName.trim() || selectedProduct.productName || null, quantity: quantity ? Number(quantity) : null, unit: unit.trim() || selectedProduct.stockUnit, purpose: purpose.trim() || null, notes: notes.trim() || null, farmProductId: selectedProduct.id });
-      toast.success("Saved product record"); setLastSaved(`${selectedProduct.brandName} was recorded for ${batchNames.get(Number(batchId)) ?? "the selected batch"}.`); draft.clearDraft();
-    } catch (error) { setFormError(error instanceof ApiError ? error.message : "Could not save the product record."); }
-  }
+  const batchNames = useMemo(
+    () => new Map((batches ?? []).map((batch) => [batch.id, batch.name])),
+    [batches],
+  );
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4">
-      <PageHeader icon={Package} title="Products" description="Manage inventory, record usage, and review product history." />
-      <nav className="grid grid-cols-3 rounded-xl border bg-muted/30 p-1" role="tablist" aria-label="Product pages">
-        <Button variant="ghost" type="button" role="tab" aria-selected={activeTab === "inventory"} onClick={() => setActiveTab("inventory")} className={activeTab === "inventory" ? "min-h-11 rounded-lg bg-background text-sm font-semibold shadow-sm" : "min-h-11 rounded-lg text-sm font-semibold text-muted-foreground"}>Inventory</Button>
-        <Button variant="ghost" type="button" role="tab" aria-selected={activeTab === "record"} onClick={() => setActiveTab("record")} className={activeTab === "record" ? "min-h-11 rounded-lg bg-background text-sm font-semibold shadow-sm" : "min-h-11 rounded-lg text-sm font-semibold text-muted-foreground"}>Record usage</Button>
-        <Button variant="ghost" type="button" role="tab" aria-selected={activeTab === "history"} onClick={() => setActiveTab("history")} className={activeTab === "history" ? "min-h-11 rounded-lg bg-background text-sm font-semibold shadow-sm" : "min-h-11 rounded-lg text-sm font-semibold text-muted-foreground"}>History {logs ? `(${logs.length})` : ""}</Button>
+      <PageHeader icon={Package} title="Products" description="Manage inventory and review product history." />
+
+      <nav data-testid="product-tabs" className="grid grid-cols-2 rounded-xl border bg-muted/30 p-1" role="tablist" aria-label="Product pages">
+        <Button
+          variant="ghost"
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "inventory"}
+          onClick={() => setActiveTab("inventory")}
+          className={activeTab === "inventory" ? "min-h-11 rounded-lg bg-background text-sm font-semibold shadow-sm" : "min-h-11 rounded-lg text-sm font-semibold text-muted-foreground"}
+        >
+          Inventory
+        </Button>
+        <Button
+          variant="ghost"
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "history"}
+          onClick={() => setActiveTab("history")}
+          className={activeTab === "history" ? "min-h-11 rounded-lg bg-background text-sm font-semibold shadow-sm" : "min-h-11 rounded-lg text-sm font-semibold text-muted-foreground"}
+        >
+          History {logPage ? `(${logPage.totalItems})` : ""}
+        </Button>
       </nav>
+
       {activeTab === "inventory" ? (
         <InventoryManagerPanel />
-      ) : activeTab === "record" ? (
-        <section className="space-y-4" aria-labelledby="record-product-heading"><div><h2 id="record-product-heading" className="text-base font-semibold">Record product used</h2><p className="mt-1 text-sm text-muted-foreground">Select a product already added to farm inventory, then record where it was used.</p></div><div className="space-y-4">
-          {draft.hasDraft && <p role="status" className="mb-3 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs">Draft restored. Check the batch before saving.</p>}
-          <form onSubmit={submit} className="space-y-3" noValidate>
-            <div className="grid gap-2.5 sm:grid-cols-2"><div className="space-y-1.5"><Label htmlFor="input-batch">Batch <span className="text-destructive">*</span></Label><NativeSelect id="input-batch" required value={batchId} onChange={(e) => draft.setValue((current) => ({ ...current, batchId: e.target.value }))}><option value="">Select batch</option>{batches?.map((batch) => <option key={batch.id} value={batch.id}>{batch.name}</option>)}</NativeSelect></div><div className="space-y-1.5"><Label htmlFor="input-date">Date / time <span className="text-destructive">*</span></Label><Input id="input-date" type="datetime-local" required value={recordedAt} onChange={(e) => draft.setValue((current) => ({ ...current, recordedAt: e.target.value }))} /></div><div className="space-y-1.5"><Label htmlFor="input-type">Product type <span className="text-destructive">*</span></Label><NativeSelect id="input-type" required value={productType} onChange={(e) => selectType(e.target.value)}>{PRODUCT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</NativeSelect></div><div className="space-y-1.5"><Label htmlFor="input-product">Product / brand <span className="text-destructive">*</span></Label><NativeSelect id="input-product" required value={farmProductId} disabled={productsLoading || filteredProducts.length === 0} onChange={(e) => selectProduct(e.target.value)}><option value="">{productsLoading ? "Loading products…" : filteredProducts.length === 0 ? `No ${PRODUCT_TYPES.find((item) => item.value === productType)?.label.toLowerCase() ?? "matching"} products available` : "Select product from inventory"}</option>{filteredProducts.map((product) => <option key={product.id} value={product.id}>{product.brandName} · {product.stockOnHand} {product.stockUnit}</option>)}</NativeSelect>{selectedProduct && <p className="text-xs text-muted-foreground">{selectedProduct.stockOnHand} {selectedProduct.stockUnit} available</p>}{!productsLoading && activeProducts.length === 0 && <p className="text-xs text-warning-ink">Ask a manager to add products in Farm products and stock first.</p>}{!productsLoading && activeProducts.length > 0 && filteredProducts.length === 0 && <p className="text-xs text-muted-foreground">No {PRODUCT_TYPES.find((item) => item.value === productType)?.label.toLowerCase()} products have been added yet.</p>}</div></div>
-            {(productType === "MEDICINE" || productType === "VACCINE") && <div className="space-y-1.5"><Label htmlFor="input-purpose">Purpose <span className="text-destructive">*</span></Label><Input id="input-purpose" required value={purpose} onChange={(e) => draft.setValue((current) => ({ ...current, purpose: e.target.value }))} placeholder="Treatment, vaccination, deworming…" /></div>}
-            <details open={showOptional} onToggle={(e) => setShowOptional(e.currentTarget.open)} className="rounded-lg border px-3"><summary className="flex min-h-10 cursor-pointer items-center text-sm font-semibold">More details <span className="ml-1 font-normal text-muted-foreground">(optional)</span></summary><div className="grid gap-2.5 pb-3 sm:grid-cols-2"><Input aria-label="Product variant" value={productName} onChange={(e) => draft.setValue((current) => ({ ...current, productName: e.target.value }))} placeholder="Variant / supplier" /><div className="grid grid-cols-2 gap-2"><Input aria-label="Quantity" type="number" min="0" step="0.01" inputMode="decimal" value={quantity} onChange={(e) => draft.setValue((current) => ({ ...current, quantity: e.target.value }))} placeholder="Quantity" /><NativeSelect aria-label="Unit" value={unit} onChange={(e) => draft.setValue((current) => ({ ...current, unit: e.target.value }))}><option value="">Unit</option>{UNITS.map((item) => <option key={item} value={item}>{item}</option>)}</NativeSelect></div><Input aria-label="Notes" value={notes} onChange={(e) => draft.setValue((current) => ({ ...current, notes: e.target.value }))} placeholder="Short note" /></div></details>
-            {formError && <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{formError}</p>}<Button type="submit" disabled={create.isPending || !selectedProduct} className="h-11 w-full sm:w-auto">{create.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Save aria-hidden="true" />} Save product record</Button>{lastSaved && <p role="status" aria-live="polite" className="rounded-lg border border-success-border bg-success-muted px-3 py-2 text-xs text-success">Saved: {lastSaved}</p>}
-          </form>
-        </div></section>
       ) : (
-        <section className="space-y-3"><div className="flex flex-col gap-2 sm:flex-row"><NativeSelect aria-label="Filter product records by batch" value={filterBatch} onChange={(e) => { setFilterBatch(e.target.value); setHistoryPage(0); }}><option value="all">All batches</option><option value="farm">Farm-wide / no batch</option>{batches?.map((batch) => <option key={batch.id} value={batch.id}>{batch.name}</option>)}</NativeSelect><NativeSelect aria-label="Filter product records by type" value={filterType} onChange={(e) => { setFilterType(e.target.value as typeof filterType); setHistoryPage(0); }}><option value="ALL">All product types</option>{PRODUCT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</NativeSelect></div>{isLoading && <p className="text-sm text-muted-foreground">Loading records…</p>}{!isLoading && visibleLogs.length > 0 && <div className="overflow-hidden rounded-xl border"><Table><TableHeader className="bg-muted/40"><TableRow><TableHead>Date</TableHead><TableHead className="min-w-52">Product</TableHead><TableHead>Type</TableHead><TableHead>Batch</TableHead><TableHead className="text-right">Quantity</TableHead><TableHead className="text-right">Cost</TableHead><TableHead className="text-right">Status</TableHead></TableRow></TableHeader><TableBody>{visibleLogs.map((log) => { const typeLabel = PRODUCT_TYPES.find((item) => item.value === log.productType)?.label ?? log.productType; const status = log.inventoryStatus === "DEDUCTED" ? <Badge variant="secondary">Stock deducted</Badge> : log.inventoryStatus === "PENDING_STOCK_REVIEW" ? <Badge variant="secondary">Needs review</Badge> : log.inventoryStatus === "UNTRACKED" ? <Badge variant="outline">Not tracked</Badge> : <Badge variant="secondary">Recorded</Badge>; return <TableRow key={log.id}><TableCell>{new Date(log.recordedAt).toLocaleDateString()}</TableCell><TableCell className="min-w-52 whitespace-normal"><p className="font-semibold">{log.brandName}</p>{log.productName && <p className="text-xs text-muted-foreground">{log.productName}</p>}{log.purpose && <p className="text-xs text-muted-foreground">{log.purpose}</p>}</TableCell><TableCell>{typeLabel}</TableCell><TableCell>{log.batchId == null ? "Farm-wide" : batchNames.get(log.batchId) ?? `Batch ${log.batchId}`}</TableCell><TableCell className="text-right tabular-nums">{log.quantity != null ? `${Number(log.quantity).toLocaleString()} ${log.unit ?? "units"}` : <span className="text-muted-foreground">Not measured</span>}</TableCell><TableCell className="text-right tabular-nums">{log.calculatedCost != null ? `₱${Number(log.calculatedCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span className="text-muted-foreground">—</span>}</TableCell><TableCell className="text-right">{status}</TableCell></TableRow>; })}</TableBody></Table></div>}{!isLoading && visibleLogs.length === 0 && <Card className="border-dashed shadow-none"><CardContent className="p-8 text-center text-sm text-muted-foreground">No product records match this view.</CardContent></Card>}{!isLoading && logPage && logPage.totalPages > 1 && <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm text-muted-foreground"><span>{logPage.totalItems} records</span><div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!logPage.hasPrevious} onClick={() => setHistoryPage((current) => Math.max(0, current - 1))}> <ChevronLeft className="size-4" />Previous</Button><span>Page {logPage.page + 1} of {logPage.totalPages}</span><Button type="button" variant="outline" size="sm" disabled={!logPage.hasNext} onClick={() => setHistoryPage((current) => current + 1)}>Next<ChevronRight className="size-4" /></Button></div></div>}</section>
+        <section className="space-y-3" aria-label="Product history">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <NativeSelect
+              aria-label="Filter product records by batch"
+              value={filterBatch}
+              onChange={(event) => {
+                setFilterBatch(event.target.value);
+                setHistoryPage(0);
+              }}
+            >
+              <option value="all">All batches</option>
+              <option value="farm">Farm-wide / no batch</option>
+              {batches?.map((batch) => <option key={batch.id} value={batch.id}>{batch.name}</option>)}
+            </NativeSelect>
+            <NativeSelect
+              aria-label="Filter product records by type"
+              value={filterType}
+              onChange={(event) => {
+                setFilterType(event.target.value as typeof filterType);
+                setHistoryPage(0);
+              }}
+            >
+              <option value="ALL">All product types</option>
+              {PRODUCT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+            </NativeSelect>
+          </div>
+
+          {isLoading && <p className="text-sm text-muted-foreground">Loading records…</p>}
+          {!isLoading && logs.length > 0 && (
+            <div className="overflow-hidden rounded-xl border">
+              <Table>
+                <TableHeader className="bg-muted/40">
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="min-w-52">Product</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Batch</TableHead>
+                    <TableHead className="text-right">Quantity</TableHead>
+                    <TableHead className="text-right">Cost</TableHead>
+                    <TableHead className="text-right">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {logs.map((log) => {
+                    const typeLabel = PRODUCT_TYPES.find((item) => item.value === log.productType)?.label ?? log.productType;
+                    const status = log.inventoryStatus === "DEDUCTED"
+                      ? <Badge variant="secondary">Stock deducted</Badge>
+                      : log.inventoryStatus === "PENDING_STOCK_REVIEW"
+                        ? <Badge variant="secondary">Needs review</Badge>
+                        : log.inventoryStatus === "UNTRACKED"
+                          ? <Badge variant="outline">Not tracked</Badge>
+                          : <Badge variant="secondary">Recorded</Badge>;
+
+                    return (
+                      <TableRow key={log.id}>
+                        <TableCell>{new Date(log.recordedAt).toLocaleDateString()}</TableCell>
+                        <TableCell className="min-w-52 whitespace-normal">
+                          <p className="font-semibold">{log.brandName}</p>
+                          {log.productName && <p className="text-xs text-muted-foreground">{log.productName}</p>}
+                          {log.purpose && <p className="text-xs text-muted-foreground">{log.purpose}</p>}
+                        </TableCell>
+                        <TableCell>{typeLabel}</TableCell>
+                        <TableCell>{log.batchId == null ? "Farm-wide" : batchNames.get(log.batchId) ?? `Batch ${log.batchId}`}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {log.quantity != null ? `${Number(log.quantity).toLocaleString()} ${log.unit ?? "units"}` : <span className="text-muted-foreground">Not measured</span>}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {log.calculatedCost != null ? `₱${Number(log.calculatedCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-right">{status}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+
+          {!isLoading && logs.length === 0 && (
+            <Card className="border-dashed shadow-none">
+              <CardContent className="p-8 text-center text-sm text-muted-foreground">No product records match this view.</CardContent>
+            </Card>
+          )}
+
+          {!isLoading && logPage && logPage.totalPages > 1 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm text-muted-foreground">
+              <span>{logPage.totalItems} records</span>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" size="sm" disabled={!logPage.hasPrevious} onClick={() => setHistoryPage((current) => Math.max(0, current - 1))}>
+                  <ChevronLeft className="size-4" />
+                  Previous
+                </Button>
+                <span>Page {logPage.page + 1} of {logPage.totalPages}</span>
+                <Button type="button" variant="outline" size="sm" disabled={!logPage.hasNext} onClick={() => setHistoryPage((current) => current + 1)}>
+                  Next
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </section>
       )}
     </div>
   );

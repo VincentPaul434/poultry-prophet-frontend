@@ -18,21 +18,30 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function FarmSection() {
   const farm = useFarm(true);
 
-  if (farm.isLoading) {
+  if (farm.isLoading && !farm.data) {
     return (
       <div className="space-y-4 rounded-2xl border bg-card p-5 sm:p-7">
         {[1, 2, 3].map((i) => <Skeleton key={i} className="h-11 rounded-xl" />)}
       </div>
     );
   }
-  if (farm.isError) {
+  if (farm.isError && !farm.data) {
     return <p className="text-sm text-destructive">Failed to load farm profile.</p>;
   }
   if (!farm.data) return null;
 
   // Keyed on the farm id so the form initialises from the loaded values without
   // syncing via an effect.
-  return <FarmProfileForm key={farm.data.id} farm={farm.data} />;
+  return (
+    <div className="space-y-3">
+      {farm.isError && (
+        <p className="rounded-xl border border-warning-border bg-warning-muted px-3 py-2 text-sm text-warning-ink" role="status">
+          Couldn’t refresh the farm profile. Showing the last loaded details.
+        </p>
+      )}
+      <FarmProfileForm key={farm.data.id} farm={farm.data} />
+    </div>
+  );
 }
 
 function FarmProfileForm({ farm }: { farm: Farm }) {

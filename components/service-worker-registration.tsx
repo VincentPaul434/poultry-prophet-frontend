@@ -9,6 +9,8 @@ export function ServiceWorkerRegistration() {
   const { t } = useLocale();
   useEffect(() => {
     let failureReported = false;
+    let refreshReported = false;
+    let disposed = false;
     const reportFailure = (error?: unknown) => {
       if (failureReported) return;
       failureReported = true;
@@ -28,16 +30,16 @@ export function ServiceWorkerRegistration() {
     // static Next.js assets are cache-first in the offline shell.
     if (process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_ENABLE_OFFLINE !== "true") {
       void navigator.serviceWorker.getRegistrations().then(async (registrations) => {
-        await Promise.all(registrations.map((registration) => registration.unregister()));
-        if ("caches" in window) {
-          const cacheNames = await caches.keys();
-          await Promise.all(
-            cacheNames
-              .filter((name) => name.startsWith("poultry-prophet-shell-"))
-              .map((name) => caches.delete(name)),
-          );
-        }
-      });
+        await Promise.all(registrations.filter((registration) => {
+          const worker = registration.active ?? registration.waiting ?? registration.installing;
+          if (!worker || registration.scope !== `${window.location.origin}/`) return false;
+          const script = new URL(worker.scriptURL);
+          return script.origin === window.location.origin && script.pathname === "/sw.js";
+        }).map((registration) => registration.unregister()));
+        // Unregistering affects future navigation. Existing controlled pages
+        // can still be open, so their deployment caches must remain available.
+        // Neither development cleanup nor updates may clear the record outbox.
+      }).catch(reportFailure);
       return;
     }
 
@@ -53,10 +55,24 @@ export function ServiceWorkerRegistration() {
       scope: "/",
       updateViaCache: "none",
     }).then((registration) => {
+      const reportRefreshNeeded = () => {
+        if (disposed || refreshReported || navigator.serviceWorker.controller || !registration.active) return;
+        refreshReported = true;
+        toast.info(t("status.offlineRefreshRequired"), {
+          description: t("status.offlineRefreshHint"),
+          duration: 8_000,
+          position: "bottom-center",
+          closeButton: true,
+          style: { pointerEvents: "none" },
+          classNames: { closeButton: "!pointer-events-auto" },
+        });
+      };
+      reportRefreshNeeded();
       const watchInstall = () => {
         const worker = registration.installing;
         if (!worker) return;
         worker.addEventListener("statechange", () => {
+          if (worker.state === "activated") reportRefreshNeeded();
           if (worker.state === "redundant" && !registration.active) {
             reportFailure(new Error("The offline app shell could not be cached."));
           }
@@ -65,6 +81,7 @@ export function ServiceWorkerRegistration() {
       watchInstall();
       registration.addEventListener("updatefound", watchInstall);
     }).catch(reportFailure);
+    return () => { disposed = true; };
   }, [t]);
   return null;
 }

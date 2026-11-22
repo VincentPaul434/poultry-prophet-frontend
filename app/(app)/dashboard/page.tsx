@@ -10,18 +10,16 @@ import {
   ClipboardCheck,
   ClipboardList,
   Loader2,
-  Package,
   Plus,
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useArchivedBatches, useCreateBatch, useDashboardBatches, useRestoreBatch } from "@/hooks/use-batches";
-import { useFarmProducts, useHandlerTaskQueueSummary, useTaskQueue } from "@/hooks/use-operations";
-import { useFarm } from "@/hooks/use-farm";
+import { useHandlerTaskQueueSummary, useTaskQueue, useTaskSummary } from "@/hooks/use-operations";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { formatDate, isFutureDate, todayIso } from "@/lib/format";
-import type { BatchDashboardItem } from "@/lib/types";
+import type { BatchDashboardItem, TaskSummaryResponse } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,11 +39,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PendingInvitesBanner } from "@/components/pending-invites-banner";
 import { FarmOnboardingBanner } from "@/components/farm-onboarding-banner";
 import { getLoggingHref, LOGGING_ORIGINS } from "@/lib/logging-navigation";
-import { getFarmDisplayName } from "@/lib/farm-display";
 import { useLocale } from "@/components/locale-provider";
 import { BatchMetricStrip, type BatchMetricStripItem } from "@/components/dashboard/batch-metric-strip";
 import { PageHeader } from "@/components/page-header";
 import { formatTaskDeadline } from "@/components/tasks/handler-task-ui";
+import { ArchivedBatchDeleteAction } from "@/components/archived-batch-delete-action";
 import {
   Dialog,
   DialogContent,
@@ -84,6 +82,10 @@ function stageDisplayName(stageName: string): string {
 
 const PAGE_SIZE = 6;
 
+function batchNeedsAttention({ batch, summary }: BatchDashboardItem) {
+  return batch.populationStatus === "RECONCILIATION_REQUIRED" || summary.activeAlertCount > 0;
+}
+
 export default function DashboardPage() {
   const { isManager, user } = useAuth();
   const { t } = useLocale();
@@ -91,11 +93,10 @@ export default function DashboardPage() {
   const { data: archivedBatches } = useArchivedBatches(isManager);
   const handlerTaskQueue = useTaskQueue("NOW", !isManager);
   const { data: handlerTaskSummary } = useHandlerTaskQueueSummary(!isManager);
+  const { data: taskSummary } = useTaskSummary({}, Boolean(user?.farmId));
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [search, setSearch] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
-  const farm = useFarm(!!user && user.farmId != null);
-  const { data: farmProducts } = useFarmProducts(false, Boolean(user?.farmId));
   const filteredBatches = (dashboardItems ?? []).filter(({ batch }) => {
     const query = search.trim().toLowerCase();
     const matchesSearch = !query || [batch.name, batch.bloodline, batch.source]
@@ -107,39 +108,44 @@ export default function DashboardPage() {
   const visibleBatches = filteredBatches.slice(0, visibleCount);
   const openTasks = handlerTaskQueue.data?.pages.flatMap((page) => page.items).slice(0, 2) ?? [];
   const taskCount = handlerTaskSummary?.now ?? handlerTaskQueue.data?.pages[0]?.totalItems ?? 0;
-  const farmName = getFarmDisplayName({ farm: farm.data, farmId: user?.farmId, isError: farm.isError });
   const activeBatchCount = (dashboardItems ?? []).filter(({ batch }) => batch.status === "ACTIVE").length;
-  const needsAttention = visibleBatches.filter(({ batch, summary }) => batch.populationStatus === "RECONCILIATION_REQUIRED" || summary.activeAlertCount > 0);
-  const allGood = visibleBatches.filter(({ batch, summary }) => batch.populationStatus !== "RECONCILIATION_REQUIRED" && summary.activeAlertCount === 0);
-  const openTaskCount = dashboardItems
-    ? dashboardItems.reduce((total, { summary }) => total + (summary.tasks?.open ?? 0), 0)
-    : null;
-  const lowStockCount = farmProducts
-    ? farmProducts.filter((product) => product.lowStock).length
-    : null;
+  const needsAttention = visibleBatches.filter(batchNeedsAttention);
+  const allGood = visibleBatches.filter((item) => !batchNeedsAttention(item));
+  const needsAttentionCount = dashboardItems ? dashboardItems.filter(batchNeedsAttention).length : null;
+  const openTaskCount = taskSummary?.open ?? null;
 
   return (
-    <div className="ledger-page mx-auto w-full max-w-6xl space-y-8 sm:space-y-10">
+    <div className="ledger-page mx-auto w-full max-w-6xl space-y-5 sm:space-y-10">
       <PageHeader
         data-testid="dashboard-sticky-header"
         title={t("dashboard.pageTitle")}
-        titleClassName="ledger-heading text-4xl leading-none sm:text-5xl"
-        description={`${farmName} · ${dashboardItems ? `${t("dashboard.activeBatches")}: ${activeBatchCount}` : t("dashboard.loadingBatches")}`}
-        className="gap-6 sm:items-end"
+        titleClassName="ledger-heading text-[2rem] leading-none sm:text-5xl"
+        description={dashboardItems ? `${t("dashboard.activeBatches")}: ${activeBatchCount}` : t("dashboard.loadingBatches")}
+        className="gap-3 sm:items-end sm:gap-6"
         action={<CreateBatchDialog className="w-full sm:w-auto" />}
       />
 
       {dashboardItems && dashboardItems.length > 0 && (
-        <div className="ledger-toolbar flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-start">
-          <div className="ledger-search relative min-w-0 sm:w-52 sm:flex-none"><Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input aria-label={t("dashboard.searchLabel")} value={search} onChange={(event) => { setSearch(event.target.value); setVisibleCount(PAGE_SIZE); }} placeholder={t("dashboard.searchPlaceholder")} className="min-h-11 rounded-full border-0 bg-transparent pl-11 pr-4 shadow-none focus-visible:ring-2 focus-visible:ring-ring/40" /></div>
-          <NativeSelect aria-label={t("dashboard.filterLabel")} value={stageFilter} onChange={(event) => { setStageFilter(event.target.value); setVisibleCount(PAGE_SIZE); }} className="ledger-filter min-h-11 w-full rounded-full border-0 bg-transparent px-3 text-xs shadow-none sm:w-36"><option value="all">{t("dashboard.allStages")}</option>{Array.from(new Set(dashboardItems.map(({ batch }) => batch.stageName))).map((stage) => <option key={stage} value={stage}>{stageDisplayName(stage)}</option>)}</NativeSelect>
+        <div className="ledger-toolbar flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-center">
+          <div className="ledger-search relative min-w-0 border border-foreground/10 transition-colors focus-within:border-ring/60 sm:w-64 sm:flex-none lg:w-72">
+            <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <span id="dashboard-search-help" className="sr-only">{t("dashboard.searchHelp")}</span>
+            <Input
+              aria-describedby="dashboard-search-help"
+              aria-label={t("dashboard.searchLabel")}
+              value={search}
+              onChange={(event) => { setSearch(event.target.value); setVisibleCount(PAGE_SIZE); }}
+              placeholder={t("dashboard.searchPlaceholder")}
+              className="min-h-11 rounded-full border-0 bg-transparent pl-11 pr-4 shadow-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            />
+          </div>
+          <NativeSelect aria-label={t("dashboard.filterLabel")} value={stageFilter} onChange={(event) => { setStageFilter(event.target.value); setVisibleCount(PAGE_SIZE); }} className="ledger-filter w-full sm:w-44" selectClassName="h-11 rounded-full border-0 bg-[var(--ledger-card)] px-3 pr-9 text-sm shadow-none focus-visible:ring-2 focus-visible:ring-ring/40"><option value="all">{t("dashboard.allStages")}</option>{Array.from(new Set(dashboardItems.map(({ batch }) => batch.stageName))).map((stage) => <option key={stage} value={stage}>{stageDisplayName(stage)}</option>)}</NativeSelect>
         </div>
       )}
 
       <DashboardSummaryStrip
-        needsAttentionCount={dashboardItems ? needsAttention.length : null}
+        needsAttentionCount={needsAttentionCount}
         openTaskCount={openTaskCount}
-        lowStockCount={lowStockCount}
       />
 
       <FarmOnboardingBanner />
@@ -224,8 +230,8 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           )}
-          {needsAttention.length > 0 && <section aria-labelledby="needs-attention-heading" className="space-y-4"><h2 id="needs-attention-heading" className="ledger-section-heading">Needs attention</h2><div className="grid gap-4 sm:grid-cols-2">{needsAttention.map((item) => <BatchCard key={item.batch.id} item={item} isManager={isManager} />)}</div></section>}
-          {allGood.length > 0 && <section aria-labelledby="all-good-heading" className="space-y-4"><h2 id="all-good-heading" className="ledger-section-heading">All good</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{allGood.map((item) => <BatchCard key={item.batch.id} item={item} isManager={isManager} />)}</div></section>}
+          {needsAttention.length > 0 && <section aria-labelledby="needs-attention-heading" className="space-y-3 sm:space-y-4"><h2 id="needs-attention-heading" className="ledger-section-heading">Needs attention</h2><div className="grid gap-4 sm:grid-cols-2">{needsAttention.map((item) => <BatchCard key={item.batch.id} item={item} isManager={isManager} />)}</div></section>}
+          {allGood.length > 0 && <section aria-labelledby="no-batch-alerts-heading" className="space-y-3 sm:space-y-4"><h2 id="no-batch-alerts-heading" className="ledger-section-heading">No active alerts or count issues</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{allGood.map((item) => <BatchCard key={item.batch.id} item={item} isManager={isManager} />)}</div></section>}
           {visibleCount < filteredBatches.length && (
             <div className="flex justify-center border-t pt-4">
               <Button
@@ -249,27 +255,22 @@ export default function DashboardPage() {
 function DashboardSummaryStrip({
   needsAttentionCount,
   openTaskCount,
-  lowStockCount,
 }: {
   needsAttentionCount: number | null;
   openTaskCount: number | null;
-  lowStockCount: number | null;
 }) {
   const items = [
     { label: "Needs attention", value: needsAttentionCount, icon: AlertTriangle, iconClassName: "text-warning" },
     { label: "Open tasks", value: openTaskCount, icon: ClipboardCheck, iconClassName: "text-primary" },
-    { label: "Low stock", value: lowStockCount, icon: Package, iconClassName: "text-primary" },
   ];
 
   return (
-    <div className="grid gap-3 sm:grid-cols-3" aria-label="Dashboard summary">
+    <div className="grid grid-cols-2 gap-3" aria-label="Dashboard summary" data-testid="dashboard-summary">
       {items.map(({ label, value, icon: Icon, iconClassName }) => (
-        <div key={label} className="flex min-h-20 items-center gap-3 rounded-xl bg-primary/5 px-4 py-3">
-          <Icon className={cn("size-7 shrink-0", iconClassName)} strokeWidth={1.8} aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{label}</p>
-            <p className="mt-0.5 text-2xl font-bold leading-none tabular-nums">{value == null ? "—" : formatCount(value)}</p>
-          </div>
+        <div key={label} className="grid min-h-20 min-w-0 grid-cols-[minmax(0,1fr)_auto] content-between gap-x-2 gap-y-1 rounded-xl bg-primary/5 px-3 py-3 sm:px-4">
+          <p className="min-w-0 text-sm font-semibold leading-4 [overflow-wrap:anywhere]">{label}</p>
+          <Icon className={cn("size-5 shrink-0 sm:size-6", iconClassName)} strokeWidth={1.8} aria-hidden="true" />
+          <p className="col-span-2 text-2xl font-bold leading-none tabular-nums">{value == null ? "—" : formatCount(value)}</p>
         </div>
       ))}
     </div>
@@ -280,7 +281,7 @@ function ArchivedBatches({ batches }: { batches: import("@/lib/types").Batch[] }
   const restore = useRestoreBatch();
   return <section className="space-y-3 border-t pt-5">
     <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Archived batches</h2><p className="mt-0.5 text-xs text-muted-foreground">History is kept and read-only until restored.</p></div><Badge variant="secondary">{batches.length}</Badge></div>
-    <div className="space-y-2">{batches.map((batch) => <div key={batch.id} className="flex flex-col gap-3 rounded-2xl border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"><Link href={`/batches/${batch.id}`} className="min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"><p className="truncate text-sm font-semibold">{batch.name}</p><p className="mt-1 text-xs text-muted-foreground">Archived {batch.archivedAt ? formatDate(batch.archivedAt) : "date unavailable"}{batch.archiveReason ? ` · ${batch.archiveReason}` : ""}</p></Link><div className="flex gap-2"><Link href={`/batches/${batch.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "min-h-11 rounded-xl")}>View records</Link><Button type="button" size="sm" className="min-h-11 rounded-xl" disabled={restore.isPending} onClick={() => restore.mutateAsync(batch.id).then(() => toast.success("Batch restored.")).catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not restore this batch."))}><ArchiveRestore className="size-4" />Restore</Button></div></div>)}</div>
+    <div className="space-y-2">{batches.map((batch) => <div key={batch.id} className="flex flex-col gap-3 rounded-2xl border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"><Link href={`/batches/${batch.id}`} className="min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"><p className="truncate text-sm font-semibold">{batch.name}</p><p className="mt-1 text-xs text-muted-foreground">Archived {batch.archivedAt ? formatDate(batch.archivedAt) : "date unavailable"}{batch.archiveReason ? ` · ${batch.archiveReason}` : ""}</p></Link><div className="flex flex-wrap gap-2"><Link href={`/batches/${batch.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "min-h-11 rounded-xl")}>View records</Link><Button type="button" size="sm" className="min-h-11 rounded-xl" disabled={restore.isPending} onClick={() => restore.mutateAsync(batch.id).then(() => toast.success("Batch restored.")).catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not restore this batch."))}><ArchiveRestore className="size-4" />Restore</Button><ArchivedBatchDeleteAction batch={batch} /></div></div>)}</div>
   </section>;
 }
 
@@ -302,7 +303,11 @@ function alertAttentionText(
 }
 
 function BatchCard({ item, isManager }: { item: BatchDashboardItem; isManager: boolean }) {
-  return isManager ? <ManagerBatchCard item={item} /> : <HandlerBatchCard item={item} />;
+  const { user } = useAuth();
+  const { data, isError } = useTaskSummary({ batchId: item.batch.id }, Boolean(user?.farmId));
+  return isManager
+    ? <ManagerBatchCard item={item} taskSummary={data} taskSummaryError={isError} />
+    : <HandlerBatchCard item={item} taskSummary={data} taskSummaryError={isError} />;
 }
 
 function BatchCardHeader({ item }: { item: BatchDashboardItem }) {
@@ -321,10 +326,12 @@ function BatchCardHeader({ item }: { item: BatchDashboardItem }) {
   return (
     <CardHeader className="p-4 pb-0 sm:p-5 sm:pb-0">
       <div className="flex min-w-0 items-start gap-3">
-        <span className={cn("inline-flex shrink-0 items-center rounded-lg px-3 py-1 text-xs font-bold", stageBadgeClass)}>{stageLabel}</span>
         <div className="min-w-0 flex-1">
-          <CardTitle className="ledger-card-title truncate text-xl leading-tight"><Link href={overviewHref} className="rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">{batch.name}</Link></CardTitle>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{t("dashboard.day")} {days}{batch.bloodline ? ` · ${batch.bloodline}` : batch.source ? ` · ${batch.source}` : ""}{batch.status !== "ACTIVE" ? ` · ${batch.status}` : ""}</p>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className={cn("inline-flex shrink-0 items-center rounded-lg px-3 py-1 text-xs font-bold", stageBadgeClass)}>{stageLabel}</span>
+            <CardTitle className="ledger-card-title min-w-0 max-w-full text-xl leading-tight [overflow-wrap:anywhere]"><Link href={overviewHref} className="rounded-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">{batch.name}</Link></CardTitle>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{t("dashboard.day")} {days}{batch.bloodline ? ` · ${batch.bloodline}` : batch.source ? ` · ${batch.source}` : ""}{batch.status !== "ACTIVE" ? ` · ${batch.status}` : ""}</p>
         </div>
         {summary.activeAlertCount > 0 && <Badge variant={summary.highestActiveAlertSeverity === "CRITICAL" ? "destructive" : summary.highestActiveAlertSeverity === "WARNING" ? "secondary" : "secondary"} className="shrink-0 px-1.5 text-[10px]" aria-label={summary.highestActiveAlertSeverity ? alertAttentionText(summary.highestActiveAlertSeverity, summary.activeAlertCount, t) : `${summary.activeAlertCount} ${t("dashboard.activeAlerts")}`}><AlertCircle aria-hidden="true" />{summary.activeAlertCount}</Badge>}
       </div>
@@ -351,71 +358,37 @@ function getPopulationMetric(
 }
 
 function getTaskMetric(
-  item: BatchDashboardItem,
+  tasks: TaskSummaryResponse | undefined,
+  isError: boolean,
   t: ReturnType<typeof useLocale>["t"],
 ): BatchMetricStripItem {
-  const tasks = item.summary.tasks ?? { open: 0, overdue: 0 };
-  const taskDescription = tasks.overdue > 0
-    ? `${formatCount(tasks.open)} ${t("dashboard.batchTasks").toLowerCase()}; ${formatCount(tasks.overdue)} ${t("dashboard.overdue").toLowerCase()}`
+  if (!tasks || typeof tasks.open !== "number" || typeof tasks.late !== "number") {
+    const description = t(isError || tasks ? "dashboard.taskCountUnavailable" : "dashboard.taskCountLoading");
+    return { value: "—", label: t("dashboard.batchTasks"), title: description, ariaLabel: description };
+  }
+  const taskDescription = tasks.late > 0
+    ? `${formatCount(tasks.open)} ${t("dashboard.batchTasks").toLowerCase()}; ${formatCount(tasks.late)} ${t("dashboard.overdue").toLowerCase()}`
     : `${formatCount(tasks.open)} ${t("dashboard.batchTasks").toLowerCase()}`;
   return {
     value: formatCount(tasks.open),
     label: t("dashboard.batchTasks"),
-    warning: tasks.overdue > 0,
+    warning: tasks.late > 0,
+    note: tasks.late > 0 ? `${formatCount(tasks.late)} ${t("dashboard.overdue").toLowerCase()}` : undefined,
     title: taskDescription,
     ariaLabel: taskDescription,
   };
 }
 
-function formatBatchCost(value: number, currency: string) {
-  try {
-    return new Intl.NumberFormat("en-PH", {
-      style: "currency",
-      currency: currency || "PHP",
-      maximumFractionDigits: 0,
-    }).format(value);
-  } catch {
-    return `₱${formatCount(Math.round(value))}`;
-  }
-}
-
-function getManagerBatchMetricItems(
+function getBatchMetricItems(
   item: BatchDashboardItem,
+  taskSummary: TaskSummaryResponse | undefined,
+  taskSummaryError: boolean,
   t: ReturnType<typeof useLocale>["t"],
 ): BatchMetricStripItem[] {
-  const finance = item.summary.finance;
-  const costRecorded = Boolean(finance?.hasCostRecords);
-  const costValue = costRecorded && finance
-    ? formatBatchCost(finance.recordedBatchCost, finance.currency)
-    : "—";
-  const costNeedsReview = costRecorded && finance != null && !finance.productCostComplete;
-  const costTitle = !costRecorded
-    ? t("dashboard.noCostRecorded")
-    : costNeedsReview
-      ? `${costValue} · ${t("dashboard.costPartial")}`
-      : costValue;
-
-  return [
-    getPopulationMetric(item, t),
-    {
-      value: costValue,
-      label: t("dashboard.batchCost"),
-      warning: costNeedsReview,
-      title: costTitle,
-      ariaLabel: `${t("dashboard.batchCost")}: ${costTitle}`,
-    },
-    getTaskMetric(item, t),
-  ];
+  return [getPopulationMetric(item, t), getTaskMetric(taskSummary, taskSummaryError, t)];
 }
 
-function getHandlerBatchMetricItems(
-  item: BatchDashboardItem,
-  t: ReturnType<typeof useLocale>["t"],
-): BatchMetricStripItem[] {
-  return [getPopulationMetric(item, t), getTaskMetric(item, t)];
-}
-
-function ManagerBatchCard({ item }: { item: BatchDashboardItem }) {
+function ManagerBatchCard({ item, taskSummary, taskSummaryError }: { item: BatchDashboardItem; taskSummary?: TaskSummaryResponse; taskSummaryError: boolean }) {
   const { t } = useLocale();
   const { batch } = item;
 
@@ -423,7 +396,7 @@ function ManagerBatchCard({ item }: { item: BatchDashboardItem }) {
     <Card className={cn("ledger-batch-card flex h-full flex-col", (item.batch.populationStatus === "RECONCILIATION_REQUIRED" || item.summary.activeAlertCount > 0) && "ledger-batch-card-attention")}>
       <BatchCardHeader item={item} />
       <CardContent className="px-3 pb-3 pt-3 sm:px-4 sm:pb-4">
-        <BatchMetricStrip items={getManagerBatchMetricItems(item, t)} />
+        <BatchMetricStrip items={getBatchMetricItems(item, taskSummary, taskSummaryError, t)} />
       </CardContent>
       <CardFooter className="mt-auto border-t-0 p-3 pt-0 sm:p-4 sm:pt-0">
         <Link href={`/batches/${batch.id}`} className={cn(buttonVariants({ size: "lg" }), "h-11 w-full rounded-xl text-base font-semibold")}>
@@ -434,7 +407,7 @@ function ManagerBatchCard({ item }: { item: BatchDashboardItem }) {
   );
 }
 
-function HandlerBatchCard({ item }: { item: BatchDashboardItem }) {
+function HandlerBatchCard({ item, taskSummary, taskSummaryError }: { item: BatchDashboardItem; taskSummary?: TaskSummaryResponse; taskSummaryError: boolean }) {
   const { t } = useLocale();
   const { batch } = item;
   const overviewHref = `/batches/${batch.id}`;
@@ -444,7 +417,7 @@ function HandlerBatchCard({ item }: { item: BatchDashboardItem }) {
     <Card className={cn("ledger-batch-card flex h-full flex-col", (item.batch.populationStatus === "RECONCILIATION_REQUIRED" || item.summary.activeAlertCount > 0) && "ledger-batch-card-attention")}>
       <BatchCardHeader item={item} />
       <CardContent className="px-3 pb-3 pt-3 sm:px-4 sm:pb-4">
-        <BatchMetricStrip items={getHandlerBatchMetricItems(item, t)} />
+        <BatchMetricStrip items={getBatchMetricItems(item, taskSummary, taskSummaryError, t)} />
       </CardContent>
       <CardFooter className="mt-auto flex flex-col gap-2 border-t-0 p-3 pt-0 sm:p-4 sm:pt-0 lg:flex-row">
         <Link href={logHref} className={cn(buttonVariants({ size: "lg" }), "h-11 w-full rounded-xl text-sm font-semibold lg:min-w-0 lg:flex-1")} aria-label={`Log an event for ${batch.name}`}><ClipboardList className="size-4" />{t("dashboard.logNow")}</Link>
@@ -464,6 +437,7 @@ function CreateBatchDialog({ variant = "header", className }: { variant?: "heade
   const [initialPopulation, setInitialPopulation] = useState("");
   const [hatchDate, setHatchDate] = useState(todayIso());
   const [farmEntryDate, setFarmEntryDate] = useState(todayIso());
+  const [derbyDate, setDerbyDate] = useState("");
   const [bloodline, setBloodline] = useState("");
   const [source, setSource] = useState("");
 
@@ -476,6 +450,10 @@ function CreateBatchDialog({ variant = "header", className }: { variant?: "heade
     const population = Number(initialPopulation);
     if (!name.trim()) {
       toast.error(t("dashboard.batchNameRequired"));
+      return;
+    }
+    if (!bloodline.trim()) {
+      toast.error(t("dashboard.bloodlineRequired"));
       return;
     }
     if (!Number.isInteger(population) || population < 1) {
@@ -497,7 +475,8 @@ function CreateBatchDialog({ variant = "header", className }: { variant?: "heade
         startDate: farmEntryDate,
         hatchDate,
         farmEntryDate,
-        bloodline: bloodline || null,
+        bloodline: bloodline.trim(),
+        derbyDate: derbyDate || null,
         source: source || null,
       });
       toast.success(t("dashboard.created"));
@@ -505,6 +484,7 @@ function CreateBatchDialog({ variant = "header", className }: { variant?: "heade
       setName("");
       setInitialPopulation("");
       setBloodline("");
+      setDerbyDate("");
       setSource("");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("dashboard.createError"));
@@ -526,13 +506,13 @@ function CreateBatchDialog({ variant = "header", className }: { variant?: "heade
           )
         }
       />
-      <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto sm:max-w-lg">
         <form onSubmit={onSubmit}>
           <DialogHeader>
             <DialogTitle>{t("dashboard.createDialogTitle")}</DialogTitle>
             <DialogDescription>{t("dashboard.createDialogDescription")}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="grid gap-4 py-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name" className="font-semibold">{t("dashboard.batchName")}</Label>
               <Input
@@ -544,75 +524,81 @@ function CreateBatchDialog({ variant = "header", className }: { variant?: "heade
                 onChange={(e) => setName(e.target.value)}
               />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="pop" className="font-semibold">{t("dashboard.numberOfBirds")}</Label>
-                <Input
-                  id="pop"
-                  type="number"
-                  min={1}
-                  step={1}
-                  required
-                  placeholder={t("dashboard.numberOfBirdsPlaceholder")}
-                  className="h-11 rounded-xl"
-                  value={initialPopulation}
-                  onChange={(e) => setInitialPopulation(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="hatch-date" className="font-semibold">Hatch date</Label>
-                <Input
-                  id="hatch-date"
-                  type="date"
-                  required
-                  max={todayIso()}
-                  className="h-11 rounded-xl"
-                  value={hatchDate}
-                  onChange={(e) => setHatchDate(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="farm-entry-date" className="font-semibold">Farm entry date</Label>
-                <Input
-                  id="farm-entry-date"
-                  type="date"
-                  required
-                  max={todayIso()}
-                  className="h-11 rounded-xl"
-                  value={farmEntryDate}
-                  onChange={(e) => setFarmEntryDate(e.target.value)}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="bloodline" className="font-semibold">
+                {t("dashboard.bloodline")} <span className="font-normal text-muted-foreground">({t("common.required")})</span>
+              </Label>
+              <Input
+                id="bloodline"
+                required
+                maxLength={255}
+                placeholder={t("dashboard.bloodlinePlaceholder")}
+                className="h-11 rounded-xl"
+                value={bloodline}
+                onChange={(e) => setBloodline(e.target.value)}
+              />
             </div>
-            <div className="rounded-xl border border-primary/15 bg-primary/5 px-3 py-2.5">
-              <p className="text-sm font-semibold text-primary">{t("dashboard.stageAutomatic")}</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{t("dashboard.stageAutomaticHint")}</p>
+            <div className="space-y-2">
+              <Label htmlFor="pop" className="font-semibold">{t("dashboard.numberOfBirds")}</Label>
+              <Input
+                id="pop"
+                type="number"
+                min={1}
+                step={1}
+                required
+                placeholder={t("dashboard.numberOfBirdsPlaceholder")}
+                className="h-11 rounded-xl"
+                value={initialPopulation}
+                onChange={(e) => setInitialPopulation(e.target.value)}
+              />
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="bloodline" className="font-semibold">
-                  {t("dashboard.bloodline")} <span className="font-normal text-muted-foreground">({t("common.optional")})</span>
-                </Label>
-                <Input
-                  id="bloodline"
-                  placeholder={t("dashboard.bloodlinePlaceholder")}
-                  className="h-11 rounded-xl"
-                  value={bloodline}
-                  onChange={(e) => setBloodline(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="source" className="font-semibold">
-                  {t("dashboard.source")} <span className="font-normal text-muted-foreground">({t("common.optional")})</span>
-                </Label>
-                <Input
-                  id="source"
-                  placeholder={t("dashboard.sourcePlaceholder")}
-                  className="h-11 rounded-xl"
-                  value={source}
-                  onChange={(e) => setSource(e.target.value)}
-                />
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="hatch-date" className="font-semibold">Hatch date</Label>
+              <Input
+                id="hatch-date"
+                type="date"
+                required
+                max={todayIso()}
+                className="h-11 rounded-xl"
+                value={hatchDate}
+                onChange={(e) => setHatchDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="farm-entry-date" className="font-semibold">Farm entry date</Label>
+              <Input
+                id="farm-entry-date"
+                type="date"
+                required
+                max={todayIso()}
+                className="h-11 rounded-xl"
+                value={farmEntryDate}
+                onChange={(e) => setFarmEntryDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="derby-date" className="font-semibold">
+                {t("batch.derbyDate")} <span className="font-normal text-muted-foreground">({t("common.optional")})</span>
+              </Label>
+              <Input
+                id="derby-date"
+                type="date"
+                className="h-11 rounded-xl"
+                value={derbyDate}
+                onChange={(e) => setDerbyDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="source" className="font-semibold">
+                {t("dashboard.source")} <span className="font-normal text-muted-foreground">({t("common.optional")})</span>
+              </Label>
+              <Input
+                id="source"
+                placeholder={t("dashboard.sourcePlaceholder")}
+                className="h-11 rounded-xl"
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+              />
             </div>
           </div>
           <DialogFooter>

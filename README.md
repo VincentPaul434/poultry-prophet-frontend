@@ -44,9 +44,12 @@ the new operation type, so enabling it early can block a batch's offline queue.
 
 Authentication uses a separate IndexedDB database to coordinate credential changes across
 tabs. An interrupted credential request can leave its lock abandoned, preventing sign-in.
-Close all app tabs to end any in-flight requests, reopen one tab, and use the browser's
-storage developer tools to delete **only** `poultry-prophet-auth-lock` before signing in.
-Do not clear all site data or delete `poultry-prophet-offline-v1`: it contains unsynced records.
+If the login page offers to reset an abandoned lock, first close every other app tab and wait
+for all sign-in requests to finish, then acknowledge this and reset the lock on that page.
+This recovery clears only the expired lock, not offline records. Never reset it while an old
+tab or sign-in request could still be active. If browser storage is unavailable, enable it and
+try again. Do not clear all site data or delete `poultry-prophet-offline-v1`: it contains
+unsynced records.
 
 ## Architecture
 

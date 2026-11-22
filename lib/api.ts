@@ -3,7 +3,7 @@
 // through the shared axios instance (api-client) which injects the JWT and
 // normalises errors. These are consumed by the React Query hooks in /hooks.
 
-import { ApiError, apiClient } from "./api-client";
+import { ApiError, apiClient, type SessionBoundRequestConfig } from "./api-client";
 import type { ClientAuthResponse } from "./auth-storage";
 import type { BatchComparison, FarmSummaryAnalytics } from "./farm-summary-types";
 import type {
@@ -105,8 +105,37 @@ export const authApi = {
 };
 
 export const syncApi = {
-  operations: (body: SyncOperationsRequest) =>
-    apiClient.post<SyncOperationsResponse>("/sync/v2/operations", body).then((r) => r.data),
+  operations: async (body: SyncOperationsRequest, expectedSessionScope?: string) => {
+    const config: SessionBoundRequestConfig | undefined = expectedSessionScope === undefined
+      ? undefined : { _expectedSessionScope: expectedSessionScope };
+    if (!body.operations.length)
+      return apiClient.post<SyncOperationsResponse>("/sync/v2/operations", body, config).then((r) => r.data);
+    let capability: VersionInfo["offlineCapabilities"];
+    try {
+      const metadata = await apiClient.get<VersionInfo>("/version", { ...config, headers: { "Cache-Control": "no-cache" } });
+      capability = metadata.data?.offlineCapabilities;
+    } catch (error) {
+      // An older release may have no version endpoint. Auth/network failures
+      // retain their existing recovery path and must never trigger a POST.
+      if (!(error instanceof ApiError) || error.status !== 404) throw error;
+    }
+    const blockedBatches = new Set(body.operations.filter((operation) => !(capability?.commandReceipts === true && capability.schemaReady === true
+        && Array.isArray(capability.protocolVersions) && capability.protocolVersions.includes(2)
+        && Array.isArray(capability.receiptEntityTypes) && capability.receiptEntityTypes.includes(operation.entityType)))
+      .map((operation) => operation.batchId));
+    if (!blockedBatches.size)
+      return apiClient.post<SyncOperationsResponse>("/sync/v2/operations", body, config).then((r) => r.data);
+    const held = body.operations.filter((operation) => blockedBatches.has(operation.batchId)).map((operation) => ({
+      operationId: operation.operationId, status: "RETRYABLE" as const, serverId: null, serverTime: new Date().toISOString(),
+      message: "Safe command syncing is not enabled on this server yet. This record stays queued until the server is ready.",
+    }));
+    const eligible = body.operations.filter((operation) => !blockedBatches.has(operation.batchId));
+    const response = eligible.length
+      ? (await apiClient.post<SyncOperationsResponse>("/sync/v2/operations", { ...body, operations: eligible }, config)).data
+      : { received: 0, applied: 0, conflicts: 0, rejected: 0, retryable: 0, results: [] };
+    return { ...response, received: body.operations.length, retryable: (response.retryable ?? 0) + held.length,
+      results: [...response.results, ...held] };
+  },
 };
 
 export const offlineApi = {
@@ -133,22 +162,40 @@ export const accountApi = {
 };
 
 // ---- Batches & lifecycle ----
+async function requireBatchMetadataSupport() {
+  try {
+    const response = await apiClient.get<{ batchMetadata?: boolean }>("/batches/capabilities");
+    if (response.data.batchMetadata === true) return;
+  } catch (error) {
+    if (error instanceof ApiError && [401, 403].includes(error.status)) throw error;
+  }
+  throw new ApiError("The backend needs an update or is unreachable. Please check it before saving these batch details.", 409);
+}
+
 export const batchApi = {
   list: () => apiClient.get<Batch[]>("/batches").then((r) => r.data),
   listArchived: () => apiClient.get<Batch[]>("/batches", { params: { archived: true } }).then((r) => r.data),
   dashboard: () => apiClient.get<BatchDashboardItem[]>("/batches/dashboard").then((r) => r.data),
   get: (batchId: Id) =>
     apiClient.get<Batch>(`/batches/${batchId}`).then((r) => r.data),
-  create: (body: CreateBatchRequest) =>
-    apiClient.post<Batch>("/batches", body).then((r) => r.data),
+  create: async (body: CreateBatchRequest) => {
+    if (body.derbyDate) await requireBatchMetadataSupport();
+    return apiClient.post<Batch>("/batches", body).then((r) => r.data);
+  },
+  updateDerbyDate: async (batchId: Id, derbyDate: string | null) => {
+    await requireBatchMetadataSupport();
+    return apiClient.patch<Batch>(`/batches/${batchId}/derby-date`, { derbyDate }).then((r) => r.data);
+  },
   overview: (batchId: Id) =>
     apiClient.get<BatchOverview>(`/batches/${batchId}/overview`).then((r) => r.data),
   retirementImpact: (batchId: Id) =>
     apiClient.get<BatchRetirementImpact>(`/batches/${batchId}/retirement-impact`).then((r) => r.data),
   archive: (batchId: Id, body: ArchiveBatchRequest = {}) =>
     apiClient.patch<Batch>(`/batches/${batchId}/archive`, body).then((r) => r.data),
-  reconcilePopulation: (batchId: Id) =>
-    apiClient.patch<Batch>(`/batches/${batchId}/population/reconcile`).then((r) => r.data),
+  populationDiagnostics: (batchId: Id) =>
+    apiClient.get<import("@/lib/types").PopulationDiagnostics>(`/batches/${batchId}/population/diagnostics`).then((r) => r.data),
+  reconcilePopulation: (batchId: Id, expectedRevision: string) =>
+    apiClient.patch<Batch>(`/batches/${batchId}/population/reconcile`, { expectedRevision }).then((r) => r.data),
   restore: (batchId: Id) =>
     apiClient.patch<Batch>(`/batches/${batchId}/restore`).then((r) => r.data),
   delete: (batchId: Id, body: DeleteBatchRequest) =>
@@ -268,8 +315,8 @@ export const selectionSessionApi = {
     apiClient.post<SelectionSession>(`/batches/${batchId}/selection-sessions`, body).then((r) => r.data),
   update: (batchId: Id, sessionId: number, body: CreateSelectionSessionRequest) =>
     apiClient.patch<SelectionSession>(`/batches/${batchId}/selection-sessions/${sessionId}`, body).then((r) => r.data),
-  finalize: (batchId: Id, sessionId: number) =>
-    apiClient.post<SelectionSession>(`/batches/${batchId}/selection-sessions/${sessionId}/finalize`).then((r) => r.data),
+  finalize: (batchId: Id, sessionId: number, expectedVersion: number) =>
+    apiClient.post<SelectionSession>(`/batches/${batchId}/selection-sessions/${sessionId}/finalize`, { expectedVersion }).then((r) => r.data),
   supersede: (batchId: Id, sessionId: number, body: CreateSelectionSessionRequest) =>
     apiClient.post<SelectionSession>(`/batches/${batchId}/selection-sessions/${sessionId}/supersede`, body).then((r) => r.data),
 };
@@ -421,7 +468,10 @@ export const incubationApi = {
   },
   create: (body: CreateIncubationCycleRequest) => apiClient.post<IncubationCycle>("/incubation-cycles", body).then((r) => r.data),
   complete: (id: number, body: CompleteIncubationRequest) => apiClient.post<IncubationCycle>(`/incubation-cycles/${id}/complete`, body).then((r) => r.data),
-  createBatch: (id: number, body: CreateBatchFromIncubationRequest) => apiClient.post<Batch>(`/incubation-cycles/${id}/create-batch`, body).then((r) => r.data),
+  createBatch: async (id: number, body: CreateBatchFromIncubationRequest) => {
+    if (body.bloodline !== undefined || body.derbyDate) await requireBatchMetadataSupport();
+    return apiClient.post<Batch>(`/incubation-cycles/${id}/create-batch`, body).then((r) => r.data);
+  },
 };
 export const inputApi = {
   list: (batchId?: number, incubationCycleId?: number) => apiClient.get<FarmInputLog[]>("/inputs", { params: { batchId, incubationCycleId } }).then((r) => r.data),
@@ -430,6 +480,7 @@ export const inputApi = {
 };
 export const inventoryApi = {
   products: (includeInactive = false) => apiClient.get<FarmProduct[]>("/inventory/products", { params: { includeInactive } }).then((r) => r.data),
+  demoCostImpact: (params: { batchId: number; start: string; end: string; cutoff?: string }) => apiClient.get<{ mayIncludeDemoStock: boolean }>("/inventory/demo-cost-impact", { params }).then((r) => r.data),
   createProduct: (body: CreateFarmProductRequest) => apiClient.post<FarmProduct>("/inventory/products", body).then((r) => r.data),
   stockIn: (productId: number, body: StockInRequest) => apiClient.post<InventoryMovement>(`/inventory/products/${productId}/stock-ins`, body).then((r) => r.data),
   adjust: (productId: number, body: InventoryAdjustmentRequest) => apiClient.post<InventoryMovement>(`/inventory/products/${productId}/adjustments`, body).then((r) => r.data),

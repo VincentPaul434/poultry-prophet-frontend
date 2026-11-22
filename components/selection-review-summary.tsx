@@ -3,15 +3,24 @@
 import { CalendarDays, ClipboardCheck, TriangleAlert } from "lucide-react";
 import { useSelectionReviewPreview } from "@/hooks/use-selection-review";
 import { formatDate } from "@/lib/format";
+import { useAuth } from "@/lib/auth-context";
+import { reportCostMetric } from "@/lib/selection-review-finance";
 import type { Batch } from "@/lib/types";
 import { EditableSexCompositionMetric } from "@/components/editable-sex-composition-metric";
 
-function SummaryMetric({ label, value }: { label: string; value: string }) {
-  return <div className="min-w-0 bg-card px-3 py-3.5 sm:px-4"><p className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p><p className="mt-1 truncate text-xl font-bold tracking-tight tabular-nums sm:text-2xl">{value}</p></div>;
+function SummaryMetric({ label, value, detail, title, warning = false, className }: { label: string; value: string; detail?: string; title?: string; warning?: boolean; className?: string }) {
+  return <div title={title} className={`min-w-0 bg-card px-3 py-3.5 sm:px-4 ${className ?? ""}`}><p className="break-words text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p><p className={`mt-1 break-words text-xl font-bold tracking-tight tabular-nums sm:text-2xl ${warning ? "text-warning-ink" : ""}`}>{value}</p>{detail && <p className={`mt-1 text-xs leading-4 ${warning ? "text-warning-ink" : "text-muted-foreground"}`}>{detail}</p>}</div>;
 }
 
 export function SelectionReviewSummary({ batch }: { batch: Batch }) {
+  const { isManager } = useAuth();
   const { data, isLoading, isError } = useSelectionReviewPreview(batch.id);
+  const cost = data && isManager ? reportCostMetric(data) : null;
+  const expenseDetail = !isManager ? "Manager only" : cost?.warning || cost?.value === "—" ? cost?.detail : undefined;
+  const fallbackPopulation = batch.populationStatus === "RECONCILIATION_REQUIRED"
+    ? `— / ${batch.initialPopulation}`
+    : `${batch.currentPopulation} / ${batch.initialPopulation}`;
+  const populationDisplay = data?.population.reconciliationRequired ? `— / ${data.population.initialPopulation}` : data?.batch.currentPopulationDisplay ?? fallbackPopulation;
   const otherChanges = data
     ? data.population.predation
       + data.population.missing
@@ -24,17 +33,17 @@ export function SelectionReviewSummary({ batch }: { batch: Batch }) {
     : 0;
 
   return <section className="space-y-3">
-    <div className="min-w-0"><h2 className="truncate text-base font-bold">Batch review</h2><p className="mt-0.5 text-xs text-muted-foreground">Population, mortality, composition, and records.</p></div>
-    {isLoading && <div className="grid grid-cols-2 gap-3"><div className="h-24 animate-pulse rounded-xl bg-muted" /><div className="h-24 animate-pulse rounded-xl bg-muted" /></div>}
-    {isError && <p className="rounded-xl border border-warning-border bg-warning-muted px-4 py-3 text-xs text-warning-ink">Review unavailable. The event log is still available.</p>}
+    <h2 className="truncate text-base font-bold">Batch summary</h2>
+    {isLoading && <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border bg-border/70 sm:grid-cols-4"><SummaryMetric label="Population" value={populationDisplay} />{[0, 1, 2].map((index) => <div key={index} className="min-h-24 animate-pulse bg-muted" />)}</div>}
+    {isError && <div className="grid overflow-hidden rounded-2xl border bg-border/70 sm:grid-cols-4"><SummaryMetric label="Population" value={populationDisplay} /><p className="bg-warning-muted px-4 py-3 text-xs text-warning-ink sm:col-span-3">Review data are unavailable. Check the event log for recent records.</p></div>}
     {data && <>
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-2xl border bg-border/70 sm:grid-cols-4">
-        <SummaryMetric label="Population" value={data.batch.currentPopulationDisplay} />
+        <SummaryMetric label="Population" value={populationDisplay} />
         <SummaryMetric label="Total deaths" value={String(data.population.totalDeaths)} />
         <EditableSexCompositionMetric batch={batch} fallback={data.sexComposition} readOnly={batch.status === "ARCHIVED"} />
-        <SummaryMetric label="Products used" value={String(data.productUse.length)} />
+        <SummaryMetric label="Batch expenses" value={cost?.value ?? "—"} detail={expenseDetail} title={cost?.title} warning={cost?.warning} />
       </div>
-      {data.population.reconciliationRequired && <div role="alert" className="flex items-start gap-2 rounded-xl border border-warning-border bg-warning-muted px-3 py-2.5 text-xs text-warning-ink"><TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" /><p>Population records need review. The impossible negative total has been replaced with a safe recorded count.</p></div>}
+      {data.population.reconciliationRequired && <div role="alert" className="flex items-start gap-2 rounded-xl border border-warning-border bg-warning-muted px-3 py-2.5 text-xs text-warning-ink"><TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" /><p>Population records need review before the current count can be verified.</p></div>}
       <div className="flex flex-wrap gap-2 text-xs"><span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1.5"><CalendarDays className="size-3.5 text-muted-foreground" />{formatDate(data.periodStart)} – {formatDate(data.periodEnd)}</span><span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1.5"><ClipboardCheck className="size-3.5 text-muted-foreground" />{otherChanges} other population changes</span></div>
     </>}
   </section>;

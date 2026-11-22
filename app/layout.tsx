@@ -32,7 +32,6 @@ export const metadata: Metadata = {
     title: "Poultry Prophet | Malinaw na batch records",
     description: "Mag-record kahit offline. Mag-sync kapag may internet. Suriin sa iisang lugar.",
   },
-  icons: { icon: "/icon.svg" },
 };
 
 export default function RootLayout({

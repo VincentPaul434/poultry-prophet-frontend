@@ -99,7 +99,7 @@ async function mockHandlerBackend(page: Page) {
     if (path === "/farm") return route.fulfill({ json: { id: 1, name: "Sunrise Farm", location: null, description: null } });
     if (path === "/alerts") return route.fulfill({ json: [] });
     if (path === "/alerts/summary") return route.fulfill({ json: { activeTotal: 0, critical: 0, warning: 0, info: 0 } });
-    if (path === "/version") return route.fulfill({ json: { application: "poultry-prophet", version: "e2e", commitSha: "e2e", buildTime: "2026-10-24T00:00:00Z", environment: "test", compatibleFrontendVersion: "0.1.0-validation" } });
+    if (path === "/version") return route.fulfill({ json: { application: "poultry-prophet", version: "e2e", commitSha: "e2e", buildTime: "2026-10-24T00:00:00Z", environment: "test", compatibleFrontendVersion: "0.1.0-validation", offlineCapabilities: { protocolVersions: [2], commandReceipts: true, schemaReady: true, receiptEntityTypes: ["BATCH_EVENT", "DAILY_RECORD"] } } });
     if (path === "/health") return route.fulfill({ json: { status: "UP" } });
     if (path === "/invites/pending") return route.fulfill({ json: [] });
     if (path === "/offline/bootstrap") return route.fulfill({ json: { userId: 2, farmId: 1, batches, dashboard: dashboardItems(), products: [], tasks: [], vaccinationPlans: {}, overviews: {}, events: {}, inputs: {} } });
@@ -123,7 +123,14 @@ async function openPicker(page: Page) {
 
   await page.goto("/dashboard");
   await page.getByRole("button", { name: /Record activity/i }).click();
-  await expect(page.getByRole("heading", { name: "Record activity" })).toBeVisible();
+  await expect(page.getByTestId("record-batch-picker")).toBeVisible();
+}
+
+async function signOutFromHandlerProfile(page: Page) {
+  await page.getByRole("button", { name: "Open profile menu" }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Sign out" }).click();
+  await expect(page).toHaveURL(/\/login$/);
 }
 
 test.describe("Record batch picker", () => {
@@ -240,7 +247,7 @@ test.describe("Record batch picker", () => {
     await expect(page).toHaveURL(/\/dashboard$/);
     expect(syncCalls).toBe(0);
     expect((await queued())[0]).toMatchObject({ userId: 2, farmId: 1, status: "AUTH_REQUIRED" });
-    await page.goto("/login", { waitUntil: "networkidle" });
+    await signOutFromHandlerProfile(page);
     await page.getByLabel(/^(email|email address)$/i).fill(original.email);
     await page.getByLabel(/^password$/i).fill("password-for-test");
     await page.getByRole("button", { name: /^(mag-sign in|sign in|log in|login)$/i }).click();
@@ -252,20 +259,21 @@ test.describe("Record batch picker", () => {
   test("shows the themed picker and filters active batches", async ({ page }) => {
     await mockHandlerBackend(page);
     await openPicker(page);
+    const picker = page.getByTestId("record-batch-picker");
 
-    await expect(page.getByText("8 active")).toBeVisible();
-    await expect(page.getByPlaceholder("Search batches")).toBeVisible();
-    await expect(page.getByRole("button", { name: /October load - Sweater Hatch/ })).toBeVisible();
-    await expect(page.getByText("100 initial")).toBeVisible();
-    await expect(page.getByText("Count needs review")).toBeVisible();
+    await expect(picker.getByText("8 active")).toBeVisible();
+    await expect(picker.getByPlaceholder("Search batches")).toBeVisible();
+    await expect(picker.getByRole("button", { name: /October load - Sweater Hatch/ })).toBeVisible();
+    await expect(picker.getByText("100 initial")).toBeVisible();
+    await expect(picker.getByText("Count needs review")).toBeVisible();
 
-    await page.getByPlaceholder("Search batches").fill("sweater");
-    await expect(page.getByRole("button", { name: /October load - Sweater Hatch/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /boston sweater/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /hatch-0001/ })).toHaveCount(0);
+    await picker.getByPlaceholder("Search batches").fill("sweater");
+    await expect(picker.getByRole("button", { name: /October load - Sweater Hatch/ })).toBeVisible();
+    await expect(picker.getByRole("button", { name: /boston sweater/ })).toBeVisible();
+    await expect(picker.getByRole("button", { name: /hatch-0001/ })).toHaveCount(0);
 
-    await page.getByPlaceholder("Search batches").fill("not-a-real-batch");
-    await expect(page.getByText("No matching batches")).toBeVisible();
+    await picker.getByPlaceholder("Search batches").fill("not-a-real-batch");
+    await expect(picker.getByText("No matching batches")).toBeVisible();
   });
 
   test("keeps the picker within the mobile viewport and navigates to recording", async ({ page }) => {
@@ -278,18 +286,18 @@ test.describe("Record batch picker", () => {
     }));
     expect(recordDimensions.documentWidth).toBeLessThanOrEqual(recordDimensions.viewportWidth + 1);
 
-    await page.getByRole("button", { name: /hatch-0001/ }).click();
-    await expect(page).toHaveURL(/\/batches\/2\/data-entry\?from=dashboard#record-event/);
-    await expect(page.getByRole("heading", { name: "Record activity" })).toBeVisible();
+    await page.getByTestId("record-batch-picker").getByRole("button", { name: /hatch-0001/ }).click();
+    await expect(page).toHaveURL(/\/batches\/2\/data-entry\?from=dashboard#record-event/, { timeout: 15_000 });
+    await expect(page.getByTestId("record-batch-picker")).not.toBeVisible();
+    await expect(page.getByRole("heading", { name: "Record activity", level: 1 })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Record an event" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Bird count change" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Health concern" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Feed or medicine used" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Behavior observed" })).toBeVisible();
-    await expect(page.getByText("Activity history")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Recent activity" })).toBeVisible();
     await expect(page.getByText("20 birds")).toBeVisible();
     await expect(page.getByText("Pending sync")).toBeVisible();
-    await expect(page.getByText("Record activity")).toHaveCount(1);
 
     const dimensions = await page.evaluate(() => ({
       documentWidth: document.documentElement.scrollWidth,

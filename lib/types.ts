@@ -70,6 +70,7 @@ export interface Batch {
   startDate: string; // Legacy compatibility date
   hatchDate: string | null; // ISO date; source of age, lifecycle, and vaccine dates
   farmEntryDate: string | null; // ISO date; when the flock entered the farm
+  derbyDate?: string | null; // ISO date; absent on older backend versions
   bloodline: string | null;
   source: string | null;
   hatchDateConfirmedAt: string | null;
@@ -84,6 +85,22 @@ export interface Batch {
   archivedByUserId: number | null;
   archiveReason: string | null;
   preArchiveStatus: BatchStatus | null;
+}
+
+export interface PopulationDiagnostics {
+  asOfDate: string;
+  status: "VALID" | "STORED_MISMATCH" | "INVALID_LEDGER" | "UNAVAILABLE";
+  initialPopulation: number;
+  storedPopulation: number;
+  calculatedPopulation: number | null;
+  ledgerValid: boolean;
+  canRepairStoredCount: boolean;
+  issueCode: string | null;
+  reason: string | null;
+  firstInvalidEventId: number | null;
+  firstInvalidEventDate: string | null;
+  sourceEventCount: number;
+  revision: string;
 }
 
 export interface BatchRetirementImpact {
@@ -130,11 +147,13 @@ export interface BatchTaskSnapshot {
 }
 
 export interface BatchFinanceSnapshot {
-  recordedBatchCost: number;
+  /** Null when costs span currencies and must not be summed. */
+  recordedBatchCost: number | null;
   hasCostRecords: boolean;
   productCostComplete: boolean;
   unvaluedUsageCount: number;
-  currency: string;
+  /** Null when the card must direct the manager to the currency-separated report. */
+  currency: string | null;
   asOfDate: string;
 }
 
@@ -149,7 +168,8 @@ export interface CreateBatchRequest {
   startDate?: string | null; // Legacy compatibility field
   hatchDate: string; // ISO date
   farmEntryDate: string; // ISO date
-  bloodline?: string | null;
+  bloodline: string;
+  derbyDate?: string | null;
   source?: string | null;
   handlerUserIds?: number[];
 }
@@ -296,6 +316,8 @@ export interface CompleteIncubationRequest {
 }
 export interface CreateBatchFromIncubationRequest {
   farmEntryDate: string;
+  bloodline?: string;
+  derbyDate?: string | null;
 }
 
 export type InputProductType = "FEED" | "VITAMIN" | "MEDICINE" | "VACCINE" | "OTHER";
@@ -367,6 +389,7 @@ export interface FarmProduct {
   lowStock: boolean;
   allowFractionalQuantity: boolean;
   active: boolean;
+  demoStockHistory?: boolean;
 }
 export interface CreateFarmProductRequest {
   productType: InventoryProductType;
@@ -583,6 +606,9 @@ export interface FinanceAnalytics {
 
 export interface FinanceCurrencyReport {
   currency: string;
+  demoTransactionCount?: number;
+  demoExpenseAmount?: string | number;
+  demoIncomeAmount?: string | number;
   totals: {
     recordedIncome: string;
     saleIncome: string;
@@ -910,6 +936,7 @@ export interface SelectionReviewFinance {
   recordedContribution: number | null;
   postedTransactionCount: number;
   recordsMayBeIncomplete: boolean;
+  unvaluedUsageCount?: number;
   limitation: string;
 }
 
@@ -962,6 +989,9 @@ export interface CreateSelectionSessionRequest {
   criteriaNotes?: string | null;
   sessionNotes?: string | null;
   operationId: string;
+  selectionReviewId: number;
+  sourceDataAcknowledged?: boolean;
+  expectedVersion?: number;
 }
 
 export interface SelectionSession {
@@ -987,6 +1017,9 @@ export interface SelectionSession {
   createdAt: string;
   updatedAt: string;
   finalizedAt: string | null;
+  selectionReviewId: number | null;
+  sourceDataAcknowledged: boolean;
+  version?: number;
   offlineSyncStatus?: "PENDING" | "SYNCING" | "RETRY_WAIT" | "AUTH_REQUIRED" | "CONFLICT" | "REJECTED";
 }
 
@@ -1130,6 +1163,8 @@ export interface CreateBatchEventRequest {
     unclassifiedDelta: number;
   } | null;
   details?: string | null;
+  deathObservation?: "SIGNS" | "NO_SIGNS" | "UNKNOWN";
+  deathSigns?: string | null;
   tags?: string | null;
   occurredAt?: string | null;
   saleDetails?: { amount?: number | null; currency?: string | null; buyer?: string | null; reference?: string | null } | null;
@@ -1187,6 +1222,12 @@ export interface VersionInfo {
   buildTime: string;
   environment: string;
   compatibleFrontendVersion: string;
+  offlineCapabilities?: {
+    protocolVersions: number[];
+    commandReceipts: boolean;
+    schemaReady: boolean;
+    receiptEntityTypes: string[];
+  };
 }
 
 // ---- Local Test Lab (server-guarded; never available on a remote database) ----

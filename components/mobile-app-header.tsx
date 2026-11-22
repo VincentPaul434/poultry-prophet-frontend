@@ -4,6 +4,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SyncStatusIndicator } from "@/components/sync-status-indicator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
+import { PoultryProphetMark } from "@/components/poultry-prophet-mark";
+import { cn } from "@/lib/utils";
 
 function initials(name: string | undefined) {
   if (!name) return "?";
@@ -26,41 +28,56 @@ type MobileAppHeaderProps = {
 
 export function MobileAppHeader({ farmName, roleLabel, isManager, fullName, onProfileClick }: MobileAppHeaderProps) {
   return (
-    <header data-testid="mobile-app-header" className="relative flex min-h-12 shrink-0 items-center justify-center border-b bg-card px-4 py-2 md:hidden">
-      {isManager ? (
-        <SidebarTrigger className="absolute left-4 top-1/2 size-11 -translate-y-1/2" />
-      ) : (
-        <div className="absolute left-2 top-1/2 -translate-y-1/2">
-          <SyncStatusIndicator compact />
-        </div>
-      )}
-
-      <div className="flex min-w-0 items-center justify-center px-12">
-        <p className="truncate text-sm font-semibold tracking-tight">
-          {farmName} <span className="font-normal text-muted-foreground">· {roleLabel}</span>
-        </p>
+    <header
+      data-testid="mobile-app-header"
+      className={cn("relative min-h-14 shrink-0 items-center border-b bg-card px-2 py-1 md:hidden", isManager ? "flex justify-center" : "grid grid-cols-[2.75rem_minmax(0,1fr)_auto] gap-2")}
+    >
+      <div className={cn(isManager && "absolute left-2 top-1/2 -translate-y-1/2")}>
+        {isManager ? (
+          <SidebarTrigger className="size-11" />
+        ) : (
+          <span
+            data-testid="mobile-app-logo"
+            role="img"
+            aria-label="Poultry Prophet"
+            className="flex size-11 items-center justify-center rounded-xl bg-primary"
+          >
+            <PoultryProphetMark className="h-6 w-5" tone="light" />
+          </span>
+        )}
       </div>
 
-      {isManager ? (
-        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-          <SyncStatusIndicator />
-        </div>
-      ) : (
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          onClick={onProfileClick}
-          className="absolute right-2 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full border bg-background text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
-          aria-label="Open profile menu"
-        >
-          <Avatar className="size-9">
-            <AvatarFallback className="bg-primary/15 text-xs font-bold text-primary">
-              {initials(fullName)}
-            </AvatarFallback>
-          </Avatar>
-        </Button>
-      )}
+      <div
+        data-testid="mobile-farm-identity"
+        className={cn("min-w-0 text-center", isManager ? "max-w-[calc(100%-8rem)]" : "w-full")}
+      >
+        <p className="truncate text-sm font-semibold leading-5 tracking-tight">{farmName}</p>
+        <p className="truncate text-[11px] leading-4 text-muted-foreground">{roleLabel}</p>
+      </div>
+
+      <div className={cn("flex items-center gap-1", isManager && "absolute right-2 top-1/2 -translate-y-1/2")}>
+        {isManager ? (
+          <SyncStatusIndicator compact iconOnly />
+        ) : (
+          <>
+            <SyncStatusIndicator compact iconOnly />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={onProfileClick}
+              className="flex size-11 items-center justify-center rounded-full border bg-background text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
+              aria-label="Open profile menu"
+            >
+              <Avatar className="size-9">
+                <AvatarFallback className="bg-primary/15 text-xs font-bold text-primary">
+                  {initials(fullName)}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+          </>
+        )}
+      </div>
     </header>
   );
 }

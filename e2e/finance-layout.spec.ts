@@ -146,10 +146,31 @@ async function openFinance(page: Page, view?: "report" | "transactions") {
   });
 
   await page.goto(view ? `/finance?view=${view}` : "/finance");
+  await expect(page).toHaveURL(/\/operations\?.*section=finance/);
   await expect(page.getByRole("heading", { name: /Farm finance|Finance ng farm/ })).toBeVisible();
 }
 
 test.describe("Finance layout", () => {
+  test("labels simulated transactions in filtered cash totals and in the ledger", async ({ page }) => {
+    await mockFinanceBackend(page, "single");
+    await page.route("**/api/backend/financial-transactions/analytics?*", (route) => route.fulfill({ json: {
+      ...analyticsBase,
+      series: seriesFor("single"),
+      byCurrency: [{ currency: "PHP", totals: analyticsBase.totals, series: seriesFor("single"), categoryTotals: analyticsBase.categoryTotals, demoTransactionCount: 1, demoExpenseAmount: "3250", demoIncomeAmount: "0" }],
+    } }));
+    await page.route("**/api/backend/financial-transactions/page?*", (route) => route.fulfill({ json: {
+      items: [{ ...transaction(1), category: "Demo feed", description: "DEMO / TEST DATA; simulated purchase." }, { ...transaction(2), category: "Ordinary feed" }],
+      page: 0, size: 10, totalItems: 2, totalPages: 1, hasPrevious: false, hasNext: false,
+    } }));
+    await openFinance(page, "report");
+    await expect(page.getByText("Demo records included.")).toBeVisible();
+    await expect(page.getByText(/Net cash flow includes these amounts/)).toContainText("₱3,250");
+    await page.getByRole("button", { name: /Transactions/ }).click();
+    const list = page.getByTestId("finance-transaction-list");
+    await expect(list.getByText("Demo", { exact: true })).toHaveCount(1);
+    await expect(list.getByText("Ordinary feed")).toBeVisible();
+  });
+
   test("keeps the report reachable without horizontal overflow on mobile", async ({ page }, testInfo) => {
     test.skip(!testInfo.project.name.startsWith("mobile-chromium-"), "This case is covered by the dedicated mobile Chromium projects.");
     await mockFinanceBackend(page, "single");
@@ -220,5 +241,36 @@ test.describe("Finance layout", () => {
 
     await expect(page.getByText("Add a posted income or expense to see the trend.")).toBeVisible();
     await expect(page.locator('[role="img"]')).toHaveCount(0);
+  });
+
+  test("keeps transaction entry available in farm overview without a selected batch", async ({ page }) => {
+    await mockFinanceBackend(page, "single");
+    await openFinance(page);
+    await page.goto("/operations?section=finance&scope=BATCH&start=2026-10-01&end=2026-10-31");
+    await page.route("**/api/backend/financial-transactions", async (route) => {
+      await route.fulfill({ json: { id: 99, ...route.request().postDataJSON() } });
+    });
+    await page.getByRole("button", { name: /Record transaction/i }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.locator("#finance-scope").selectOption("farm");
+    await dialog.locator("#finance-category").selectOption("Feed");
+    await dialog.locator("#finance-amount").fill("125");
+    const submitted = page.waitForRequest((request) => request.url().endsWith("/financial-transactions") && request.method() === "POST");
+    await dialog.getByRole("button", { name: /Save transaction/i }).click();
+    expect((await submitted).postDataJSON()).toMatchObject({ batchId: null, category: "Feed", amount: 125, type: "EXPENSE" });
+    await expect(dialog).not.toBeVisible();
+    await expect(page).toHaveURL(/section=finance/);
+  });
+
+  test("preserves finance filters in old bookmarked links", async ({ page }) => {
+    await mockFinanceBackend(page, "single");
+    await openFinance(page);
+    await page.goto("/finance?view=transactions&period=custom&start=2026-01-01&end=2026-01-31&location=batch%3A7");
+    await expect(page.getByTestId("finance-transaction-panel")).toBeVisible();
+    const params = new URL(page.url()).searchParams;
+    expect(params.get("section")).toBe("finance");
+    expect(params.get("financeStart")).toBe("2026-01-01");
+    expect(params.get("financeEnd")).toBe("2026-01-31");
+    expect(params.get("location")).toBe("batch:7");
   });
 });

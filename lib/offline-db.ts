@@ -2,6 +2,19 @@
 
 import type { Batch, BatchDashboardItem, BatchEvent, BatchOverview, FarmProduct, OfflineBootstrap, SelectionSession } from "./types";
 
+export class OfflineStorageError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+    this.name = "OfflineStorageError";
+  }
+}
+
+function storageFailure(error: DOMException | null, message: string) {
+  return error?.name === "QuotaExceededError"
+    ? new OfflineStorageError("This device has no space to save the record. Free device space and retry. Do not clear site data; queued records must be preserved.", "QUOTA_EXCEEDED")
+    : new OfflineStorageError(`${message} Close other farm tabs, check device storage, and retry. Do not clear site data; queued records must be preserved.`, "STORAGE_FAILED");
+}
+
 export type OfflineEntityType = "BATCH_EVENT" | "FARM_INPUT" | "SELECTION_SESSION" | "SELECTION_SESSION_UPDATE" | "SEX_COMPOSITION" | "VACCINATION_PLAN" | "TASK_STATUS" | "VACCINATION_SCHEDULE" | "DAILY_RECORD";
 export type OutboxStatus =
   | "PENDING"
@@ -108,22 +121,22 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 
 function ensureBrowser() {
   if (typeof window === "undefined" || !window.indexedDB) {
-    throw new Error("Offline storage is not available in this browser.");
+    throw new OfflineStorageError("Offline storage is not available in this browser.", "UNAVAILABLE");
   }
 }
 
 function requestResult<T>(request: IDBRequest<T>) {
   return new Promise<T>((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("Offline storage request failed."));
+    request.onerror = () => reject(storageFailure(request.error, "Offline storage request failed."));
   });
 }
 
 function transactionDone(transaction: IDBTransaction) {
   return new Promise<void>((resolve, reject) => {
     transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error("Offline storage transaction failed."));
-    transaction.onabort = () => reject(transaction.error ?? new Error("Offline storage transaction was aborted."));
+    transaction.onerror = () => reject(storageFailure(transaction.error, "Offline storage transaction failed."));
+    transaction.onabort = () => reject(storageFailure(transaction.error, "Offline storage transaction was aborted."));
   });
 }
 
@@ -149,8 +162,24 @@ function openDatabase() {
   ensureBrowser();
   if (dbPromise) return dbPromise;
   dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+    let settled = false;
+    const fail = (error: Error | DOMException) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      reject(error);
+    };
+    const timeout = window.setTimeout(() => fail(new OfflineStorageError(
+      "Offline storage did not open in time. Close other farm tabs and retry. Do not clear site data; queued records must be preserved.", "OPEN_TIMEOUT",
+    )), 10_000);
     const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+    request.onblocked = () => fail(new OfflineStorageError(
+      "Offline storage is waiting for another tab. Close other farm tabs and retry. Do not clear site data; queued records must be preserved.", "BLOCKED",
+    ));
     request.onupgradeneeded = () => {
+      // A timed-out/blocked request cannot be cancelled. If it later receives
+      // access, abort its upgrade and let an explicit retry open the database.
+      if (settled) { request.transaction?.abort(); return; }
       const db = request.result;
       const outbox = db.objectStoreNames.contains(OUTBOX_STORE)
         ? request.transaction!.objectStore(OUTBOX_STORE)
@@ -171,11 +200,14 @@ function openDatabase() {
       if (!db.objectStoreNames.contains(FIELD_STORE)) db.createObjectStore(FIELD_STORE, { keyPath: "key" });
     };
     request.onsuccess = () => {
+      if (settled) { request.result.close(); return; }
+      settled = true;
+      window.clearTimeout(timeout);
       request.result.onversionchange = () => { request.result.close(); dbPromise = null; };
       resolve(request.result);
     };
-    request.onerror = () => { dbPromise = null; reject(request.error ?? new Error("Could not open offline storage.")); };
-  });
+    request.onerror = () => fail(storageFailure(request.error, "Could not open offline storage."));
+  }).catch((error) => { dbPromise = null; throw error; });
   return dbPromise;
 }
 
@@ -196,17 +228,27 @@ export async function putOutboxOperation(operation: Omit<OutboxOperation, "seque
   const tx = db.transaction([OUTBOX_STORE, META_STORE], "readwrite");
   const store = tx.objectStore(OUTBOX_STORE);
   const existing = await requestResult(store.get(operation.operationId)) as OutboxOperation | undefined;
-  if (existing && (existing.entityType === "DAILY_RECORD" || operation.entityType === "DAILY_RECORD"
-    || existing.userId !== operation.userId || existing.farmId !== operation.farmId
-    || existing.batchId !== operation.batchId || existing.entityType !== operation.entityType
-    || existing.status !== "PENDING" || existing.attemptCount !== 0)) {
-    tx.abort();
-    throw new Error("This offline record is already syncing or belongs to another account.");
+  if (existing) {
+    // A command UUID binds immutable intent even before the first attempt.
+    // Identical duplicate saves are harmless, but must retain queue order,
+    // original queuedAt, claims, attempts and any unresolved result.
+    const canonicalPayload = (payload: Record<string, unknown>) => JSON.stringify(payload, (_key, value) =>
+      value && typeof value === "object" && !Array.isArray(value)
+        ? Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)))
+        : value);
+    const identical = existing.schemaVersion === operation.schemaVersion
+      && existing.entityType === operation.entityType
+      && existing.userId === operation.userId && existing.farmId === operation.farmId
+      && existing.batchId === operation.batchId && existing.occurredAt === operation.occurredAt
+      && canonicalPayload(existing.payload) === canonicalPayload(operation.payload);
+    await transactionDone(tx);
+    if (!identical) throw new Error("This offline record already exists with different details. Its original queued record was preserved.");
+    return existing;
   }
   const meta = tx.objectStore(META_STORE);
   const current = (await requestResult(meta.get("sequence")) as { value?: number } | undefined)?.value ?? 0;
-  const sequence = existing?.sequence ?? current + 1;
-  if (!existing) meta.put({ key: "sequence", value: sequence });
+  const sequence = current + 1;
+  meta.put({ key: "sequence", value: sequence });
   const record: OutboxOperation = { ...operation, sequence, status: "PENDING", attemptCount: 0 };
   store.put(record);
   await transactionDone(tx);
@@ -337,6 +379,46 @@ export async function retryOutboxIssues(userId: number, farmId: number) {
   await transactionDone(tx);
   if (issues.length) emitChanged();
   return issues.length;
+}
+
+export type DeathObservation = "SIGNS" | "NO_SIGNS" | "UNKNOWN";
+
+/** Only an unstructured legacy death rejected for missing observation is editable here. */
+export function canCorrectRejectedDeathObservation(item: OutboxOperation) {
+  return item.status === "REJECTED"
+    && item.entityType === "BATCH_EVENT"
+    && (item.payload.eventType === "HEALTH_DEATH" || item.payload.eventType === "MORTALITY")
+    && item.payload.deathObservation == null
+    && (item.lastErrorMessage === "Record what was observed or that it is unknown"
+      || item.lastErrorMessage === "Describe the signs noticed");
+}
+
+/** Correct one rejected record without changing its identity or place in the batch queue. */
+export async function correctRejectedDeathObservation(operationId: string, userId: number, farmId: number, observation: DeathObservation, signs = "") {
+  const cleanSigns = signs.trim();
+  if (observation !== "SIGNS" && observation !== "NO_SIGNS" && observation !== "UNKNOWN") throw new Error("Choose what was observed.");
+  if (observation === "SIGNS" && !cleanSigns) throw new Error("Describe the signs noticed.");
+
+  const db = await openDatabase();
+  const tx = db.transaction([OUTBOX_STORE], "readwrite");
+  const store = tx.objectStore(OUTBOX_STORE);
+  const existing = await requestResult(store.get(operationId)) as OutboxOperation | undefined;
+  if (!existing || existing.userId !== userId || existing.farmId !== farmId || !canCorrectRejectedDeathObservation(existing)) {
+    await transactionDone(tx);
+    throw new Error("This record is no longer available to correct. Refresh and try again.");
+  }
+  const oldDetails = typeof existing.payload.details === "string" ? existing.payload.details : "";
+  const notes = oldDetails.replace(/^[^\S\r\n]*signs[^\S\r\n]+noticed[^\S\r\n]*:[^\S\r\n]*(?:\r\n|\r|\n|$)/i, "").trim();
+  const summary = observation === "SIGNS" ? `Signs noticed: ${cleanSigns}`
+    : observation === "NO_SIGNS" ? "No signs noticed." : "Signs not observed / unknown.";
+  store.put({ ...existing,
+    payload: { ...existing.payload, deathObservation: observation, deathSigns: observation === "SIGNS" ? cleanSigns : null,
+      details: [summary, notes].filter(Boolean).join("\n") },
+    status: "PENDING", attemptCount: 0, nextAttemptAt: undefined, lastAttemptAt: undefined,
+    lastErrorCode: undefined, lastErrorMessage: undefined, leaseOwner: undefined, leaseUntil: undefined,
+  });
+  await transactionDone(tx);
+  emitChanged();
 }
 
 export async function saveOfflineBootstrap(userId: number, farmId: number, data: OfflineBootstrap) {
@@ -568,6 +650,8 @@ export async function commitSyncedSelectionSession(operation: OutboxOperation, s
       createdAt: serverTime,
       updatedAt: serverTime,
       finalizedAt: null,
+      selectionReviewId: typeof payload.selectionReviewId === "number" ? payload.selectionReviewId : null,
+      sourceDataAcknowledged: payload.sourceDataAcknowledged === true,
     };
     await upsertSelectionSessionSnapshot(userId, farmId, batchId, session);
     return;
@@ -592,6 +676,7 @@ export async function commitSyncedSelectionSession(operation: OutboxOperation, s
     criterionCodes: Array.isArray(payload.criterionCodes) ? payload.criterionCodes.filter((item): item is string => typeof item === "string") : existing.criterionCodes,
     criteriaNotes: typeof payload.criteriaNotes === "string" ? payload.criteriaNotes : null,
     sessionNotes: typeof payload.sessionNotes === "string" ? payload.sessionNotes : null,
+    sourceDataAcknowledged: payload.sourceDataAcknowledged === true || existing.sourceDataAcknowledged,
     updatedAt: serverTime,
   };
   await upsertSelectionSessionSnapshot(userId, farmId, batchId, updated);
@@ -610,4 +695,22 @@ export async function getLastSuccessfulSync() {
   const result = await requestResult(tx.objectStore(META_STORE).get("lastSuccessfulSync")) as { value?: string } | undefined;
   await transactionDone(tx);
   return result?.value ?? null;
+}
+
+// Remove cached copies after confirmed server deletion. Pending outbox entries are
+// deliberately retained so deletion never silently discards unsynchronized work.
+export async function removeDeletedBatchSnapshots(userId: number, farmId: number, batchId: number) {
+  const db = await openDatabase();
+  const stores = [SNAPSHOT_STORE, OVERVIEW_STORE, EVENT_STORE, SELECTION_SESSION_STORE, DASHBOARD_STORE, FIELD_STORE];
+  const tx = db.transaction(stores, "readwrite");
+  const key = `${userId}:${farmId}:${batchId}`;
+  for (const store of [SNAPSHOT_STORE, OVERVIEW_STORE, EVENT_STORE, SELECTION_SESSION_STORE]) tx.objectStore(store).delete(key);
+  const dashboard = tx.objectStore(DASHBOARD_STORE);
+  const request = dashboard.get(`${userId}:${farmId}`);
+  request.onsuccess = () => {
+    const snapshot = request.result as StoredDashboardSnapshot | undefined;
+    if (snapshot) dashboard.put({ ...snapshot, items: snapshot.items.filter(item => item.batch.id !== batchId) });
+  };
+  tx.objectStore(FIELD_STORE).delete(`${userId}:${farmId}`);
+  await transactionDone(tx);
 }

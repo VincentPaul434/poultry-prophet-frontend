@@ -20,6 +20,48 @@ const HOP_BY_HOP_HEADERS = [
 const UPSTREAM_TIMEOUT_MS = 30_000;
 const REFRESH_COOKIE = "pp_refresh";
 
+function firstForwardedValue(value: string | null) {
+  return value?.split(",", 1)[0]?.trim() || null;
+}
+
+/**
+ * Next can be bound to 0.0.0.0 while the browser reaches it through localhost,
+ * a LAN address, or a reverse proxy. In that case request.nextUrl.origin is the
+ * internal bind origin, not the public origin shown in the browser. Derive the
+ * public origin from the forwarding/Host headers while still requiring an
+ * exact scheme + host match for credential-changing requests.
+ */
+function publicRequestOrigin(request: NextRequest) {
+  const host = firstForwardedValue(request.headers.get("x-forwarded-host"))
+    ?? request.headers.get("host")?.trim()
+    ?? request.nextUrl.host;
+  const protocol = firstForwardedValue(request.headers.get("x-forwarded-proto"))
+    ?? request.nextUrl.protocol.replace(/:$/, "");
+
+  if (!host || (protocol !== "http" && protocol !== "https")) return null;
+  try {
+    return new URL(`${protocol}://${host}`).origin;
+  } catch {
+    return null;
+  }
+}
+
+function hasExactRequestOrigin(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (!origin || (fetchSite !== null && fetchSite !== "same-origin" && fetchSite !== "none")) return false;
+
+  try {
+    // Origin headers are serialized without a path, query, credentials, or
+    // trailing slash. Reject non-canonical values before comparing them.
+    if (new URL(origin).origin !== origin) return false;
+  } catch {
+    return false;
+  }
+
+  return origin === publicRequestOrigin(request);
+}
+
 function refreshCookie(request: NextRequest) {
   const matches = (request.headers.get("cookie") ?? "").split(";").map((part) => part.trim()).filter((part) => part.startsWith(`${REFRESH_COOKIE}=`));
   if (matches.length !== 1) return null;
@@ -36,9 +78,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
   const requestId = crypto.randomUUID();
   const errorHeaders: Record<string, string> = { "x-request-id": requestId, "cache-control": "no-store" };
   const path = (await params).path;
-  const fetchSite = request.headers.get("sec-fetch-site");
-  const sameOrigin = request.headers.get("origin") === request.nextUrl.origin &&
-    (fetchSite === null || fetchSite === "same-origin" || fetchSite === "none");
+  const sameOrigin = hasExactRequestOrigin(request);
   // Clear the browser cookie even if backend configuration is unavailable.
   if (request.method === "POST" && path.length === 2 && path[0] === "auth" && path[1] === "logout" && sameOrigin) {
     errorHeaders["set-cookie"] = cookieHeader(request, "", 0);

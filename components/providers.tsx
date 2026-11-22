@@ -26,9 +26,17 @@ export function Providers({ children }: { children: ReactNode }) {
           </AuthProvider>
           <ServiceWorkerRegistration />
         </LocaleProvider>
-        <Toaster richColors position="top-right" />
+        <Toaster
+          richColors
+          position="top-right"
+          mobileOffset={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 88px)", top: "16px", left: "16px", right: "16px" }}
+        />
       </ThemeProvider>
-      {process.env.NODE_ENV === "development" && <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />}
+      {process.env.NODE_ENV === "development" && (
+        <div className="hidden md:block">
+          <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
+        </div>
+      )}
     </QueryClientProvider>
   );
 }

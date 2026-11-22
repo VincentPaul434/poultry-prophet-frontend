@@ -26,9 +26,9 @@ export function BatchMetricStrip({ items }: { items: BatchMetricStripItem[] }) {
           title={item.title}
           aria-label={item.ariaLabel ?? item.label}
         >
-          <div className="flex min-w-0 items-center justify-center gap-1">
+          <div className="flex min-w-0 flex-wrap items-center justify-center gap-1">
             <span className={cn(
-              "whitespace-nowrap text-sm font-bold tabular-nums sm:text-base",
+              "min-w-0 text-sm font-bold tabular-nums [overflow-wrap:anywhere] sm:text-base",
               item.value === "—" && "text-muted-foreground",
             )}>
               {item.value}
@@ -37,11 +37,11 @@ export function BatchMetricStrip({ items }: { items: BatchMetricStripItem[] }) {
               <AlertCircle className="size-3.5 shrink-0 text-warning-ink" aria-hidden="true" />
             )}
           </div>
-          <p className="mt-1 truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className="mt-1 text-[11px] font-semibold uppercase leading-tight tracking-wide text-muted-foreground [overflow-wrap:anywhere]">
             {item.label}
           </p>
           {item.note && (
-            <p className="mt-0.5 truncate text-[10px] text-muted-foreground">{item.note}</p>
+            <p className="mt-0.5 text-[11px] leading-tight text-muted-foreground [overflow-wrap:anywhere]">{item.note}</p>
           )}
         </div>
       ))}

@@ -16,6 +16,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useLocale } from "@/components/locale-provider";
+import { DemoStockNotice } from "@/components/demo-stock-notice";
 
 type AgeUnit = "DAY" | "WEEK";
 type DraftStep = { key: string; vaccineName: string; age: string; unit: AgeUnit };
@@ -44,11 +45,11 @@ export function VaccinationPlanCard({ batch, canEditSchedule }: { batch: Batch; 
   const recordedVaccines = useMemo(() => (recordedInputs ?? []).filter((input) => input.productType === "VACCINE"), [recordedInputs]);
 
   async function assignSelected(id: number) {
-    try { await assign.mutateAsync({ batchId: batch.id, body: { programId: id } }); toast.success("Vaccination schedule added to this batch"); return true; }
+    try { const saved = await assign.mutateAsync({ batchId: batch.id, body: { programId: id } }); toast.success("queued" in saved ? "Schedule saved on this phone; it will sync when online." : "Vaccination schedule added to this batch"); return true; }
     catch (err) { setError(err instanceof ApiError ? err.message : "Could not assign the schedule."); return false; }
   }
   async function replaceSelected(id: number) {
-    try { await replace.mutateAsync({ batchId: batch.id, body: { programId: id } }); toast.success("Vaccination schedule updated"); return true; }
+    try { const saved = await replace.mutateAsync({ batchId: batch.id, body: { programId: id } }); toast.success("queued" in saved ? "Schedule saved on this phone; it will sync when online." : "Vaccination schedule updated"); return true; }
     catch (err) { setError(err instanceof ApiError ? err.message : "Could not change the schedule."); return false; }
   }
   function updateStep(key: string, changes: Partial<DraftStep>) { setSteps((current) => current.map((step) => step.key === key ? { ...step, ...changes } : step)); }
@@ -108,9 +109,9 @@ function VaccinationTimeline({ plan, recordedInputs }: { plan: VaccinationPlanIt
   const completed = plan.filter((item) => item.status === "COMPLETED").length;
   const totalSteps = plan.length + additionalVaccines.length;
   return <div className="space-y-3">
-    <div className="flex items-center justify-between gap-2"><div className="flex min-w-0 items-center gap-2"><CalendarCheck className="size-4 shrink-0 text-primary" aria-hidden="true" /><p className="truncate text-xs text-muted-foreground">Dates follow this batch&apos;s hatch date; logged vaccines use their actual record date.</p></div><Badge variant="outline" className="shrink-0 text-[10px]">{completed + additionalVaccines.length}/{totalSteps} done</Badge></div>
+    <div className="flex items-center justify-between gap-2"><div className="flex min-w-0 items-center gap-2"><CalendarCheck className="size-4 shrink-0 text-primary" aria-hidden="true" /><p className="truncate text-xs text-muted-foreground">Dates follow this batch&apos;s hatch date; logged vaccines use their actual record date.</p></div><Badge variant="outline" className="shrink-0 text-xs">{completed + additionalVaccines.length}/{totalSteps} done</Badge></div>
     <div className="overflow-x-auto pb-1" aria-label={`${completed + additionalVaccines.length} of ${totalSteps} vaccination steps completed`}>
-      <div className="relative px-2" style={{ minWidth: `max(100%, ${Math.max(totalSteps * 6, 24)}rem)` }}>
+      <div className="relative px-2" style={{ minWidth: `max(100%, ${Math.max(totalSteps * 7, 28)}rem)` }}>
         {totalSteps > 1 && <div className="pointer-events-none absolute left-[7%] right-[7%] top-3.5 h-0.5 rounded-full bg-border" aria-hidden="true" />}
         <ol className="relative flex items-start">
           {plan.map((item, index) => <TimelineStep key={item.id} item={item} index={index} />)}
@@ -123,9 +124,9 @@ function VaccinationTimeline({ plan, recordedInputs }: { plan: VaccinationPlanIt
 
 function RecordedVaccineStep({ input, index }: { input: FarmInputLog; index: number }) {
   const name = input.productName || input.brandName || "Vaccine";
-  return <li className="min-w-24 flex-1 px-1 text-center">
+  return <li className="min-w-28 flex-1 px-1 text-center">
     <div className="relative mx-auto flex size-7 items-center justify-center rounded-full border-2 border-primary bg-primary text-primary-foreground" title="Recorded from product log"><Check className="size-3.5" aria-label="Recorded" /></div>
-    <div className="mx-auto mt-1.5 min-w-0 max-w-28"><p className="truncate text-[10px] font-bold" title={name}>{name}</p><p className="truncate text-[9px] text-muted-foreground">Record {index + 1}</p><p className="truncate text-[9px] text-muted-foreground">{formatDate(input.recordedAt)}</p><p className="truncate text-[9px] font-semibold text-primary">Recorded</p></div>
+    <div className="mx-auto mt-1.5 min-w-0 max-w-32"><p className="truncate text-xs font-bold leading-4" title={name}>{name}</p><p className="truncate text-xs leading-4 text-muted-foreground">Record {index + 1}</p><p className="truncate text-xs leading-4 text-muted-foreground">{formatDate(input.recordedAt)}</p><p className="truncate text-xs font-semibold leading-4 text-primary">Recorded</p></div>
   </li>;
 }
 
@@ -133,15 +134,15 @@ function TimelineStep({ item, index }: { item: VaccinationPlanItem; index: numbe
   const done = item.status === "COMPLETED";
   const overdue = item.displayState === "OVERDUE";
   const dueToday = item.displayState === "DUE_TODAY";
-  return <li className="min-w-24 flex-1 px-1 text-center">
+  return <li className="min-w-28 flex-1 px-1 text-center">
     <div className={`relative mx-auto flex size-7 items-center justify-center rounded-full border-2 bg-card ${done ? "border-primary bg-primary text-primary-foreground" : overdue ? "border-destructive text-destructive" : dueToday ? "border-warning text-warning-ink" : "border-border text-muted-foreground"}`} title={done ? "Completed" : stateLabel(item)}>
-      {done ? <Check className="size-3.5" aria-label="Completed" /> : <span className="text-[10px] font-bold">{index + 1}</span>}
+      {done ? <Check className="size-3.5" aria-label="Completed" /> : <span className="text-xs font-bold">{index + 1}</span>}
     </div>
-    <div className="mx-auto mt-1.5 min-w-0 max-w-28">
-      <p className="truncate text-[10px] font-bold" title={item.vaccineName}>{item.vaccineName}</p>
-      <p className="truncate text-[9px] capitalize text-muted-foreground" title={`${itemStage(item)} · Day ${item.ageDay}`}>{itemStage(item)} · D{item.ageDay}</p>
-      <p className="truncate text-[9px] text-muted-foreground">{formatDate(item.dueDate)}</p>
-      <p className={`truncate text-[9px] ${done ? "font-semibold text-primary" : overdue ? "font-semibold text-destructive" : dueToday ? "font-semibold text-warning-ink" : "text-muted-foreground"}`}>{done ? "Done" : stateLabel(item)}</p>
+    <div className="mx-auto mt-1.5 min-w-0 max-w-32">
+      <p className="truncate text-xs font-bold leading-4" title={item.vaccineName}>{item.vaccineName}</p>
+      <p className="truncate text-xs capitalize leading-4 text-muted-foreground" title={`${itemStage(item)} · Day ${item.ageDay}`}>{itemStage(item)} · D{item.ageDay}</p>
+      <p className="truncate text-xs leading-4 text-muted-foreground">{formatDate(item.dueDate)}</p>
+      <p className={`truncate text-xs leading-4 ${done ? "font-semibold text-primary" : overdue ? "font-semibold text-destructive" : dueToday ? "font-semibold text-warning-ink" : "text-muted-foreground"}`}>{done ? "Done" : stateLabel(item)}</p>
       {item.status === "SCHEDULED" && <div className="mt-1"><VaccinationConfirmButton item={item} compact /></div>}
     </div>
   </li>;
@@ -151,7 +152,7 @@ export function VaccinationConfirmButton({ item, compact = false }: { item: Vacc
   const record = useRecordVaccination(); const { data: products } = useFarmProducts(false); const selectedProduct = products?.find((product) => product.id === item.farmProductId); const [open, setOpen] = useState(false); const [quantity, setQuantity] = useState(item.farmProductId ? "1" : ""); const [notes, setNotes] = useState(""); const [error, setError] = useState("");
   async function submit(event: FormEvent) { event.preventDefault(); setError(""); try { const result = await record.mutateAsync({ plan: item, body: { recordedAt: new Date().toISOString(), quantity: quantity ? Number(quantity) : null, unit: selectedProduct?.stockUnit ?? null, notes: notes || null } }); toast.success("queued" in result && result.queued ? "Saved on this phone; it will sync when online." : `${item.vaccineName} recorded`); setOpen(false); } catch (err) { setError(err instanceof ApiError ? err.message : "Could not record vaccination."); } }
   if (item.status !== "SCHEDULED") return <Badge variant={item.status === "COMPLETED" ? "default" : "secondary"}>{item.status === "COMPLETED" ? "Done" : item.status}</Badge>;
-  return <><Button size="sm" className={compact ? "h-7 rounded-md px-2 text-[10px]" : "h-9"} aria-label={`${compact ? "Record" : "Record vaccination"} ${item.vaccineName}`} onClick={() => setOpen(true)}><CheckCircle2 className="size-3" />{compact ? "Record" : "Record vaccination"}</Button><Dialog open={open} onOpenChange={setOpen}><DialogContent className="w-[calc(100%-2rem)] sm:max-w-md"><DialogHeader><DialogTitle>Record {item.vaccineName}</DialogTitle><DialogDescription>{itemStage(item)} · Day {item.ageDay} · Due {formatDate(item.dueDate)}</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-3"><p className="rounded-lg bg-muted/50 px-3 py-2 text-sm">Confirm only after this vaccine was given. The vaccine name comes from the schedule.</p>{selectedProduct ? <div className="space-y-1"><Label htmlFor={`quantity-${item.id}`}>Units used ({selectedProduct.stockUnit})</Label><Input id={`quantity-${item.id}`} required type="number" min="0.001" step="0.001" value={quantity} onChange={(event) => setQuantity(event.target.value)} /><p className="text-xs text-muted-foreground">Available: {selectedProduct.stockOnHand} {selectedProduct.stockUnit}. Cost is calculated automatically.</p></div> : <p className="rounded-lg border border-warning-border bg-warning-muted/60 px-3 py-2 text-sm text-warning-ink">This vaccine is not linked to farm inventory. It will be recorded without stock deduction or batch cost.</p>}<div className="space-y-1"><Label htmlFor={`notes-${item.id}`}>Notes <span className="font-normal text-muted-foreground">optional</span></Label><Input id={`notes-${item.id}`} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Anything to remember" /></div>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<Button type="submit" className="h-11 w-full" disabled={record.isPending}>{record.isPending && <Loader2 className="size-4 animate-spin" />} Record vaccination</Button></form></DialogContent></Dialog></>;
+  return <><Button size="sm" className={compact ? "h-11 w-full rounded-lg px-2 text-xs" : "h-11"} aria-label={`${compact ? "Record" : "Record vaccination"} ${item.vaccineName}`} onClick={() => setOpen(true)}><CheckCircle2 className="size-3" />{compact ? "Record" : "Record vaccination"}</Button><Dialog open={open} onOpenChange={setOpen}><DialogContent className="w-[calc(100%-2rem)] sm:max-w-md"><DialogHeader><DialogTitle>Record {item.vaccineName}</DialogTitle><DialogDescription>{itemStage(item)} · Day {item.ageDay} · Due {formatDate(item.dueDate)}</DialogDescription></DialogHeader><form onSubmit={submit} className="space-y-3"><p className="rounded-lg bg-muted/50 px-3 py-2 text-sm">Confirm only after this vaccine was given. The vaccine name comes from the schedule.</p>{selectedProduct ? <div className="space-y-1"><Label htmlFor={`quantity-${item.id}`}>Units used ({selectedProduct.stockUnit})</Label><Input id={`quantity-${item.id}`} required type="number" min="0.001" step="0.001" value={quantity} onChange={(event) => setQuantity(event.target.value)} /><p className="text-xs text-muted-foreground">Available: {selectedProduct.stockOnHand} {selectedProduct.stockUnit}. Cost is calculated automatically.</p><DemoStockNotice demoStockHistory={selectedProduct.demoStockHistory} /></div> : <p className="rounded-lg border border-warning-border bg-warning-muted/60 px-3 py-2 text-sm text-warning-ink">This vaccine is not linked to farm inventory. It will be recorded without stock deduction or batch cost.</p>}<div className="space-y-1"><Label htmlFor={`notes-${item.id}`}>Notes <span className="font-normal text-muted-foreground">optional</span></Label><Input id={`notes-${item.id}`} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Anything to remember" /></div>{error && <p role="alert" className="text-sm text-destructive">{error}</p>}<Button type="submit" className="h-11 w-full" disabled={record.isPending}>{record.isPending && <Loader2 className="size-4 animate-spin" />} Record vaccination</Button></form></DialogContent></Dialog></>;
 }
 
 export function VaccinationTaskAction({ task }: { task: HandlerTask }) {
@@ -161,7 +162,7 @@ export function VaccinationTaskAction({ task }: { task: HandlerTask }) {
   const item = plan?.find((entry) => entry.id === task.sourceId);
   if (item) return <VaccinationConfirmButton item={item} />;
   if (isLoading) return <Button type="button" variant="outline" disabled>Checking schedule…</Button>;
-  return <div className="flex flex-col items-end gap-1"><span className="text-[11px] text-warning-ink">{t("tasks.needsManagerReview")}</span><Button type="button" variant="outline" onClick={() => task.batchId && router.push(`/batches/${task.batchId}`)}>Open batch</Button></div>;
+  return <div className="flex flex-col items-end gap-1"><span className="text-xs text-warning-ink">{t("tasks.needsManagerReview")}</span><Button type="button" variant="outline" onClick={() => task.batchId && router.push(`/batches/${task.batchId}`)}>Open batch</Button></div>;
 }
 
 export function VaccinationManagerAction({ task, onOrphanClose }: { task: HandlerTask; onOrphanClose: () => void }) {

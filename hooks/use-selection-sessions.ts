@@ -43,6 +43,8 @@ function toLocalDraft(body: CreateSelectionSessionRequest, batchId: number, farm
     createdAt: now,
     updatedAt: now,
     finalizedAt: null,
+    selectionReviewId: body.selectionReviewId,
+    sourceDataAcknowledged: body.sourceDataAcknowledged ?? false,
     offlineSyncStatus: "PENDING",
   };
 }
@@ -87,6 +89,8 @@ function applyQueuedOperations(
         createdAt: operation.queuedAt,
         updatedAt: operation.queuedAt,
         finalizedAt: null,
+        selectionReviewId: typeof payload.selectionReviewId === "number" ? payload.selectionReviewId : null,
+        sourceDataAcknowledged: payload.sourceDataAcknowledged === true,
         offlineSyncStatus: operation.status,
       };
       sessions.set(local.id, local);
@@ -113,6 +117,7 @@ function applyQueuedOperations(
       criterionCodes: Array.isArray(payload.criterionCodes) ? payload.criterionCodes.filter((item): item is string => typeof item === "string") : existing.criterionCodes,
       criteriaNotes: typeof payload.criteriaNotes === "string" ? payload.criteriaNotes : null,
       sessionNotes: typeof payload.sessionNotes === "string" ? payload.sessionNotes : null,
+        sourceDataAcknowledged: payload.sourceDataAcknowledged === true || existing.sourceDataAcknowledged,
       updatedAt: operation.queuedAt,
       offlineSyncStatus: operation.status,
     });
@@ -182,13 +187,6 @@ export function useCreateSelectionSession(batchId: number | string) {
     networkMode: "always",
     mutationFn: async (body: CreateSelectionSessionRequest) => {
       if (!user?.farmId) throw new Error("Sign in to save this selection draft.");
-      if (navigator.onLine) {
-        try {
-          return await selectionSessionApi.create(batchId, body);
-        } catch (error) {
-          if (!shouldUseOfflineSnapshot(error)) throw error;
-        }
-      }
       await enqueue({
         entityType: "SELECTION_SESSION",
         batchId: Number(batchId),
@@ -200,6 +198,7 @@ export function useCreateSelectionSession(batchId: number | string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.batches.selectionSessions(batchId) });
       queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviewPreviewRoot(batchId) });
+      queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviews(batchId) });
     },
   });
 }
@@ -235,13 +234,10 @@ export function useUpdateSelectionSession(batchId: number | string) {
         }
       }
 
-      if (navigator.onLine) {
-        try {
-          return await selectionSessionApi.update(batchId, targetSessionId, body);
-        } catch (error) {
-          if (!shouldUseOfflineSnapshot(error)) throw error;
-        }
+      if (!Number.isSafeInteger(body.expectedVersion) || body.expectedVersion! < 0) {
+        throw new Error("Refresh the selection draft to obtain its current revision before saving an edit.");
       }
+      // One durable command path for online saves and reconnect delivery.
       await enqueue({
         entityType: "SELECTION_SESSION_UPDATE",
         batchId: Number(batchId),
@@ -270,6 +266,7 @@ export function useUpdateSelectionSession(batchId: number | string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.batches.selectionSessions(batchId) });
       queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviewPreviewRoot(batchId) });
+      queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviews(batchId) });
     },
   });
 }
@@ -277,10 +274,11 @@ export function useUpdateSelectionSession(batchId: number | string) {
 export function useFinalizeSelectionSession(batchId: number | string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (sessionId: number) => selectionSessionApi.finalize(batchId, sessionId),
+    mutationFn: ({ sessionId, expectedVersion }: { sessionId: number; expectedVersion: number }) => selectionSessionApi.finalize(batchId, sessionId, expectedVersion),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: qk.batches.selectionSessions(batchId) });
       queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviewPreviewRoot(batchId) });
+      queryClient.invalidateQueries({ queryKey: qk.batches.selectionReviews(batchId) });
     },
   });
 }

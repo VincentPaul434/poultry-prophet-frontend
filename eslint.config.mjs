@@ -12,6 +12,13 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated agent tooling and test artifacts are not application source.
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".gemini/**",
+    "playwright-report/**",
+    "test-results/**",
   ]),
 ]);
 

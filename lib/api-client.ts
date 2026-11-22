@@ -4,9 +4,9 @@
 // - Normalises Spring's ApiError body into a thrown ApiError so React Query's
 //   `error` is always a predictable shape.
 
-import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from "axios";
+import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig, type InternalAxiosRequestConfig } from "axios";
 import { getAuthRevision, getSessionScope, getToken, getStoredUser as getStoredIdentity, isAuthRequired, isRefreshUncertain, markAuthRequired, markRefreshUncertain, saveSession, type ClientAuthResponse } from "./auth-storage";
-import { AuthLockError, withIndexedDbAuthLock } from "./auth-lock";
+import { AuthLockError, resetAbandonedLease, withIndexedDbAuthLock } from "./auth-lock";
 
 // Browser requests stay on this origin. The Next.js route handler forwards
 // them to the server-side API URL, keeping the upstream host out of the client
@@ -34,6 +34,18 @@ export class ApiError extends Error {
   }
 }
 
+export class AuthCoordinationError extends ApiError {
+  constructor(readonly reason: AuthLockError["reason"]) { super("Unable to safely coordinate sign-in across tabs.", 503); }
+}
+
+/** The caller must ask the user to close other app tabs first. */
+export async function resetAbandonedAuthLock(): Promise<boolean> {
+  if (typeof navigator !== "undefined" && typeof navigator.locks?.request === "function") {
+    return navigator.locks.request("poultry-prophet-auth-refresh", { ifAvailable: true }, (lock) => lock ? resetAbandonedLease() : false);
+  }
+  return resetAbandonedLease();
+}
+
 /** Use cached data only when a request could not reach a healthy API. A 4xx
  * response still carries important auth, permission, or validation state. */
 export function shouldUseOfflineSnapshot(error: unknown) {
@@ -45,7 +57,10 @@ export const apiClient: AxiosInstance = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+export type SessionBoundRequestConfig = AxiosRequestConfig & { _expectedSessionScope: string };
+
 type RetriableRequestConfig = InternalAxiosRequestConfig & {
+  _expectedSessionScope?: string;
   _authRetry?: boolean;
   _sessionScope?: string | null;
 };
@@ -67,7 +82,7 @@ export async function withAuthLock<T>(operation: () => Promise<T>): Promise<T> {
     if (typeof navigator !== "undefined" && typeof navigator.locks?.request === "function") return await navigator.locks.request("poultry-prophet-auth-refresh", coordinated);
     return await coordinated();
   } catch (error) {
-    if (error instanceof AuthLockError) throw new ApiError(error.message, 503);
+    if (error instanceof AuthLockError) throw new AuthCoordinationError(error.reason);
     throw error;
   }
 }
@@ -84,7 +99,14 @@ export async function refreshAccessToken() {
   if (!scope) return null;
   if (!refreshPromise) {
     const rotate = async () => {
-      if (getSessionScope() !== scope || isAuthRequired() || isRefreshUncertain() || navigator.onLine === false) return null;
+      if (getSessionScope() !== scope || isAuthRequired() || navigator.onLine === false) return null;
+      // Check only after acquiring the cross-tab lock: while another tab owns
+      // it, refreshUncertain can describe an active request, not an orphan.
+      // A flag left behind after that owner finishes must never be replayed.
+      if (isRefreshUncertain()) {
+        markAuthRequired();
+        return null;
+      }
       // Persist intent before sending: if this tab closes mid-rotation, another
       // tab must not replay a cookie the backend may already have consumed.
       markRefreshUncertain();
@@ -112,6 +134,9 @@ export async function refreshAccessToken() {
 
 function redirectToLogin() {
   if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    // Deliberately reload outside React so expired credentials cannot leave
+    // privileged in-memory state visible while the sign-in screen loads.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = "/login";
   }
 }
@@ -122,7 +147,8 @@ apiClient.interceptors.request.use((config) => {
   if (isAuthRequired() && !/\/auth\/(login|register|logout)(?:$|[/?])/.test(config.url ?? "")) {
     throw new ApiError("Sign in again to sync your records.", 401);
   }
-  if (request._authRetry && request._sessionScope !== scope) {
+  if ((request._expectedSessionScope !== undefined && request._expectedSessionScope !== scope)
+    || (request._authRetry && request._sessionScope !== scope)) {
     throw new ApiError("Your session changed. Please try again.", 401);
   }
   if (!request._authRetry) request._sessionScope = scope;

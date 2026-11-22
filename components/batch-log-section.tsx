@@ -26,10 +26,12 @@ import { useCreateRecord, useRecords } from "@/hooks/use-records";
 import { useCreateEvent } from "@/hooks/use-events";
 import { useCreateFarmInput, useFarmProducts, useSexComposition } from "@/hooks/use-operations";
 import { ApiError } from "@/lib/api-client";
+import { OfflineStorageError } from "@/lib/offline-db";
 import { formatDate, formatDateTime, isFutureDate, todayIso } from "@/lib/format";
 import type { BatchEvent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/locale-provider";
+import { DemoStockNotice } from "@/components/demo-stock-notice";
 import type { TranslationKey } from "@/lib/i18n";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -248,6 +250,7 @@ export function VitalsStatus({ batchId }: { batchId: string }) {
 // ─── Form: population event ───────────────────────────────────────────────────
 
 type SexChoice = "MALE" | "FEMALE" | "UNCLASSIFIED" | "MIXED" | "";
+type DeathObservation = "SIGNS" | "NO_SIGNS" | "UNKNOWN" | "";
 
 function MortalityForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
   const id = useId();
@@ -260,6 +263,8 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
   const [saleBuyer, setSaleBuyer] = useState("");
   const [saleReference, setSaleReference] = useState("");
   const [details, setDetails] = useState("");
+  const [deathObservation, setDeathObservation] = useState<DeathObservation>("");
+  const [deathSigns, setDeathSigns] = useState("");
   const [date, setDate] = useState(todayIso());
   const [sexChoice, setSexChoice] = useState<SexChoice>("");
   const [maleSplit, setMaleSplit] = useState("");
@@ -309,6 +314,21 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
     if (!addsPopulation && !isCountCorrection && n > population) {
       setFormError(`Only ${population} bird${population === 1 ? "" : "s"} are currently alive.`); return;
     }
+    if (lossType === "HEALTH_DEATH" && !deathObservation) {
+      setFormError("Choose what was observed, or select that it is unknown."); return;
+    }
+    if (lossType === "HEALTH_DEATH" && deathObservation === "SIGNS" && !deathSigns.trim()) {
+      setFormError("Describe the signs you noticed."); return;
+    }
+    const observation = deathObservation === "SIGNS" ? `Signs noticed: ${deathSigns.trim()}`
+      : deathObservation === "NO_SIGNS" ? "No signs noticed."
+        : "Signs not observed / unknown.";
+    const savedDetails = lossType === "HEALTH_DEATH"
+      ? [observation, details.trim()].filter(Boolean).join("\n")
+      : details.trim() || null;
+    const deathFields = lossType === "HEALTH_DEATH" && deathObservation
+      ? { deathObservation, deathSigns: deathObservation === "SIGNS" ? deathSigns.trim() : null }
+      : {};
     if (hasSexBaseline && !sexProjectionReady) {
       setFormError(sexComposition?.projectionMessage ?? "Sex composition needs review before this event can be assigned."); return;
     }
@@ -329,7 +349,8 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
           affectedCount: isCountCorrection ? 0 : n, populationDelta: isCountCorrection ? n : null,
           sexAllocation, tags: lossType === "SALE" && salePurpose ? `SALE_PURPOSE:${salePurpose}` : null,
           saleDetails,
-          details: details || null,
+          details: savedDetails,
+          ...deathFields,
         });
         toast.success(isCountCorrection ? "Population count corrected" : "Population event recorded"); onDone();
       } catch (err) { setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again."); }
@@ -347,7 +368,8 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
         populationDelta: isCountCorrection ? n : null,
         tags: lossType === "SALE" && salePurpose ? `SALE_PURPOSE:${salePurpose}` : null,
         saleDetails,
-        details: details || null,
+        details: savedDetails,
+        ...deathFields,
       });
       toast.success(isCountCorrection ? "Population count corrected" : "Population event recorded");
       onDone();
@@ -365,8 +387,8 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
       </div>
       <div className="space-y-1.5">
         <span id={`${id}-event-type`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">What happened?</span>
-        <ToggleGroup aria-labelledby={`${id}-event-type`} variant="outline" value={lossType ? [lossType] : []} onValueChange={(values) => { const next = LOSS_CATEGORIES.find((category) => category.type === values[0]); if (next) setLossType(next.type); }} className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {LOSS_CATEGORIES.map((category) => <ToggleGroupItem key={category.type} value={category.type} className="min-h-11 justify-start">{category.label}</ToggleGroupItem>)}
+        <ToggleGroup aria-labelledby={`${id}-event-type`} variant="outline" value={lossType ? [lossType] : []} onValueChange={(values) => { const next = LOSS_CATEGORIES.find((category) => category.type === values[0]); if (next) setLossType(next.type); }} className="grid w-full grid-cols-2 gap-2 lg:grid-cols-3">
+          {LOSS_CATEGORIES.map((category) => <ToggleGroupItem key={category.type} value={category.type} className="h-auto min-h-11 min-w-0 justify-start whitespace-normal py-2 text-left leading-snug">{category.label}</ToggleGroupItem>)}
         </ToggleGroup>
         {selectedCategory && <p className="text-xs text-muted-foreground">{selectedCategory.hint}</p>}
       {lossType === "SALE" && (
@@ -390,6 +412,24 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
         </div>
       )}
       </div>
+      {lossType === "HEALTH_DEATH" && <fieldset className="space-y-2 rounded-lg border border-border bg-muted/20 px-3 pb-3 pt-2" aria-describedby={`${id}-observation-help`}>
+        <legend id={`${id}-observation-label`} className="px-1 text-sm font-semibold">What was observed? <span className="font-normal text-muted-foreground">(required)</span></legend>
+        <p id={`${id}-observation-help`} className="text-xs leading-5 text-muted-foreground">Choose what you know. Describe signs, not a diagnosis.</p>
+        <div role="radiogroup" aria-labelledby={`${id}-observation-label`} aria-describedby={`${id}-observation-help`} aria-required="true" className="grid gap-2 sm:grid-cols-3">
+          {([
+            { value: "SIGNS", label: "Signs noticed" },
+            { value: "NO_SIGNS", label: "No signs noticed" },
+            { value: "UNKNOWN", label: "Not observed / unknown" },
+          ] as const).map((option) => <label key={option.value} className={cn("flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm font-medium focus-within:ring-3 focus-within:ring-ring/60", deathObservation === option.value ? "border-primary bg-primary/5" : "border-input")}>
+            <input type="radio" name={`${id}-death-observation`} value={option.value} checked={deathObservation === option.value} onChange={() => setDeathObservation(option.value)} className="size-4 shrink-0 accent-primary" />
+            <span>{option.label}</span>
+          </label>)}
+        </div>
+        {deathObservation === "SIGNS" && <div className="space-y-1.5 pt-1">
+          <Label htmlFor={`${id}-death-signs`} className="text-sm font-semibold">Describe the signs <span className="font-normal text-muted-foreground">(required)</span></Label>
+          <Textarea id={`${id}-death-signs`} aria-required="true" rows={2} value={deathSigns} onChange={(event) => setDeathSigns(event.target.value)} placeholder="e.g. stopped eating or had trouble breathing" className="resize-y rounded-lg" />
+        </div>}
+      </fieldset>}
       {lossType && (
         <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
           <span id={`${id}-sex`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Which birds were affected?</span>
@@ -409,7 +449,7 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
             : <p className="text-xs text-muted-foreground">Record the whole-batch male/female count first. This event will update the total population only.</p>}
         </div>
       )}
-      <div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea id={`${id}-notes`} rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you observe?" className="resize-none rounded-lg" /></div>
+      <div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">{lossType === "HEALTH_DEATH" ? "Additional notes" : "Notes"} <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea id={`${id}-notes`} rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder={lossType === "HEALTH_DEATH" ? "Anything else that may help?" : "What did you observe?"} className="resize-none rounded-lg" /></div>
       <InlineError message={formError} />
       <Button type="submit" variant="destructive" className="h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || (population <= 0 && !canLogWithNoPopulation)}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save population event"}</Button>
     </form>
@@ -496,7 +536,7 @@ function TreatmentForm({ batchId, population, onDone }: { batchId: string; popul
       });
       const queued = "queued" in result && result.queued;
       toast.success(queued ? "Saved on this phone; it will sync when online." : "Product record saved to this batch."); onDone();
-    } catch (err) { setFormError(err instanceof ApiError ? err.message : "Failed to save. Check the connection and try again."); }
+    } catch (err) { setFormError(err instanceof ApiError || err instanceof OfflineStorageError ? err.message : "Failed to save. Check the connection and try again."); }
   }
   const selectedProduct = farmProducts?.find((item) => item.id === farmProductId);
   const estimatedCost = selectedProduct?.averageUnitCost != null && quantity && Number(quantity) > 0
@@ -505,6 +545,7 @@ function TreatmentForm({ batchId, population, onDone }: { batchId: string; popul
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
       {farmProducts && farmProducts.length > 0 && <div className="space-y-1.5"><Label htmlFor={`${id}-stock`} className="text-sm font-semibold">Product from farm stock</Label><NativeSelect id={`${id}-stock`} value={farmProductId ?? ""} onChange={(e) => { const value = e.target.value ? Number(e.target.value) : null; const selected = farmProducts.find((item) => item.id === value); setFarmProductId(value); if (selected) { setProductName(selected.brandName); setProductType(selected.productType); } }}><option value="">Product not listed</option>{farmProducts.map((item) => <option key={item.id} value={item.id}>{item.brandName} · {item.stockOnHand} {item.stockUnit}{item.lowStock ? " · low stock" : ""}</option>)}</NativeSelect></div>}
+      {selectedProduct && <DemoStockNotice demoStockHistory={selectedProduct.demoStockHistory} />}
       <div className="grid grid-cols-[minmax(0,1fr)_9rem] gap-2.5"><div className="space-y-1.5"><Label htmlFor={`${id}-product`} className="text-sm font-semibold">Product / brand</Label><Input id={`${id}-product`} required value={productName} onChange={(e) => { setProductName(e.target.value); setFarmProductId(null); }} placeholder="e.g. Baby Stag Booster" className="h-11 rounded-lg" /></div><div className="space-y-1.5"><Label htmlFor={`${id}-quantity`} className="text-sm font-semibold">Units used {farmProductId ? <span className="font-normal text-destructive">required</span> : <span className="font-normal text-muted-foreground">optional</span>}</Label><Input id={`${id}-quantity`} required={Boolean(farmProductId)} type="number" min="0.001" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder={selectedProduct?.stockUnit ?? "If known"} className="h-11 rounded-lg" />{selectedProduct && <p className="text-[11px] text-muted-foreground">Available: {selectedProduct.stockOnHand} {selectedProduct.stockUnit}{estimatedCost != null ? ` · Estimated batch cost ₱${estimatedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : " · Cost unavailable"}</p>}</div></div>
       <div className="space-y-1.5"><span id={`${id}-type`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Product type</span><ToggleGroup aria-labelledby={`${id}-type`} variant="outline" value={productType ? [productType] : []} onValueChange={(values) => { if (values[0]) setProductType(values[0] as typeof productType); }} className="grid w-full grid-cols-3 gap-2 sm:grid-cols-5">{[{ v: "FEED", label: "Feed" }, { v: "VITAMIN", label: "Vitamin" }, { v: "MEDICINE", label: "Medicine" }, { v: "VACCINE", label: "Vaccine" }, { v: "OTHER", label: "Other" }].map((item) => <ToggleGroupItem key={item.v} value={item.v} className="min-h-11">{item.label}</ToggleGroupItem>)}</ToggleGroup></div>
       {purposeRequired && <div className="space-y-1.5"><span id={`${id}-purpose`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Purpose</span><div role="group" aria-labelledby={`${id}-purpose`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{MEDICINE_PURPOSES.map((item) => <Button variant="ghost" key={item} type="button" aria-pressed={purpose === item} onClick={() => setPurpose(item)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", purpose === item ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{purpose === item ? "✓ " : ""}{item}</Button>)}</div></div>}

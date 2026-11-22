@@ -10,9 +10,10 @@ const WAIT_MS = 60_000;
 
 type Lease = { owner: string | null; fence: number; expiresAt: number };
 type Claim = { kind: "acquired"; fence: number } | { kind: "busy" } | { kind: "abandoned" };
+const activeOwners = new Set<string>();
 
 export class AuthLockError extends Error {
-  constructor() { super("Unable to safely coordinate sign-in across tabs."); }
+  constructor(readonly reason: "unavailable" | "abandoned" = "unavailable") { super("Unable to safely coordinate sign-in across tabs."); }
 }
 
 function unavailable(): AuthLockError {
@@ -78,11 +79,13 @@ export async function withIndexedDbAuthLock<T>(operation: () => Promise<T>): Pro
         store.put({ owner, fence: next, expiresAt: now + LEASE_MS } satisfies Lease, KEY);
         return { kind: "acquired", fence: next };
       });
-      if (claim.kind === "abandoned" || Date.now() >= deadline) throw unavailable();
+      if (claim.kind === "abandoned") throw new AuthLockError("abandoned");
+      if (Date.now() >= deadline) throw unavailable();
       if (claim.kind === "acquired") fence = claim.fence;
       else await new Promise(resolve => setTimeout(resolve, 50));
     }
     const heldFence = fence;
+    activeOwners.add(owner);
     let lost = false;
     let renewing = false;
     const renew = async () => {
@@ -103,15 +106,29 @@ export async function withIndexedDbAuthLock<T>(operation: () => Promise<T>): Pro
       return await operation();
     } finally {
       clearInterval(timer);
-      // The fenced lease is cleared only if its ownership is still certain.
-      if (!lost) {
+      // Once the operation has settled, its own lease may be released even if
+      // renewal expired during sleep. Never clear a different owner's fence.
+      try {
         const released = await updateLease(db, (lease, store) => {
-          if (!lease || lease.owner !== owner || lease.fence !== heldFence || lease.expiresAt <= Date.now()) return false;
+          if (!lease || lease.owner !== owner || lease.fence !== heldFence) return false;
           store.put({ owner: null, fence: heldFence, expiresAt: 0 } satisfies Lease, KEY);
           return true;
         });
         if (!released) throw unavailable();
-      } else throw unavailable();
+      } finally { activeOwners.delete(owner); }
     }
+  } finally { db.close(); }
+}
+
+/** Only call after the user closes other app tabs and any sign-in requests. */
+export async function resetAbandonedLease(): Promise<boolean> {
+  if (activeOwners.size) return false;
+  const db = await openDatabase();
+  try {
+    return await updateLease(db, (lease, store) => {
+      if (activeOwners.size || !lease?.owner || !Number.isSafeInteger(lease.fence) || lease.fence < 0 || !Number.isFinite(lease.expiresAt) || lease.expiresAt > Date.now()) return false;
+      store.put({ owner: null, fence: lease.fence + 1, expiresAt: 0 } satisfies Lease, KEY);
+      return true;
+    });
   } finally { db.close(); }
 }

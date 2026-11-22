@@ -48,7 +48,6 @@ export default function RegisterPage() {
   return (
     <AuthShell
       compact
-      eyebrow="Para sa farm manager"
       title="Simulan ang farm record."
       description="Gumawa ng manager account. Maaaring imbitahan ang handlers pagkatapos."
       footer={

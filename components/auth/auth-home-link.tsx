@@ -1,5 +1,6 @@
 import Link from "next/link"
-import { ArrowLeft, Bird } from "lucide-react"
+import { ArrowLeft } from "lucide-react"
+import { PoultryProphetMark } from "@/components/poultry-prophet-mark"
 import { cn } from "@/lib/utils"
 
 export function AuthBrandLink({ className, variant = "default" }: { className?: string; variant?: "default" | "hero" }) {
@@ -19,7 +20,7 @@ export function AuthBrandLink({ className, variant = "default" }: { className?: 
         "flex shrink-0 items-center justify-center rounded-2xl shadow-sm transition-transform duration-200 group-hover:-rotate-3 group-hover:scale-105",
         hero ? "size-12 bg-primary-foreground/12 text-primary-foreground" : "size-11 bg-primary text-primary-foreground",
       )}>
-        <Bird className={hero ? "size-6" : "size-5"} aria-hidden="true" />
+        <PoultryProphetMark className={hero ? "h-7 w-5" : "h-6 w-5"} tone="light" />
       </span>
       <span className={cn("font-black tracking-[-0.02em]", hero ? "text-lg" : "text-sm sm:text-base")}>Poultry Prophet</span>
     </Link>

@@ -1,4 +1,4 @@
-import { Bird } from "lucide-react";
+import { PoultryProphetMark } from "@/components/poultry-prophet-mark";
 
 export function BrandMark({ tone = "dark" }: { tone?: "dark" | "light" }) {
   return (
@@ -7,10 +7,10 @@ export function BrandMark({ tone = "dark" }: { tone?: "dark" | "light" }) {
         className={
           tone === "dark"
             ? "flex size-9 items-center justify-center rounded-full bg-(--pp-green) text-(--pp-lime)"
-            : "flex size-9 items-center justify-center rounded-full bg-(--pp-lime) text-(--pp-green)"
+            : "flex size-9 items-center justify-center rounded-full bg-white text-(--pp-green)"
         }
       >
-        <Bird className="size-[18px]" aria-hidden="true" />
+        <PoultryProphetMark className="h-5 w-4" tone={tone === "dark" ? "light" : "dark"} />
       </span>
       <span className="text-lg font-semibold tracking-[-0.02em]">Poultry Prophet</span>
     </span>

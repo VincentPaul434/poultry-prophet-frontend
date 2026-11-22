@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Bell, Bird, ChevronDown, ChevronUp, ChevronsUpDown, ClipboardList, Egg, LayoutDashboard, LineChart, LogOut, MoreHorizontal, Package, Plus, Settings, UserCircle2, WalletCards } from "lucide-react";
+import { Bell, ChevronDown, ChevronUp, ClipboardList, Egg, LayoutDashboard, LineChart, LogOut, MoreHorizontal, Package, Plus, Settings, UserCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { useFarmAlerts, useFarmAlertSummary } from "@/hooks/use-analytics";
+import { useIncubationAttention } from "@/hooks/use-incubation-attention";
 import { useFarmRealtime } from "@/hooks/use-farm-realtime";
 import { useFarm } from "@/hooks/use-farm";
 import { useReleaseVersion } from "@/hooks/use-version";
@@ -18,6 +19,7 @@ import type { TranslationKey } from "@/lib/i18n";
 import { NetworkStatusBanner } from "@/components/network-status-banner";
 import { SyncStatusIndicator } from "@/components/sync-status-indicator";
 import { MobileAppHeader } from "@/components/mobile-app-header";
+import { PoultryProphetMark } from "@/components/poultry-prophet-mark";
 import { RecordBatchPicker } from "@/components/record-batch-picker";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -69,7 +71,6 @@ const NAV: NavItem[] = [
   { href: "/tasks", labelKey: "nav.tasks", icon: ClipboardList },
   { href: "/inputs", labelKey: "nav.products", icon: Package, managerOnly: true },
   { href: "/operations", labelKey: "nav.analytics", icon: LineChart, managerOnly: true },
-  { href: "/finance", labelKey: "nav.finance", icon: WalletCards, managerOnly: true },
 ];
 
 function initials(name: string | undefined) {
@@ -85,18 +86,19 @@ function initials(name: string | undefined) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, logout, authRequired } = useAuth();
   const { t } = useLocale();
   useFarmRealtime();
-  const { data: activeAlerts } = useFarmAlerts(true, !!user);
-  const { data: alertSummary } = useFarmAlertSummary(!!user);
+  const { data: activeAlerts } = useFarmAlerts(true, !!user && !authRequired);
+  const { data: alertSummary } = useFarmAlertSummary(!!user && !authRequired);
+  const { data: incubationAttention } = useIncubationAttention(!!user && !authRequired);
   const previousAlerts = useRef<{ farmId: number | null; ids: Set<number> } | null>(null);
   const farm = useFarm(!!user && user.farmId != null);
   const release = useReleaseVersion(!!user);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const contentScrollRef = useRef<HTMLDivElement>(null);
-  const unread = alertSummary?.activeTotal ?? activeAlerts?.length ?? 0;
+  const unread = authRequired ? 0 : (alertSummary?.activeTotal ?? activeAlerts?.length ?? 0) + (incubationAttention?.length ?? 0);
   const isDashboardRoute = pathname === "/dashboard";
 
   useEffect(() => {
@@ -141,6 +143,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     farm: farm.data,
     farmId: user?.farmId,
     isError: farm.isError,
+    authRequired,
   });
   const frontendVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "0.1.0-validation";
   const frontendEnvironment = process.env.NEXT_PUBLIC_APP_ENVIRONMENT ?? "local";
@@ -152,66 +155,67 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider className="h-dvh min-h-0 overflow-hidden md:h-screen">
-      <Sidebar className="border-0">
-        <SidebarHeader className="gap-0 px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar-foreground text-sidebar">
-              <Bird className="size-5" />
+      <Sidebar data-testid="desktop-app-sidebar" className="border-0">
+        <SidebarHeader className="gap-0 border-b border-sidebar-border px-4 py-5">
+          <div data-testid="desktop-farm-context" className="flex min-w-0 items-center gap-3">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground shadow-sm">
+              <PoultryProphetMark className="h-6 w-5" tone="light" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-sidebar-foreground">
+              <p className="truncate text-base font-semibold tracking-tight text-sidebar-foreground">
                 {farmName}
               </p>
-              <p className="truncate text-xs text-sidebar-foreground/60">
+              <p className="mt-0.5 truncate text-xs font-medium text-sidebar-foreground/60">
                 {user?.role === "MANAGER" ? t("role.manager") : t("role.handler")}
               </p>
             </div>
-            <ChevronsUpDown className="size-4 shrink-0 text-sidebar-foreground/70" aria-hidden="true" />
           </div>
         </SidebarHeader>
 
-        <SidebarContent>
-          <SidebarGroup className="px-3 py-3">
-            <SidebarGroupLabel className="h-7 px-2 text-xs font-medium text-sidebar-foreground/60">Navigation</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-1">
-                {NAV.filter((item) => item.managerOnly !== true || user?.role === "MANAGER").map(({ href, labelKey, icon: Icon }) => {
-                  const active = pathname === href || pathname.startsWith(`${href}/`);
-                  const badge = href === "/alerts" ? unread : 0;
-                  const label = t(labelKey);
+        <SidebarContent className="py-1">
+          <nav data-testid="desktop-primary-navigation" aria-label="Primary navigation" className="px-3 py-4">
+            <SidebarGroup className="p-0">
+              <SidebarGroupLabel className="h-7 px-3 text-xs font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/55">Navigation</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu className="gap-1.5">
+                  {NAV.filter((item) => item.managerOnly !== true || user?.role === "MANAGER").map(({ href, labelKey, icon: Icon }) => {
+                    const active = pathname === href || pathname.startsWith(`${href}/`);
+                    const badge = href === "/alerts" ? unread : 0;
+                    const label = t(labelKey);
 
-                  return (
-                    <SidebarMenuItem key={href}>
-                      <SidebarMenuButton
-                        render={<Link href={href} />}
-                        isActive={active}
-                        size="default"
-                        className="rounded-lg px-2.5"
-                        tooltip={label}
-                      >
-                        <Icon />
-                        <span>{label}</span>
-                      </SidebarMenuButton>
-                      {badge > 0 && (
-                        <SidebarMenuBadge>
-                          {badge > 99 ? "99+" : badge}
-                        </SidebarMenuBadge>
-                      )}
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+                    return (
+                      <SidebarMenuItem key={href}>
+                        <SidebarMenuButton
+                          render={<Link href={href} aria-current={active ? "page" : undefined} />}
+                          isActive={active}
+                          size="lg"
+                          className="min-h-11 rounded-xl px-3 text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground data-active:!bg-sidebar-primary/10 data-active:!font-semibold data-active:!text-sidebar-primary [&_svg]:size-[18px]"
+                          tooltip={label}
+                        >
+                          <Icon aria-hidden="true" />
+                          <span>{label}</span>
+                        </SidebarMenuButton>
+                        {badge > 0 && (
+                          <SidebarMenuBadge className="right-3 top-3 rounded-full bg-destructive px-1.5 text-xs font-bold text-destructive-foreground peer-data-active/menu-button:text-destructive-foreground">
+                            {badge > 99 ? "99+" : badge}
+                          </SidebarMenuBadge>
+                        )}
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </nav>
         </SidebarContent>
 
-        <SidebarFooter className="gap-1 px-3 py-3">
+        <SidebarFooter className="gap-1 border-t border-sidebar-border px-3 py-4">
           <DropdownMenu open={profileOpen} onOpenChange={setProfileOpen}>
             <DropdownMenuTrigger
               render={<Button type="button" variant="ghost" aria-label="Open account menu" />}
-              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left outline-hidden transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+              className="flex min-h-12 w-full items-center gap-3 rounded-xl bg-sidebar-accent/70 px-3 py-2.5 text-left outline-hidden transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             >
-              <Avatar className="size-9 shrink-0 ring-2 ring-sidebar-primary/30">
+              <Avatar className="size-9 shrink-0 ring-1 ring-sidebar-primary/30">
                 <AvatarFallback className="bg-sidebar-primary/20 text-xs font-bold text-sidebar-primary">
                   {initials(user?.fullName)}
                 </AvatarFallback>
@@ -357,7 +361,6 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
     ? [
         { href: "/dashboard", labelKey: "nav.home", icon: LayoutDashboard },
         { href: "/alerts", labelKey: "nav.alerts", icon: Bell },
-        { href: "/finance", labelKey: "nav.finance", icon: WalletCards },
         { href: "/operations", labelKey: "nav.analytics", icon: LineChart },
       ]
     : [
@@ -373,7 +376,7 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
         aria-label="Mobile navigation"
         className="fixed inset-x-0 bottom-0 z-40 bg-card/95 shadow-[var(--shadow-mobile-dock)] backdrop-blur md:hidden"
       >
-        <div className="safe-nav-pb mx-auto grid max-w-lg grid-cols-5 items-center gap-1 px-2 pt-2">
+        <div className={cn("safe-nav-pb mx-auto grid max-w-lg items-center gap-0.5 px-1 pt-2 min-[375px]:gap-1 min-[375px]:px-2", isManager ? "grid-cols-4" : "grid-cols-5")}>
           {items.slice(0, 2).map((item) => <MobileNavLink key={item.href} item={item} pathname={pathname} unread={item.href === "/alerts" ? unread : 0} />)}
 
           {!isManager && (
@@ -474,12 +477,12 @@ function MobileNavLink({ item, pathname, unread = 0 }: { item: MobileNavItem; pa
       href={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "relative flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
+        "relative flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-0.5 text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60",
         active ? "bg-primary/10 text-primary" : "hover:bg-muted hover:text-foreground"
       )}
     >
       <Icon className="size-5" aria-hidden="true" />
-      <span className="max-w-full truncate text-[11px] font-semibold">{t(item.labelKey)}</span>
+      <span className="max-w-full truncate text-[10px] font-semibold min-[375px]:text-[11px]">{t(item.labelKey)}</span>
       {unread > 0 && <span className="absolute right-2 top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-bold text-white">{unread > 99 ? "99+" : unread}</span>}
     </Link>
   );
