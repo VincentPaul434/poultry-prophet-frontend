@@ -2,18 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Package } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useBatches } from "@/hooks/use-batches";
 import { useFarmInputPage } from "@/hooks/use-operations";
 import { useAuth } from "@/lib/auth-context";
-import type { InputProductType } from "@/lib/types";
+import type { FarmInputLog, InputProductType } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { InventoryManagerPanel } from "@/components/inventory-manager-panel";
-import { PageHeader } from "@/components/page-header";
+import { PageContainer, PageHeader } from "@/components/page-header";
 
 const PRODUCT_TYPES: { value: InputProductType; label: string }[] = [
   { value: "FEED", label: "Feed" },
@@ -59,27 +59,27 @@ function ManagerInputsPage() {
   );
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-4">
-      <PageHeader icon={Package} title="Products" description="Manage inventory and review product history." />
+    <PageContainer className="space-y-5 sm:space-y-10">
+      <PageHeader variant="ledger" title="Products" description="Manage inventory and review product history." />
 
-      <nav data-testid="product-tabs" className="grid grid-cols-2 rounded-xl border bg-muted/30 p-1" role="tablist" aria-label="Product pages">
+      <nav data-testid="product-tabs" className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Product pages">
         <Button
-          variant="ghost"
+          variant="outline"
           type="button"
           role="tab"
           aria-selected={activeTab === "inventory"}
           onClick={() => setActiveTab("inventory")}
-          className={activeTab === "inventory" ? "min-h-11 rounded-lg bg-background text-sm font-semibold shadow-sm" : "min-h-11 rounded-lg text-sm font-semibold text-muted-foreground"}
+          className="min-h-11 shrink-0 rounded-full px-4 text-sm font-semibold shadow-none aria-selected:border-primary aria-selected:bg-primary aria-selected:text-primary-foreground aria-selected:hover:bg-primary/90"
         >
           Inventory
         </Button>
         <Button
-          variant="ghost"
+          variant="outline"
           type="button"
           role="tab"
           aria-selected={activeTab === "history"}
           onClick={() => setActiveTab("history")}
-          className={activeTab === "history" ? "min-h-11 rounded-lg bg-background text-sm font-semibold shadow-sm" : "min-h-11 rounded-lg text-sm font-semibold text-muted-foreground"}
+          className="min-h-11 shrink-0 rounded-full px-4 text-sm font-semibold shadow-none aria-selected:border-primary aria-selected:bg-primary aria-selected:text-primary-foreground aria-selected:hover:bg-primary/90"
         >
           History {logPage ? `(${logPage.totalItems})` : ""}
         </Button>
@@ -91,6 +91,8 @@ function ManagerInputsPage() {
         <section className="space-y-3" aria-label="Product history">
           <div className="flex flex-col gap-2 sm:flex-row">
             <NativeSelect
+              className="w-full sm:w-auto"
+              selectClassName="min-h-11 text-base md:text-sm"
               aria-label="Filter product records by batch"
               value={filterBatch}
               onChange={(event) => {
@@ -103,6 +105,8 @@ function ManagerInputsPage() {
               {batches?.map((batch) => <option key={batch.id} value={batch.id}>{batch.name}</option>)}
             </NativeSelect>
             <NativeSelect
+              className="w-full sm:w-auto"
+              selectClassName="min-h-11 text-base md:text-sm"
               aria-label="Filter product records by type"
               value={filterType}
               onChange={(event) => {
@@ -117,7 +121,27 @@ function ManagerInputsPage() {
 
           {isLoading && <p className="text-sm text-muted-foreground">Loading records…</p>}
           {!isLoading && logs.length > 0 && (
-            <div className="overflow-hidden rounded-xl border">
+            <div className="space-y-3 md:hidden">
+              {logs.map((log) => {
+                const typeLabel = PRODUCT_TYPES.find((item) => item.value === log.productType)?.label ?? log.productType;
+                return <article key={log.id} className="min-w-0 rounded-xl border bg-card p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0"><h3 className="break-words font-semibold">{log.brandName}</h3>{log.productName && <p className="break-words text-sm text-muted-foreground">{log.productName}</p>}{log.purpose && <p className="break-words text-sm text-muted-foreground">{log.purpose}</p>}</div>
+                    <ProductHistoryStatus status={log.inventoryStatus} />
+                  </div>
+                  <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                    <div><dt className="text-xs text-muted-foreground">Date</dt><dd>{new Date(log.recordedAt).toLocaleDateString()}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">Type</dt><dd>{typeLabel}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">Batch</dt><dd className="break-words">{log.batchId == null ? "Farm-wide" : batchNames.get(log.batchId) ?? `Batch ${log.batchId}`}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">Quantity</dt><dd className="break-words tabular-nums">{log.quantity != null ? `${Number(log.quantity).toLocaleString()} ${log.unit ?? "units"}` : "Not measured"}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">Cost</dt><dd className="tabular-nums">{log.calculatedCost != null ? `₱${Number(log.calculatedCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}</dd></div>
+                  </dl>
+                </article>;
+              })}
+            </div>
+          )}
+          {!isLoading && logs.length > 0 && (
+            <div className="hidden overflow-hidden rounded-xl border md:block">
               <Table>
                 <TableHeader className="bg-muted/40">
                   <TableRow>
@@ -133,14 +157,6 @@ function ManagerInputsPage() {
                 <TableBody>
                   {logs.map((log) => {
                     const typeLabel = PRODUCT_TYPES.find((item) => item.value === log.productType)?.label ?? log.productType;
-                    const status = log.inventoryStatus === "DEDUCTED"
-                      ? <Badge variant="secondary">Stock deducted</Badge>
-                      : log.inventoryStatus === "PENDING_STOCK_REVIEW"
-                        ? <Badge variant="secondary">Needs review</Badge>
-                        : log.inventoryStatus === "UNTRACKED"
-                          ? <Badge variant="outline">Not tracked</Badge>
-                          : <Badge variant="secondary">Recorded</Badge>;
-
                     return (
                       <TableRow key={log.id}>
                         <TableCell>{new Date(log.recordedAt).toLocaleDateString()}</TableCell>
@@ -157,7 +173,7 @@ function ManagerInputsPage() {
                         <TableCell className="text-right tabular-nums">
                           {log.calculatedCost != null ? `₱${Number(log.calculatedCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span className="text-muted-foreground">—</span>}
                         </TableCell>
-                        <TableCell className="text-right">{status}</TableCell>
+                        <TableCell className="text-right"><ProductHistoryStatus status={log.inventoryStatus} /></TableCell>
                       </TableRow>
                     );
                   })}
@@ -190,6 +206,13 @@ function ManagerInputsPage() {
           )}
         </section>
       )}
-    </div>
+    </PageContainer>
   );
+}
+
+function ProductHistoryStatus({ status }: { status: FarmInputLog["inventoryStatus"] }) {
+  if (status === "DEDUCTED") return <Badge variant="secondary">Stock deducted</Badge>;
+  if (status === "PENDING_STOCK_REVIEW") return <Badge variant="secondary">Needs review</Badge>;
+  if (status === "UNTRACKED") return <Badge variant="outline">Not tracked</Badge>;
+  return <Badge variant="secondary">Recorded</Badge>;
 }

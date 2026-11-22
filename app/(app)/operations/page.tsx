@@ -161,14 +161,14 @@ function OperationsPageContent() {
           <div className={cn("grid gap-3 sm:grid-cols-2", validation ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
             <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
               View
-              <NativeSelect className="h-12 rounded-xl border-0 bg-muted/45 px-3.5 font-medium shadow-none focus-visible:bg-card" value={scope} onChange={(event) => updateOverviewUrl(router, pathname, searchParams, { scope: event.target.value as AnalyticsScope, batchId: "" })}>
+              <NativeSelect className="w-full min-w-0" selectClassName="h-12 rounded-xl border-0 bg-muted/45 pl-3.5 pr-9 text-base font-medium shadow-none focus-visible:bg-card md:text-sm" value={scope} onChange={(event) => updateOverviewUrl(router, pathname, searchParams, { scope: event.target.value as AnalyticsScope, batchId: "" })}>
                 <option value="FARM">Whole farm</option>
                 <option value="BATCH">One batch</option>
               </NativeSelect>
             </label>
             <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
               Batch
-              <NativeSelect className="h-12 rounded-xl border-0 bg-muted/45 px-3.5 font-medium shadow-none focus-visible:bg-card" value={batchId} onChange={(event) => updateOverviewUrl(router, pathname, searchParams, { batchId: event.target.value })} disabled={scope !== "BATCH"}>
+              <NativeSelect className="w-full min-w-0" selectClassName="h-12 rounded-xl border-0 bg-muted/45 pl-3.5 pr-9 text-base font-medium shadow-none focus-visible:bg-card md:text-sm" value={batchId} onChange={(event) => updateOverviewUrl(router, pathname, searchParams, { batchId: event.target.value })} disabled={scope !== "BATCH"}>
                 <option value="">Choose a batch</option>
                 {batches.filter((batch) => batch.status !== "ARCHIVED" && !batch.name.startsWith("[TEST COPY]")).map((batch) => (
                   <option key={batch.id} value={batch.id}>{batch.name}</option>
@@ -177,7 +177,7 @@ function OperationsPageContent() {
             </label>
             {validation && <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
               Data
-              <NativeSelect className="h-12 rounded-xl border-0 bg-muted/45 px-3.5 font-medium shadow-none focus-visible:bg-card" value={origin} onChange={(event) => updateOverviewUrl(router, pathname, searchParams, { origin: event.target.value as OverviewFilters["origin"] })}>
+              <NativeSelect className="w-full min-w-0" selectClassName="h-12 rounded-xl border-0 bg-muted/45 pl-3.5 pr-9 text-base font-medium shadow-none focus-visible:bg-card md:text-sm" value={origin} onChange={(event) => updateOverviewUrl(router, pathname, searchParams, { origin: event.target.value as OverviewFilters["origin"] })}>
                 <option value="REAL">Real records</option>
                 <option value="SYNTHETIC">Test records</option>
                 <option value="ALL">All validation records</option>

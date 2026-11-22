@@ -83,13 +83,13 @@ export function InventoryManagerPanel() {
   }
 
   return <section className="space-y-4" aria-labelledby="farm-products-heading">
-    <div className="flex items-center justify-between gap-3">
+    <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h2 id="farm-products-heading" className="flex items-center gap-2 text-base font-semibold"><PackagePlus className="hidden size-4 text-primary sm:inline" /> Farm products and stock</h2>
-      <Button type="button" variant="outline" size="sm" onClick={() => setShowCreate(true)}><Plus className="size-4" /><span className="sm:hidden">Add</span><span className="hidden sm:inline">Add product</span></Button>
+      <Button type="button" size="sm" className="min-h-11 w-full rounded-md px-3 sm:w-auto sm:min-w-36" onClick={() => setShowCreate(true)}><Plus className="size-4" />Add product</Button>
     </div>
     <div className="space-y-4">
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Add farm product</DialogTitle>
             <DialogDescription>Add the product once, then track purchases and usage from the inventory table.</DialogDescription>
@@ -97,12 +97,12 @@ export function InventoryManagerPanel() {
           <form id="add-product-form" onSubmit={(event) => void submitProduct(event)} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5"><Label htmlFor="product-brand">Product / brand</Label><Input id="product-brand" required value={brand} onChange={(event) => setBrand(event.target.value)} placeholder="Baby Stag Booster" /></div>
-              <div className="space-y-1.5"><Label htmlFor="product-type">Type</Label><NativeSelect id="product-type" value={type} onChange={(event) => setType(event.target.value as InputProductType)}>{TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</NativeSelect></div>
+              <div className="space-y-1.5"><Label htmlFor="product-type">Type</Label><NativeSelect className="w-full" selectClassName="text-base md:text-sm" id="product-type" value={type} onChange={(event) => setType(event.target.value as InputProductType)}>{TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</NativeSelect></div>
               <div className="space-y-1.5"><Label htmlFor="product-unit">Inventory unit</Label><Input id="product-unit" required value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="sachet, pack, bottle" /></div>
               <div className="space-y-1.5"><Label htmlFor="product-opening-stock">Starting stock <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="product-opening-stock" type="number" min="0" step="0.001" value={opening} onChange={(event) => setOpening(event.target.value)} placeholder="0" /></div>
               <div className="space-y-1.5"><Label htmlFor="product-name">Generic name / variant <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="product-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Vitamin booster" /></div>
               <div className="space-y-1.5"><Label htmlFor="product-package">Package description <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id="product-package" value={packageDescription} onChange={(event) => setPackageDescription(event.target.value)} placeholder="100 sachets per box" /></div>
-              <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="product-opening-cost">Opening price per {unit.trim() || "unit"} <span className="font-normal text-muted-foreground">(required when starting stock is added)</span></Label><Input id="product-opening-cost" type="number" min="0" step="0.000001" value={openingCost} onChange={(event) => setOpeningCost(event.target.value)} placeholder="₱0.00" /></div>
+              <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="product-opening-cost" className="block leading-normal">Opening price per {unit.trim() || "unit"} <span className="font-normal text-muted-foreground">(required when starting stock is added)</span></Label><Input id="product-opening-cost" type="number" min="0" step="0.000001" value={openingCost} onChange={(event) => setOpeningCost(event.target.value)} placeholder="₱0.00" /></div>
             </div>
           </form>
           <DialogFooter>
@@ -112,7 +112,7 @@ export function InventoryManagerPanel() {
         </DialogContent>
       </Dialog>
       <Dialog open={showStock} onOpenChange={setShowStock}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add stock</DialogTitle>
             <DialogDescription>{selectedProduct ? `${selectedProduct.brandName} · ${Number(selectedProduct.stockOnHand).toLocaleString()} ${selectedProduct.stockUnit} on hand` : "Record a purchase for this product."}</DialogDescription>
@@ -132,7 +132,7 @@ export function InventoryManagerPanel() {
       {isLoading && <p className="text-sm text-muted-foreground">Loading products…</p>}
       {isError && <p role="alert" className="rounded-lg border border-warning-border bg-warning-muted/50 p-3 text-sm text-warning-ink">Could not load stock or check its demo history. Reconnect and try again.</p>}
       {!isLoading && !isError && activeProducts.some((item) => item.demoStockHistory === undefined) && <p className="rounded-lg border border-warning-border bg-warning-muted/50 p-3 text-sm text-warning-ink">Demo stock history is unavailable. Verify stock and prices before relying on them.</p>}
-      {!isLoading && !isError && activeProducts.length === 0 && <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">No products yet. Add the usual medicine, vitamins, or feed packs.</p>}
+      {!isLoading && !isError && activeProducts.length === 0 && <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground sm:flex sm:min-h-40 sm:items-center sm:justify-center">No products yet. Add the usual medicine, vitamins, or feed packs.</p>}
       {!isLoading && !isError && activeProducts.length > 0 && <div className="space-y-3 md:hidden">
         {activeProducts.map((item) => {
           const typeLabel = TYPES.find((productType) => productType.value === item.productType)?.label ?? item.productType;

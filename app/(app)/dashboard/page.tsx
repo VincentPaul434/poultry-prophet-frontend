@@ -41,7 +41,7 @@ import { FarmOnboardingBanner } from "@/components/farm-onboarding-banner";
 import { getLoggingHref, LOGGING_ORIGINS } from "@/lib/logging-navigation";
 import { useLocale } from "@/components/locale-provider";
 import { BatchMetricStrip, type BatchMetricStripItem } from "@/components/dashboard/batch-metric-strip";
-import { PageHeader } from "@/components/page-header";
+import { PageContainer, PageHeader } from "@/components/page-header";
 import { formatTaskDeadline } from "@/components/tasks/handler-task-ui";
 import { ArchivedBatchDeleteAction } from "@/components/archived-batch-delete-action";
 import {
@@ -115,13 +115,12 @@ export default function DashboardPage() {
   const openTaskCount = taskSummary?.open ?? null;
 
   return (
-    <div className="ledger-page mx-auto w-full max-w-6xl space-y-5 sm:space-y-10">
+    <PageContainer className="space-y-5 sm:space-y-10">
       <PageHeader
         data-testid="dashboard-sticky-header"
         title={t("dashboard.pageTitle")}
-        titleClassName="ledger-heading text-[2rem] leading-none sm:text-5xl"
+        variant="ledger"
         description={dashboardItems ? `${t("dashboard.activeBatches")}: ${activeBatchCount}` : t("dashboard.loadingBatches")}
-        className="gap-3 sm:items-end sm:gap-6"
         action={<CreateBatchDialog className="w-full sm:w-auto" />}
       />
 
@@ -248,7 +247,7 @@ export default function DashboardPage() {
       )}
 
       {isManager && archivedBatches && archivedBatches.length > 0 && <ArchivedBatches batches={archivedBatches} />}
-    </div>
+    </PageContainer>
   );
 }
 

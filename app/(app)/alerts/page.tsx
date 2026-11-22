@@ -23,7 +23,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PageHeader } from "@/components/page-header";
+import { PageContainer, PageHeader } from "@/components/page-header";
 
 const severityConfig: Record<Severity, { label: string; badgeClass: string; statClass: string }> = {
   INFO: { label: "Info", badgeClass: "border-primary/20 bg-primary/10 text-primary", statClass: "text-primary" },
@@ -70,22 +70,22 @@ export default function AlertsPage() {
   }
 
   if (needsSignIn) {
-    return <div className="mx-auto w-full max-w-5xl space-y-5">
-      <PageHeader title="Alerts" titleClassName="text-3xl sm:text-4xl" description="Batch alerts and incubation reminders." />
+    return <PageContainer className="space-y-5">
+      <PageHeader variant="ledger" title="Alerts" description="Batch alerts and incubation reminders." />
       <section aria-labelledby="alerts-sign-in-heading" className="rounded-xl border bg-card p-5 sm:p-6">
         <h2 id="alerts-sign-in-heading" className="text-base font-semibold">Sign in to view alerts</h2>
         <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">Sign in again to see current batch alerts and incubation reminders. Your offline records are still on this device.</p>
         <Link href="/login" className={cn(buttonVariants({ variant: "default" }), "mt-4 min-h-11")}>Sign in again</Link>
       </section>
-    </div>;
+    </PageContainer>;
   }
 
   return (
-    <div className="mx-auto flex h-full min-h-[calc(100dvh-8rem)] w-full max-w-5xl min-w-0 flex-col gap-4 sm:gap-5">
+    <PageContainer className="flex h-full min-h-[calc(100dvh-8rem)] min-w-0 flex-col gap-4 sm:gap-5">
       <div className="flex flex-col gap-4">
         <PageHeader
           title="Alerts"
-          titleClassName="text-3xl sm:text-4xl"
+          variant="ledger"
           description={showAll ? "Batch alerts and current incubation reminders." : "Unacknowledged batch alerts and incubation reminders."}
           className="sm:items-end"
         />
@@ -204,7 +204,7 @@ export default function AlertsPage() {
           <div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!alerts.data.hasPrevious} onClick={() => setPage((value) => Math.max(0, value - 1))}><ChevronLeft className="size-4" />Previous</Button><span>Page {alerts.data.page + 1} of {alerts.data.totalPages}</span><Button type="button" variant="outline" size="sm" disabled={!alerts.data.hasNext} onClick={() => setPage((value) => value + 1)}>Next<ChevronRight className="size-4" /></Button></div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 
