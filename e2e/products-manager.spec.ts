@@ -94,6 +94,34 @@ test("manager products separates inventory from handler-recorded usage history",
   await expect(page.getByRole("cell", { name: "October Hatch" })).toBeVisible();
 });
 
+test("refreshes an expired access token and retries adding a product after a 401", async ({ page }) => {
+  await mockManagerBackend(page);
+  let refreshes = 0;
+  const authorizations: string[] = [];
+  let created = 0;
+  await page.route("**/api/backend/auth/refresh", (route) => {
+    refreshes++;
+    return route.fulfill({ json: { ...manager, token: refreshes === 1 ? "expired-access" : "renewed-access" } });
+  });
+  await page.route("**/api/backend/inventory/products", (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const authorization = route.request().headers().authorization ?? "";
+    authorizations.push(authorization);
+    if (authorization !== "Bearer renewed-access") return route.fulfill({ status: 401, json: { message: "Authentication required" } });
+    created++;
+    return route.fulfill({ status: 201, json: { id: 10, brandName: "Test feed", productType: "MEDICINE", stockUnit: "sachet", stockOnHand: 0, active: true } });
+  });
+  await page.goto("/inputs");
+  await page.getByRole("button", { name: "Add product" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add farm product" });
+  await dialog.getByLabel("Product / brand").fill("Test feed");
+  await dialog.getByRole("button", { name: "Save product" }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => created).toBe(1);
+  expect(authorizations).toEqual(["Bearer expired-access", "Bearer renewed-access"]);
+  expect(refreshes).toBe(2);
+});
+
 test("labels only products with demo stock history on mobile", async ({ page }, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("mobile-chromium-"), "Mobile inventory cards.");
   await mockManagerBackend(page);

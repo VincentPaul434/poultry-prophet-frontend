@@ -2,7 +2,7 @@
 
 import { Suspense, use, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronDown, ClipboardList, Info } from "lucide-react";
+import { ChevronDown, ClipboardList, Info, SlidersHorizontal } from "lucide-react";
 import { useBatch } from "@/hooks/use-batches";
 import { useBatchEvents, useBatchEventPage, useBatchEventReport } from "@/hooks/use-events";
 import { useHandlers } from "@/hooks/use-reference";
@@ -14,11 +14,11 @@ import { PageBackLink } from "@/components/page-back-link";
 import { BatchLogSection, EventTimeline } from "@/components/batch-log-section";
 import { useLocale } from "@/components/locale-provider";
 import { Button } from "@/components/ui/button";
-import { EventTypeChart } from "@/components/event-type-chart";
 import { Card, CardContent } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
+import { TableEmptyState } from "@/components/table-empty-state";
 import type { BatchEvent, EventType } from "@/lib/types";
 
 const EVENT_TYPES: EventType[] = [
@@ -248,33 +248,44 @@ function ManagerEventReport({ batchId }: { batchId: string }) {
   const data = report.data;
   const rows = records.data?.items ?? [];
 
+  const activeFilterCount = Number(filters.period !== "30d") + Number(filters.type !== "ALL") + Number(filters.handlerId !== "ALL") + Number(filters.concern !== "ALL") + Number(filters.populationOnly);
+  const hasActiveFilters = activeFilterCount > 0 || Boolean(filters.search.trim());
+  const emptyTitle = filters.page > 0 ? "No events on this page" : hasActiveFilters ? "No matching events" : "No events in this period";
+  const emptyDescription = filters.page > 0 ? "Return to the first page to see available events." : hasActiveFilters ? "No events match these filters. Try a different search or change your filters." : "No events were recorded in the last 30 days.";
+  const emptyAction = filters.page > 0
+    ? <Button type="button" variant="outline" className="min-h-11" onClick={() => updateEventUrl(router, pathname, searchParams, { page: 0 })}>Go to first page</Button>
+    : hasActiveFilters ? <Button type="button" variant="outline" className="min-h-11" onClick={() => updateEventUrl(router, pathname, searchParams, { period: "30d", start: undefined, end: undefined, type: "ALL", handlerId: "ALL", concern: "ALL", search: "", populationOnly: false, page: 0 })}>Clear search and filters</Button> : undefined;
+
   const summaryMetrics = [
     { label: "Records", value: data?.totalRecords ?? "—" },
     { label: "Birds lost", value: data?.birdsLost ?? "—" },
     { label: "Health", value: data?.healthConcerns ?? "—", fullWidthOnMobile: true },
   ];
   return <div className="flex min-h-0 flex-1 flex-col space-y-4">
-    <div className="flex gap-2 border-b pb-2 lg:hidden"><Button type="button" variant={filters.view === "report" ? "default" : "outline"} onClick={() => updateEventUrl(router, pathname, searchParams, { view: "report" })}>Report</Button><Button type="button" variant={filters.view === "records" ? "default" : "outline"} onClick={() => updateEventUrl(router, pathname, searchParams, { view: "records" })}>Records</Button></div>
-    <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-card/30 p-3">
-      <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Report filters</span>
-      <NativeSelect aria-label="Filter event period" value={filters.period} onChange={(event) => updateEventUrl(router, pathname, searchParams, { period: event.target.value as EventFilterState["period"], page: 0 })}>
-        <option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="custom">Custom range</option>
-      </NativeSelect>
-      {filters.period === "custom" && <><Input aria-label="Event report start date" type="date" value={filters.start ?? ""} onChange={(event) => updateEventUrl(router, pathname, searchParams, { start: event.target.value, page: 0 })} className="min-h-10 w-auto" /><Input aria-label="Event report end date" type="date" value={filters.end ?? ""} onChange={(event) => updateEventUrl(router, pathname, searchParams, { end: event.target.value, page: 0 })} className="min-h-10 w-auto" /></>}
-      <NativeSelect aria-label="Filter event type" value={filters.type} onChange={(event) => updateEventUrl(router, pathname, searchParams, { type: event.target.value as EventFilterState["type"], page: 0 })}><option value="ALL">All event types</option>{EVENT_TYPES.map((type) => <option key={type} value={type}>{eventLabel(type)}</option>)}</NativeSelect>
-      <NativeSelect aria-label="Filter event handler" value={filters.handlerId} onChange={(event) => updateEventUrl(router, pathname, searchParams, { handlerId: event.target.value, page: 0 })}><option value="ALL">All handlers</option>{(handlers ?? []).map((handler) => <option key={handler.id} value={handler.id}>{handler.fullName}</option>)}</NativeSelect>
-      <NativeSelect aria-label="Filter concern level" value={filters.concern} onChange={(event) => updateEventUrl(router, pathname, searchParams, { concern: event.target.value as EventFilterState["concern"], page: 0 })}><option value="ALL">All concern levels</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="UNRATED">Unrated</option></NativeSelect>
-      <Input aria-label="Search events" placeholder="Search title or notes" value={filters.search} onChange={(event) => updateEventUrl(router, pathname, searchParams, { search: event.target.value, page: 0 })} className="min-w-48 flex-1" />
-      <Button type="button" variant={filters.populationOnly ? "default" : "outline"} onClick={() => updateEventUrl(router, pathname, searchParams, { populationOnly: !filters.populationOnly, page: 0 })}>Population only</Button>
+    <div className="flex items-center gap-2">
+      <Input aria-label="Search events" placeholder="Search title or notes" value={filters.search} onChange={(event) => updateEventUrl(router, pathname, searchParams, { search: event.target.value, page: 0 })} className="min-h-11 min-w-0 flex-1" />
+      <Dialog>
+        <DialogTrigger render={<Button type="button" variant="outline" className="min-h-11 shrink-0" />}><SlidersHorizontal aria-hidden="true" className="size-4" /> Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}</DialogTrigger>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+          <DialogHeader><DialogTitle>Filter events</DialogTitle><DialogDescription>Choose which events to show. Changes apply immediately.</DialogDescription></DialogHeader>
+          <div className="grid gap-4">
+            <label className="grid gap-2 text-sm font-medium">Period
+              <NativeSelect aria-label="Filter event period" className="w-full" selectClassName="min-h-11" value={filters.period} onChange={(event) => updateEventUrl(router, pathname, searchParams, { period: event.target.value as EventFilterState["period"], page: 0 })}><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="custom">Custom range</option></NativeSelect>
+            </label>
+            {filters.period === "custom" && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><label className="grid gap-2 text-sm font-medium">Start date<Input aria-label="Event report start date" type="date" value={filters.start ?? ""} onChange={(event) => updateEventUrl(router, pathname, searchParams, { start: event.target.value, page: 0 })} className="min-h-11" /></label><label className="grid gap-2 text-sm font-medium">End date<Input aria-label="Event report end date" type="date" value={filters.end ?? ""} onChange={(event) => updateEventUrl(router, pathname, searchParams, { end: event.target.value, page: 0 })} className="min-h-11" /></label></div>}
+            <label className="grid gap-2 text-sm font-medium">Event type<NativeSelect aria-label="Filter event type" className="w-full" selectClassName="min-h-11" value={filters.type} onChange={(event) => updateEventUrl(router, pathname, searchParams, { type: event.target.value as EventFilterState["type"], page: 0 })}><option value="ALL">All event types</option>{EVENT_TYPES.map((type) => <option key={type} value={type}>{eventLabel(type)}</option>)}</NativeSelect></label>
+            <label className="grid gap-2 text-sm font-medium">Handler<NativeSelect aria-label="Filter event handler" className="w-full" selectClassName="min-h-11" value={filters.handlerId} onChange={(event) => updateEventUrl(router, pathname, searchParams, { handlerId: event.target.value, page: 0 })}><option value="ALL">All handlers</option>{(handlers ?? []).map((handler) => <option key={handler.id} value={handler.id}>{handler.fullName}</option>)}</NativeSelect></label>
+            <label className="grid gap-2 text-sm font-medium">Concern level<NativeSelect aria-label="Filter concern level" className="w-full" selectClassName="min-h-11" value={filters.concern} onChange={(event) => updateEventUrl(router, pathname, searchParams, { concern: event.target.value as EventFilterState["concern"], page: 0 })}><option value="ALL">All concern levels</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="UNRATED">Unrated</option></NativeSelect></label>
+            <label className="flex min-h-11 items-center gap-3 text-sm font-medium"><input type="checkbox" checked={filters.populationOnly} onChange={(event) => updateEventUrl(router, pathname, searchParams, { populationOnly: event.target.checked, page: 0 })} className="size-4 accent-primary" /> Population only</label>
+          </div>
+          <DialogFooter><Button type="button" variant="outline" onClick={() => updateEventUrl(router, pathname, searchParams, { period: "30d", start: undefined, end: undefined, type: "ALL", handlerId: "ALL", concern: "ALL", populationOnly: false, page: 0 })}>Reset filters</Button><DialogClose render={<Button type="button" />}>Done</DialogClose></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(18rem,0.8fr)_minmax(0,1.5fr)]">
-      <div className={filters.view === "records" ? "hidden lg:block" : "min-h-0 space-y-4 pr-1"}>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{summaryMetrics.map(({ label, value, fullWidthOnMobile }) => <Card key={label} className={fullWidthOnMobile ? "col-span-2 shadow-none sm:col-span-1" : "shadow-none"}><CardContent className="p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-bold tabular-nums">{value}</p></CardContent></Card>)}</div>
-        <EventTypeChart distribution={data?.categoryDistribution ?? {}} selected={filters.type} loading={report.isLoading} error={report.isError} onRetry={() => void report.refetch()} onSelect={(type) => updateEventUrl(router, pathname, searchParams, { type: type as EventFilterState["type"], page: 0, view: "records" })} />
-      </div>
-      <div className={filters.view === "report" ? "hidden lg:flex lg:min-h-0 lg:min-w-0 lg:flex-col" : "flex min-h-0 min-w-0 flex-col"}>
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">{summaryMetrics.map(({ label, value, fullWidthOnMobile }) => <Card key={label} className={fullWidthOnMobile ? "col-span-2 py-0 shadow-none sm:col-span-1" : "py-0 shadow-none"}><CardContent className="gap-0 p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-xl font-bold tabular-nums">{value}</p></CardContent></Card>)}</div>
+      <div className="flex min-h-0 min-w-0 flex-col rounded-2xl border bg-card p-4">
         <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="font-semibold">{filters.type === "ALL" ? "Event records" : eventLabel(filters.type)}</h2>{filters.type !== "ALL" && <Button size="sm" variant="outline" onClick={() => updateEventUrl(router, pathname, searchParams, { type: "ALL", page: 0 })}>Clear type filter</Button>}</div>
-        {records.isLoading && !records.data ? <p role="status" className="py-8 text-center text-sm text-muted-foreground">Loading events…</p> : records.isError && !records.data ? <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning-border bg-warning-muted/50 p-4 text-sm text-warning-ink"><span>Could not load events.</span><Button type="button" size="sm" variant="outline" onClick={() => void records.refetch()}>Try again</Button></div> : rows.length === 0 ? <p className="py-8 text-center text-sm text-muted-foreground">No events match these filters.</p> : <>
+        {records.isLoading && !records.data ? <p role="status" className="py-8 text-center text-sm text-muted-foreground">Loading events…</p> : records.isError && !records.data ? <div role="alert" className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning-border bg-warning-muted/50 p-4 text-sm text-warning-ink"><span>Could not load events.</span><Button type="button" size="sm" variant="outline" onClick={() => void records.refetch()}>Try again</Button></div> : rows.length === 0 ? <TableEmptyState icon={<ClipboardList className="size-5" />} title={emptyTitle} description={emptyDescription} action={emptyAction} /> : <>
           <p className="mt-3 text-xs text-muted-foreground">Select an event for details. Scroll sideways to see all columns.</p>
           <div role="region" aria-label="Event records table" tabIndex={0} className="mt-2 min-h-64 max-h-[60dvh] min-w-0 flex-1 overflow-auto rounded-xl border bg-card focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60 lg:max-h-none">
             <table className="w-full min-w-[38rem] text-left text-sm">
@@ -285,7 +296,6 @@ function ManagerEventReport({ batchId }: { batchId: string }) {
         </>}
         {records.data && <div className="mt-3 flex shrink-0 items-center justify-between border-t pt-3 text-sm text-muted-foreground"><span>{records.data.totalItems} records</span><div className="flex items-center gap-2"><Button size="sm" variant="outline" disabled={!records.data.hasPrevious} onClick={() => updateEventUrl(router, pathname, searchParams, { page: Math.max(0, filters.page - 1) })}>Previous</Button><span>{records.data.page + 1}/{Math.max(1, records.data.totalPages)}</span><Button size="sm" variant="outline" disabled={!records.data.hasNext} onClick={() => updateEventUrl(router, pathname, searchParams, { page: filters.page + 1 })}>Next</Button></div></div>}
       </div>
-    </div>
     <Dialog open={selected != null} onOpenChange={(open) => !open && setSelected(null)}><DialogContent><DialogHeader><DialogTitle>{selected?.title ?? "Event details"}</DialogTitle><DialogDescription>Details recorded for this batch event.</DialogDescription></DialogHeader>{selected && <div className="space-y-2 text-sm"><p><strong>Type:</strong> {selected.eventType.replaceAll("_", " ")}</p><p><strong>Date:</strong> {selected.eventDate}</p><p><strong>Handler:</strong> {selected.handlerName}</p><p><strong>Concern:</strong> {selected.concernLevel ?? "UNRATED"} {selected.severityLabel ? `(${selected.severityLabel})` : ""}</p><p><strong>Affected:</strong> {selected.affectedCount}</p>{selected.details && <p><strong>Notes:</strong> {selected.details}</p>}</div>}</DialogContent></Dialog>
   </div>;
 }

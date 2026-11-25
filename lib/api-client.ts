@@ -5,7 +5,7 @@
 //   `error` is always a predictable shape.
 
 import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig, type InternalAxiosRequestConfig } from "axios";
-import { getAuthRevision, getSessionScope, getToken, getStoredUser as getStoredIdentity, isAuthRequired, isRefreshUncertain, markAuthRequired, markRefreshUncertain, saveSession, type ClientAuthResponse } from "./auth-storage";
+import { clearRefreshUncertain, getAuthRevision, getSessionScope, getToken, getStoredUser as getStoredIdentity, isAuthRequired, isRefreshUncertain, markAuthRequired, markRefreshUncertain, saveSession, type ClientAuthResponse } from "./auth-storage";
 import { AuthLockError, resetAbandonedLease, withIndexedDbAuthLock } from "./auth-lock";
 
 // Browser requests stay on this origin. The Next.js route handler forwards
@@ -123,7 +123,10 @@ export async function refreshAccessToken() {
         return response.data.token;
       } catch (error) {
         if (getSessionScope() !== scope) return null;
-        if (axios.isAxiosError(error) && (error.response?.status === 400 || error.response?.status === 401)) markAuthRequired();
+        // Only the same-origin proxy can confirm that no rotation was sent.
+        // An ambiguous network failure must remain blocked to prevent replay.
+        if (axios.isAxiosError(error) && error.response?.headers?.["x-pp-refresh-not-started"] === "1") clearRefreshUncertain();
+        else if (axios.isAxiosError(error) && (error.response?.status === 400 || error.response?.status === 401)) markAuthRequired();
         return null;
       }
     };
@@ -202,7 +205,7 @@ apiClient.interceptors.response.use(
           }
           if (isAuthRequired()) return Promise.reject(new ApiError("Sign in again to sync your records.", 401));
           if (getSessionScope()) {
-            return Promise.reject(new ApiError("Authentication service unavailable. Please sign in again if the problem persists.", 503));
+            return Promise.reject(new ApiError("Authentication service is temporarily unavailable. Please try again.", 503));
           }
         }
 

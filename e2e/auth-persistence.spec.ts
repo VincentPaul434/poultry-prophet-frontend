@@ -1,4 +1,7 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { chromium, expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve, sep } from "node:path";
 
 const user = { userId: 7, email: "manager@example.test", fullName: "Farm Manager", role: "MANAGER", farmId: 1 };
 test.use({ serviceWorkers: "block" });
@@ -28,7 +31,7 @@ async function mockBackend(context: BrowserContext, onRefresh: (cookie: string) 
     const path = new URL(route.request().url()).pathname.replace("/api/backend", "");
     if (path === "/auth/refresh") {
       const nextCookie = await onRefresh(route.request().headers().cookie ?? "");
-      return route.fulfill({ json: { ...user, token: `access-${nextCookie}` }, headers: { "set-cookie": `pp_refresh=${nextCookie}; Path=/api/backend; HttpOnly; SameSite=Strict` } });
+      return route.fulfill({ json: { ...user, token: `access-${nextCookie}` }, headers: { "set-cookie": `pp_refresh=${nextCookie}; Path=/api/backend; HttpOnly; SameSite=Strict; Max-Age=5184000` } });
     }
     if (path === "/auth/logout") return route.abort();
     if (path === "/farm") return route.fulfill({ json: { id: 1, name: "Fixture Farm", location: "Test", description: null } });
@@ -40,6 +43,37 @@ async function mockBackend(context: BrowserContext, onRefresh: (cookie: string) 
     return route.fulfill({ json: {} });
   });
 }
+
+test("restores a persistent session after closing and reopening the browser", async ({ baseURL, browserName }) => {
+  test.skip(browserName !== "chromium", "Persistent browser restart coverage uses Chromium.");
+  if (!baseURL) throw new Error("baseURL required");
+  const profileDir = await mkdtemp(join(tmpdir(), "poultry-auth-restart-"));
+  let persistent: BrowserContext | undefined;
+  const seen: string[] = [];
+  const onRefresh = async (cookie: string) => { seen.push(cookie); return `rotation-${seen.length}`; };
+  try {
+    persistent = await chromium.launchPersistentContext(profileDir, { headless: true });
+    await mockBackend(persistent, onRefresh);
+    await seedSession(persistent, baseURL);
+    await persistent.addCookies([{ name: "pp_refresh", value: "first-refresh", domain: new URL(baseURL).hostname, path: "/api/backend", httpOnly: true, sameSite: "Strict", expires: Math.floor(Date.now() / 1000) + 86_400 }]);
+    await persistent.pages()[0].goto(`${baseURL}/settings`);
+    await expect(persistent.pages()[0].getByRole("heading", { name: "Settings", exact: true, level: 1 })).toBeVisible();
+    await expect.poll(() => seen.length).toBe(1);
+    await persistent.close();
+    persistent = undefined;
+    persistent = await chromium.launchPersistentContext(profileDir, { headless: true });
+    await mockBackend(persistent, onRefresh);
+    const reopened = persistent.pages()[0];
+    await reopened.goto(`${baseURL}/settings`);
+    await expect(reopened.getByRole("heading", { name: "Settings", exact: true, level: 1 })).toBeVisible();
+    await expect.poll(() => seen.length).toBe(2);
+    expect(seen).toEqual(["pp_refresh=first-refresh", "pp_refresh=rotation-1"]);
+    expect(await reopened.evaluate(() => JSON.parse(localStorage.getItem("pp_auth_session") ?? "null")?.authRequired)).not.toBe(true);
+  } finally {
+    await persistent?.close();
+    if (resolve(profileDir).startsWith(`${resolve(tmpdir())}${sep}`)) await rm(profileDir, { recursive: true, force: true });
+  }
+});
 
 test("a second tab waits for the active credential refresh", async ({ page, context, baseURL }) => {
   if (!baseURL) throw new Error("baseURL required");
@@ -184,6 +218,67 @@ test("an uncertain refresh asks for sign-in instead of leaving a ghost session",
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pp_auth_session") ?? "null")?.authRequired)).toBe(true);
   await expect(page.getByText("Sign in to load farm", { exact: true }).first()).toBeVisible();
   expect(refreshCalls).toBe(0);
+});
+
+test("a refresh confirmed not sent can recover after a temporary outage", async ({ page, context, baseURL }) => {
+  if (!baseURL) throw new Error("baseURL required");
+  await mockBackend(context, async () => "recovered-refresh");
+  await seedSession(context, baseURL);
+  let refreshCalls = 0;
+  await context.route("**/api/backend/auth/refresh", (route) => {
+    refreshCalls++;
+    if (refreshCalls === 1) return route.fulfill({ status: 503, headers: { "x-pp-refresh-not-started": "1" }, json: { message: "Backend not ready" } });
+    return route.fulfill({ json: { ...user, token: "recovered-access" }, headers: { "set-cookie": "pp_refresh=recovered-refresh; Path=/api/backend; HttpOnly; SameSite=Strict" } });
+  });
+  await page.goto("/settings");
+  await expect.poll(() => refreshCalls).toBe(1);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pp_auth_session") ?? "null")?.refreshUncertain ?? false)).toBe(false);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect.poll(() => refreshCalls).toBe(2);
+  await expect(page.getByRole("heading", { name: "Settings", exact: true, level: 1 })).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("pp_auth_session") ?? "null")?.authRequired)).not.toBe(true);
+  expect((await context.cookies()).find(cookie => cookie.name === "pp_refresh")?.value).toBe("recovered-refresh");
+});
+
+test("a protected request retries with the restored token after a safe refresh outage", async ({ page, context, baseURL }) => {
+  if (!baseURL) throw new Error("baseURL required");
+  await mockBackend(context, async () => "recovered-refresh");
+  await seedSession(context, baseURL);
+  let refreshCalls = 0;
+  const authorizations: string[] = [];
+  await context.route("**/api/backend/auth/refresh", (route) => {
+    refreshCalls++;
+    if (refreshCalls === 1) return route.fulfill({ status: 503, headers: { "x-pp-refresh-not-started": "1" }, json: { message: "Backend not ready" } });
+    return route.fulfill({ json: { ...user, token: "recovered-access" }, headers: { "set-cookie": "pp_refresh=recovered-refresh; Path=/api/backend; HttpOnly; SameSite=Strict" } });
+  });
+  await context.route("**/api/backend/farm", (route) => {
+    const authorization = route.request().headers().authorization ?? "";
+    authorizations.push(authorization);
+    return authorization === "Bearer recovered-access"
+      ? route.fulfill({ json: { id: 1, name: "Fixture Farm", location: "Test", description: null } })
+      : route.fulfill({ status: 401, json: { message: "Unauthorized" } });
+  });
+  await page.goto("/settings");
+  await expect.poll(() => refreshCalls).toBe(2);
+  await expect.poll(() => authorizations).toContain("Bearer recovered-access");
+  await expect(page.getByText("Fixture Farm").first()).toBeVisible();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("pp_auth_session") ?? "null")?.authRequired)).not.toBe(true);
+});
+
+test("an ambiguous refresh failure is not replayed", async ({ page, context, baseURL }) => {
+  if (!baseURL) throw new Error("baseURL required");
+  await mockBackend(context, async () => "unused");
+  await seedSession(context, baseURL);
+  let refreshCalls = 0;
+  await context.route("**/api/backend/auth/refresh", (route) => {
+    refreshCalls++;
+    return route.fulfill({ status: 502, json: { message: "The refresh outcome is unknown" } });
+  });
+  await page.goto("/settings");
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pp_auth_session") ?? "null")?.refreshUncertain)).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("pp_auth_session") ?? "null")?.authRequired)).toBe(true);
+  expect(refreshCalls).toBe(1);
 });
 
 test("a rejected refresh marks the shared profile without signing out other tabs", async ({ page, context, baseURL }) => {

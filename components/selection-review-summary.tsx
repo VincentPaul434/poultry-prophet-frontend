@@ -41,7 +41,7 @@ export function SelectionReviewSummary({ batch }: { batch: Batch }) {
         <SummaryMetric label="Population" value={populationDisplay} />
         <SummaryMetric label="Total deaths" value={String(data.population.totalDeaths)} />
         <EditableSexCompositionMetric batch={batch} fallback={data.sexComposition} readOnly={batch.status === "ARCHIVED"} />
-        <SummaryMetric label="Batch expenses" value={cost?.value ?? "—"} detail={expenseDetail} title={cost?.title} warning={cost?.warning} />
+        <SummaryMetric label="Batch expenses" value={!cost || cost.value === "—" ? "N/A" : cost.value} detail={expenseDetail} title={cost?.title} warning={cost?.warning} />
       </div>
       {data.population.reconciliationRequired && <div role="alert" className="flex items-start gap-2 rounded-xl border border-warning-border bg-warning-muted px-3 py-2.5 text-xs text-warning-ink"><TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" /><p>Population records need review before the current count can be verified.</p></div>}
       <div className="flex flex-wrap gap-2 text-xs"><span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1.5"><CalendarDays className="size-3.5 text-muted-foreground" />{formatDate(data.periodStart)} – {formatDate(data.periodEnd)}</span><span className="inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-1.5"><ClipboardCheck className="size-3.5 text-muted-foreground" />{otherChanges} other population changes</span></div>

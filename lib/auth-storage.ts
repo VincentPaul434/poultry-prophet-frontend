@@ -55,6 +55,13 @@ export function markRefreshUncertain() {
   const current = session();
   if (current) window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ ...current, refreshUncertain: true }));
 }
+export function clearRefreshUncertain() {
+  const current = session();
+  if (!current?.refreshUncertain) return;
+  const updated = { ...current };
+  delete updated.refreshUncertain;
+  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(updated));
+}
 export function getAuthRevision() { return typeof window === "undefined" ? null : window.localStorage.getItem(REVISION_KEY); }
 export function saveSession(auth: ClientAuthResponse, preserveSession = false): StoredUser {
   const user: StoredUser = { userId: auth.userId, email: auth.email, fullName: auth.fullName, role: auth.role, farmId: auth.farmId };

@@ -1,5 +1,9 @@
 import type { NextRequest } from "next/server";
 
+// Allow the readiness probe and upstream timeout to finish before the host
+// terminates the function, including on Vercel plans without Fluid Compute.
+export const maxDuration = 60;
+
 type RouteContext = {
   params: Promise<{ path: string[] }>;
 };
@@ -18,7 +22,9 @@ const HOP_BY_HOP_HEADERS = [
 ];
 
 const UPSTREAM_TIMEOUT_MS = 30_000;
+const READINESS_TIMEOUT_MS = 15_000;
 const REFRESH_COOKIE = "pp_refresh";
+const REFRESH_NOT_STARTED = "x-pp-refresh-not-started";
 
 function firstForwardedValue(value: string | null) {
   return value?.split(",", 1)[0]?.trim() || null;
@@ -79,6 +85,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
   const errorHeaders: Record<string, string> = { "x-request-id": requestId, "cache-control": "no-store" };
   const path = (await params).path;
   const sameOrigin = hasExactRequestOrigin(request);
+  const refreshRequest = request.method === "POST" && path.length === 2 && path[0] === "auth" && path[1] === "refresh";
   // Clear the browser cookie even if backend configuration is unavailable.
   if (request.method === "POST" && path.length === 2 && path[0] === "auth" && path[1] === "logout" && sameOrigin) {
     errorHeaders["set-cookie"] = cookieHeader(request, "", 0);
@@ -87,6 +94,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
     process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
 
   if (!backendApiUrl) {
+    if (refreshRequest) errorHeaders[REFRESH_NOT_STARTED] = "1";
     return Response.json(
       {
         status: 500,
@@ -112,6 +120,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
     base.hash = "";
     target = new URL(`${pathname}${request.nextUrl.search}`, base);
   } catch {
+    if (refreshRequest) errorHeaders[REFRESH_NOT_STARTED] = "1";
     return Response.json(
       {
         status: 500,
@@ -123,6 +132,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
   }
 
   if (!target.pathname.startsWith(apiBasePath)) {
+    if (refreshRequest) errorHeaders[REFRESH_NOT_STARTED] = "1";
     return Response.json(
       { status: 400, error: "Bad Request", message: "Invalid backend API path." },
       { status: 400, headers: errorHeaders }
@@ -142,6 +152,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
     (request.method === "PUT" && relativePath === "account/profile");
   if (changesCredentials) {
     if (!sameOrigin) {
+      if (refresh) errorHeaders[REFRESH_NOT_STARTED] = "1";
       return Response.json(
         { status: 403, error: "Forbidden", message: "Invalid request origin." },
         { status: 403, headers: errorHeaders }
@@ -163,6 +174,17 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
     }
     if (logout && !credential) {
       return new Response(null, { status: 204, headers: { ...errorHeaders, "set-cookie": cookieHeader(request, "", 0) } });
+    }
+    if (refresh) {
+      // Probe before sending a one-time credential. A sleeping or unavailable
+      // backend can then be retried without risking refresh-token reuse.
+      const readiness = new URL(`${apiBasePath}health/ready`, target.origin);
+      try {
+        const response = await fetch(readiness, { cache: "no-store", signal: AbortSignal.timeout(READINESS_TIMEOUT_MS) });
+        if (!response.ok) throw new Error("Backend not ready");
+      } catch {
+        return Response.json({ status: 503, error: "Service Unavailable", message: "The backend is not ready. Please try again." }, { status: 503, headers: { ...errorHeaders, [REFRESH_NOT_STARTED]: "1" } });
+      }
     }
     const body = refresh || logout
       ? JSON.stringify({ refreshToken: credential })
@@ -191,6 +213,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
 
     const responseHeaders = new Headers(upstream.headers);
     for (const header of HOP_BY_HOP_HEADERS) responseHeaders.delete(header);
+    responseHeaders.delete(REFRESH_NOT_STARTED);
     responseHeaders.delete("set-cookie");
     responseHeaders.set("cache-control", "no-store");
     responseHeaders.set("x-request-id", requestId);

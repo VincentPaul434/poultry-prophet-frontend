@@ -7,7 +7,8 @@ import { toast } from "sonner";
 import { useBatchOverview, useUpdateBatchDerbyDate } from "@/hooks/use-batches";
 import { useAcknowledgeAlert } from "@/hooks/use-analytics";
 import { useBatchEvents } from "@/hooks/use-events";
-import { useFarmInputPage } from "@/hooks/use-operations";
+import { useFarmInputPage, useSexComposition } from "@/hooks/use-operations";
+import { useSelectionReviewPreview } from "@/hooks/use-selection-review";
 import { useSelectionSessions } from "@/hooks/use-selection-sessions";
 import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/components/locale-provider";
@@ -120,6 +121,9 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
   const { isManager } = useAuth();
   const { t } = useLocale();
   const { data, isLoading, isError, error } = useBatchOverview(batchId);
+  // Start summary requests alongside the overview instead of waiting for it to render.
+  useSelectionReviewPreview(batchId);
+  useSexComposition(Number(batchId), Number.isInteger(Number(batchId)) && Number(batchId) > 0);
   const selectionSessions = useSelectionSessions(batchId, isManager && data?.batch.status !== "ARCHIVED");
   const { data: recentEvents } = useBatchEvents(batchId, 3);
   const [productsOpen, setProductsOpen] = useState(false);
