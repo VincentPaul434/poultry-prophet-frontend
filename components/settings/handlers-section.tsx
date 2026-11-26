@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 // Farm Handlers content (manager only): the handler roster plus the create and
 // invite dialogs. Route access is guarded by the SettingsDetailShell.
 
@@ -31,6 +33,7 @@ import {
 import { initials } from "./sections";
 
 export function HandlersSection() {
+  const { display: displayText } = useDisplayLocale();
   const { user } = useAuth();
   const handlers = useHandlers(true);
   const farm = useFarm(user?.farmId != null);
@@ -40,8 +43,8 @@ export function HandlersSection() {
     <div className="space-y-5">
       <div className="flex flex-col gap-3 rounded-2xl border bg-card p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
-          <p className="text-base font-semibold">Handlers at {farmName}</p>
-          <p className="mt-1 text-sm text-muted-foreground">Add handlers and give them access to daily farm work.</p>
+          <p className="text-base font-semibold">{displayText("Handlers at")}{" "}{farmName}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{displayText("Add handlers and give them access to daily farm work.")}</p>
         </div>
         <AddHandlerDialog />
       </div>
@@ -55,8 +58,8 @@ export function HandlersSection() {
         {handlers.data && handlers.data.length === 0 && (
           <div className="py-10 text-center space-y-2">
             <p className="text-3xl">🤲</p>
-            <p className="text-sm font-semibold">No handlers yet</p>
-            <p className="text-xs text-muted-foreground">Add a handler to assign them to batches.</p>
+            <p className="text-sm font-semibold">{displayText("No handlers yet")}</p>
+            <p className="text-xs text-muted-foreground">{displayText("Add a handler to assign them to batches.")}</p>
           </div>
         )}
         {handlers.data && handlers.data.length > 0 && (
@@ -80,8 +83,7 @@ export function HandlersSection() {
                   <p className="text-xs text-muted-foreground truncate">{farmName}</p>
                 </div>
                 <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary uppercase tracking-wide">
-                  Handler
-                </span>
+                  {displayText("Handler")}</span>
               </div>
             ))}
           </div>
@@ -94,6 +96,7 @@ export function HandlersSection() {
 // ─── Add handler dialog (direct creation) ────────────────────────────────────
 
 function AddHandlerDialog() {
+  const { display: displayText } = useDisplayLocale();
   const createHandler = useCreateHandler();
   const [open, setOpen] = useState(false);
   const [fullName, setFullName] = useState("");
@@ -121,64 +124,60 @@ function AddHandlerDialog() {
         render={
           <Button size="sm" className="h-11 w-full rounded-xl px-4 font-semibold sm:w-auto">
             <UserPlus className="size-4" />
-            Add Handler
-          </Button>
+            {displayText("Add Handler")}</Button>
         }
       />
       <DialogContent className="w-[calc(100%-2rem)] sm:max-w-lg">
         <form onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>Add a handler</DialogTitle>
+            <DialogTitle>{displayText("Add a handler")}</DialogTitle>
             <DialogDescription>
-              Create a handler account for someone on your farm. Share their login details with them.
-            </DialogDescription>
+              {displayText("Create a handler account for someone on your farm. Share their login details with them.")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-5 py-5">
             <div className="space-y-2">
-              <Label htmlFor="h-name" className="font-semibold">Full name</Label>
+              <Label htmlFor="h-name" className="font-semibold">{displayText("Full name")}</Label>
               <Input
                 id="h-name"
                 required
-                placeholder="e.g. Pedro Santos"
+                placeholder={displayText("e.g. Pedro Santos")}
                 className="h-11 rounded-xl"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="h-email" className="font-semibold">Email</Label>
+              <Label htmlFor="h-email" className="font-semibold">{displayText("Email")}</Label>
               <Input
                 id="h-email"
                 type="email"
                 required
-                placeholder="handler@example.com"
+                placeholder={displayText("handler@example.com")}
                 className="h-11 rounded-xl"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="h-pass" className="font-semibold">Password</Label>
+              <Label htmlFor="h-pass" className="font-semibold">{displayText("Password")}</Label>
               <PasswordInput
                 id="h-pass"
                 required
                 minLength={8}
-                placeholder="At least 8 characters"
+                placeholder={displayText("At least 8 characters")}
                 className="h-11 rounded-xl"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">Share this password with the handler so they can sign in.</p>
+              <p className="text-xs text-muted-foreground">{displayText("Share this password with the handler so they can sign in.")}</p>
             </div>
           </div>
           <DialogFooter>
             <DialogClose render={<Button type="button" variant="outline" className="rounded-xl" />}>
-              Cancel
-            </DialogClose>
+              {displayText("Cancel")}</DialogClose>
             <Button type="submit" className="rounded-xl px-5 font-semibold" disabled={submitting}>
               {submitting && <Loader2 className="size-4 animate-spin" />}
-              Add handler
-            </Button>
+              {displayText("Add handler")}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

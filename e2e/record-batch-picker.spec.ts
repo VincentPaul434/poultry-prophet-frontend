@@ -354,10 +354,15 @@ test.describe("Record batch picker", () => {
     await page.keyboard.press("Escape");
 
     await page.getByRole("button", { name: "Feed or medicine used" }).click();
-    await expect(dialog.getByLabel("Product from farm stock")).toBeVisible();
-    await expect(dialog.getByLabel("Product / brand")).toBeVisible();
+    const product = dialog.getByLabel("Product from farm stock");
+    await expect(product).toBeVisible();
+    await expect(product.locator('option[value="1"]')).toHaveText(/Fixture medicine/);
+    await product.focus();
+    await page.keyboard.press("ArrowDown");
+    await expect(product).toHaveValue("1");
+    await expect(dialog.getByRole("textbox", { name: "Product / brand" })).toHaveCount(0);
     await expect(dialog.getByLabel(/Units used/)).toBeVisible();
-    await expect(dialog.getByRole("group", { name: "Product type" })).toBeVisible();
+    await expect(dialog.getByRole("group", { name: "Product type" })).toHaveCount(0);
     await expect(dialog.getByRole("group", { name: "Applied to" })).toBeVisible();
     await dialog.getByRole("button", { name: "Some", exact: true }).click();
     await expect(dialog.getByLabel("Number of birds treated")).toBeVisible();

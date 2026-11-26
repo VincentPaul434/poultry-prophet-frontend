@@ -5,7 +5,7 @@
 //   `error` is always a predictable shape.
 
 import axios, { AxiosError, type AxiosInstance, type AxiosRequestConfig, type InternalAxiosRequestConfig } from "axios";
-import { getAuthRevision, getSessionScope, getToken, getStoredUser as getStoredIdentity, isAuthRequired, isRefreshUncertain, markAuthRequired, markRefreshUncertain, saveSession, type ClientAuthResponse } from "./auth-storage";
+import { clearRefreshUncertain, getAuthRevision, getSessionScope, getToken, getStoredUser as getStoredIdentity, isAuthRequired, isRefreshUncertain, markAuthRequired, markRefreshUncertain, saveSession, type ClientAuthResponse } from "./auth-storage";
 import { AuthLockError, resetAbandonedLease, withIndexedDbAuthLock } from "./auth-lock";
 
 // Browser requests stay on this origin. The Next.js route handler forwards
@@ -123,11 +123,21 @@ export async function refreshAccessToken() {
         return response.data.token;
       } catch (error) {
         if (getSessionScope() !== scope) return null;
-        if (axios.isAxiosError(error) && (error.response?.status === 400 || error.response?.status === 401)) markAuthRequired();
+        // A missing response is ambiguous; only the proxy may assert it did
+        // not send the one-time credential, making a later retry safe.
+        if (axios.isAxiosError(error) && error.response?.headers?.["x-pp-refresh-not-started"] === "1") clearRefreshUncertain();
+        else if (axios.isAxiosError(error) && (error.response?.status === 400 || error.response?.status === 401)) markAuthRequired();
         return null;
       }
     };
-    refreshPromise = withAuthLock(rotate).catch(() => null).finally(() => { refreshPromise = null; });
+    refreshPromise = withAuthLock(rotate).catch((error: unknown) => {
+      // An expired credential lease may still belong to a suspended tab, so
+      // never steal it or retry an uncertain cookie. Require sign-in instead;
+      // the login screen explains how to recover an abandoned lock safely.
+      if (error instanceof AuthCoordinationError && error.reason === "abandoned"
+        && getSessionScope() === scope && isRefreshUncertain()) markAuthRequired();
+      return null;
+    }).finally(() => { refreshPromise = null; });
   }
   return refreshPromise;
 }

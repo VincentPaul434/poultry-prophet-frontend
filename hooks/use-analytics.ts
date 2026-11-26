@@ -59,8 +59,6 @@ export function useFarmAlerts(activeOnly = true, enabled = true) {
     staleTime: 15_000,
     // WebSocket invalidation is the fast path. Keep a slower visible-tab
     // fallback for reconnects or events emitted by older backend versions.
-    refetchInterval: 60_000,
-    refetchIntervalInBackground: false,
   });
 }
 
@@ -69,7 +67,7 @@ export function useFarmAlertPage(params: { activeOnly: boolean; page: number; si
 }
 
 export function useFarmAlertSummary(enabled = true) {
-  return useQuery({ queryKey: qk.alertsFarmSummary, queryFn: () => alertApi.summary(), enabled, staleTime: 15_000, refetchInterval: 60_000 });
+  return useQuery({ queryKey: qk.alertsFarmSummary, queryFn: () => alertApi.summary(), enabled, staleTime: 15_000 });
 }
 
 export function useAcknowledgeFarmAlert() {

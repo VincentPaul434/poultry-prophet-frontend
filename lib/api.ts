@@ -4,6 +4,7 @@
 // normalises errors. These are consumed by the React Query hooks in /hooks.
 
 import { ApiError, apiClient, type SessionBoundRequestConfig } from "./api-client";
+import type { ManagerIntentKind } from "./manager-intents";
 import type { ClientAuthResponse } from "./auth-storage";
 import type { BatchComparison, FarmSummaryAnalytics } from "./farm-summary-types";
 import type {
@@ -478,12 +479,17 @@ export const inputApi = {
   page: (filters: FarmInputPageFilters) => apiClient.get<PageResponse<FarmInputLog>>("/inputs/page", { params: filters }).then((r) => r.data),
   create: (body: CreateFarmInputRequest) => apiClient.post<FarmInputLog>("/inputs", body).then((r) => r.data),
 };
+export const managerApi = {
+  resolve: (body: { kind: ManagerIntentKind; targetId: string; operationId: string; payload: unknown }, expectedSessionScope: string) =>
+    apiClient.post<{ status: "APPLIED" | "CANCELLED" }>("/manager-operations/resolve", body, { _expectedSessionScope: expectedSessionScope } as SessionBoundRequestConfig).then((r) => r.data),
+};
 export const inventoryApi = {
   products: (includeInactive = false) => apiClient.get<FarmProduct[]>("/inventory/products", { params: { includeInactive } }).then((r) => r.data),
   demoCostImpact: (params: { batchId: number; start: string; end: string; cutoff?: string }) => apiClient.get<{ mayIncludeDemoStock: boolean }>("/inventory/demo-cost-impact", { params }).then((r) => r.data),
-  createProduct: (body: CreateFarmProductRequest) => apiClient.post<FarmProduct>("/inventory/products", body).then((r) => r.data),
-  stockIn: (productId: number, body: StockInRequest) => apiClient.post<InventoryMovement>(`/inventory/products/${productId}/stock-ins`, body).then((r) => r.data),
-  adjust: (productId: number, body: InventoryAdjustmentRequest) => apiClient.post<InventoryMovement>(`/inventory/products/${productId}/adjustments`, body).then((r) => r.data),
+  createProduct: (body: CreateFarmProductRequest, operationId?: string, expectedSessionScope?: string) => apiClient.post<FarmProduct>("/inventory/products", body, { ...(operationId ? { headers: { "Idempotency-Key": operationId } } : {}), ...(expectedSessionScope ? { _expectedSessionScope: expectedSessionScope } : {}) } as SessionBoundRequestConfig).then((r) => r.data),
+  setReorderLevel: (productId: number, reorderLevel: number | null) => apiClient.patch<FarmProduct>(`/inventory/products/${productId}/reorder-level`, { reorderLevel }).then((r) => r.data),
+  stockIn: (productId: number, body: StockInRequest, expectedSessionScope?: string) => apiClient.post<InventoryMovement>(`/inventory/products/${productId}/stock-ins`, body, expectedSessionScope ? { _expectedSessionScope: expectedSessionScope } as SessionBoundRequestConfig : undefined).then((r) => r.data),
+  adjust: (productId: number, body: InventoryAdjustmentRequest, expectedSessionScope?: string) => apiClient.post<InventoryMovement>(`/inventory/products/${productId}/adjustments`, body, expectedSessionScope ? { _expectedSessionScope: expectedSessionScope } as SessionBoundRequestConfig : undefined).then((r) => r.data),
   movements: (params: { productId?: number; batchId?: number } = {}) => apiClient.get<InventoryMovement[]>("/inventory/movements", { params }).then((r) => r.data),
   movementsPage: (params: { page: number; size: number; productId?: number; batchId?: number }) => apiClient.get<PageResponse<InventoryMovement>>("/inventory/movements/page", { params }).then((r) => r.data),
   pendingReview: () => apiClient.get<FarmInputLog[]>("/inventory/pending-review").then((r) => r.data),
@@ -534,7 +540,8 @@ export const vaccinationApi = {
 export const financeApi = {
   list: () => apiClient.get<FinancialTransaction[]>("/financial-transactions").then((r) => r.data),
   page: (filters: FinancePageFilters) => apiClient.get<PageResponse<FinancialTransaction>>("/financial-transactions/page", { params: filters }).then((r) => r.data),
-  create: (body: CreateFinancialTransactionRequest) => apiClient.post<FinancialTransaction>("/financial-transactions", body).then((r) => r.data),
+  create: (body: CreateFinancialTransactionRequest, operationId?: string, expectedSessionScope?: string) => apiClient.post<FinancialTransaction>("/financial-transactions", body, { ...(operationId ? { headers: { "Idempotency-Key": operationId } } : {}), ...(expectedSessionScope ? { _expectedSessionScope: expectedSessionScope } : {}) } as SessionBoundRequestConfig).then((r) => r.data),
+  correct: (id: number, body: { transactionDate: string; category: string; amount: number; reason: string; expectedUpdatedAt: string; operationId: string }, expectedSessionScope?: string) => apiClient.post<FinancialTransaction>(`/financial-transactions/${id}/corrections`, body, expectedSessionScope ? { _expectedSessionScope: expectedSessionScope } as SessionBoundRequestConfig : undefined).then((r) => r.data),
   analytics: (batchId?: number, start?: string, end?: string, type?: FinanceTransactionType, farmWide?: boolean, category?: string, sourceType?: string, status?: "POSTED" | "VOIDED") => apiClient.get<FinanceAnalytics>("/financial-transactions/analytics", { params: { batchId, start, end, type, farmWide, category, sourceType, status } }).then((r) => r.data),
 };
 export const operationsAnalyticsApi = {

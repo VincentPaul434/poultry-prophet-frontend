@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bird, ChevronRight, ClipboardList, RefreshCw, Search, TriangleAlert, X } from "lucide-react";
@@ -41,6 +43,7 @@ function PickerEmptyState({ icon: Icon, title, hint }: { icon: typeof Bird; titl
 }
 
 function RecordBatchOption({ batch, origin, onSelected }: { batch: Batch; origin: LoggingOrigin; onSelected: () => void }) {
+  const { display: displayText } = useDisplayLocale();
   const { t } = useLocale();
   const router = useRouter();
   const needsReview = needsPopulationReview(batch);
@@ -70,7 +73,7 @@ function RecordBatchOption({ batch, origin, onSelected }: { batch: Batch; origin
     <span className="min-w-0">
       <span className="block truncate text-sm font-bold text-foreground" title={batch.name}>{batch.name}</span>
       <span className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-        {needsReview ? <span className="font-bold tabular-nums text-warning-ink">{batch.initialPopulation} initial</span> : <><span className="font-bold tabular-nums text-foreground">{batch.currentPopulation} / {batch.initialPopulation}</span><span>{t("dashboard.birdsInBatch")}</span></>}
+        {needsReview ? <span className="font-bold tabular-nums text-warning-ink">{batch.initialPopulation} {displayText("initial")}</span> : <><span className="font-bold tabular-nums text-foreground">{batch.currentPopulation} / {batch.initialPopulation}</span><span>{t("dashboard.birdsInBatch")}</span></>}
         <span aria-hidden="true">·</span>
         <Badge variant="secondary" className="h-5 max-w-[8rem] truncate rounded-full bg-primary/10 px-2 text-xs font-semibold capitalize text-primary">{stage}</Badge>
         {needsReview && <Badge variant="secondary" className="h-5 max-w-[8rem] truncate rounded-full px-2 text-xs font-semibold">{t("record.countNeedsReview")}</Badge>}

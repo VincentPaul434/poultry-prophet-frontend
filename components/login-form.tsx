@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { useState, type ComponentProps, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -16,6 +18,7 @@ export function LoginForm({
   className,
   ...props
 }: Omit<ComponentProps<"form">, "onSubmit">) {
+  const { display: displayText, language } = useDisplayLocale();
   const { login } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -41,6 +44,10 @@ export function LoginForm({
       } else {
         const message = error instanceof AuthCoordinationError
           ? "Sign-in coordination is unavailable. Close other app tabs, check that browser storage is enabled, and try again."
+          : error instanceof ApiError && (error.status === 0 || [502, 503, 504].includes(error.status))
+          ? language === "taglish"
+            ? "Maaaring nagsisimula pa ang server o hindi ito maabot. Subukan muli pagkalipas ng ilang sandali."
+            : "The server may be starting or unavailable. Please try again shortly."
           : error instanceof ApiError ? error.message : "Hindi makapag-sign in. Suriin ang email at password.";
         toast.error(message);
       }
@@ -68,7 +75,7 @@ export function LoginForm({
     <form {...props} onSubmit={onSubmit} className={cn("flex flex-col gap-6", className)}>
       <FieldGroup className="gap-5">
         <Field>
-          <FieldLabel htmlFor="email">Email address</FieldLabel>
+          <FieldLabel htmlFor="email">{displayText("Email address")}</FieldLabel>
           <Input
             id="email"
             name="email"
@@ -77,20 +84,20 @@ export function LoginForm({
             autoComplete="email"
             required
             autoFocus
-            placeholder="pangalan@email.com"
+            placeholder={displayText("pangalan@email.com")}
             className="h-11"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
         </Field>
         <Field>
-          <FieldLabel htmlFor="password">Password</FieldLabel>
+          <FieldLabel htmlFor="password">{displayText("Password")}</FieldLabel>
           <PasswordInput
             id="password"
             name="password"
             autoComplete="current-password"
             required
-            placeholder="Ilagay ang password"
+            placeholder={displayText("Ilagay ang password")}
             className="h-11"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
@@ -101,18 +108,17 @@ export function LoginForm({
             {submitting ? (
               <>
                 <Loader2 data-icon="inline-start" className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                Nag-sign in…
-              </>
+                {displayText("Nag-sign in…")}</>
             ) : (
               "Mag-sign in"
             )}
           </Button>
         </Field>
         {abandonedLock && <div role="alert" className="space-y-3 rounded-xl border border-border bg-muted/30 p-4 text-sm leading-5">
-          <p className="font-semibold">Sign-in was interrupted</p>
-          <p>Close all other Poultry Prophet tabs and wait for any sign-in requests to finish before resetting the sign-in lock. Your offline records will be kept.</p>
-          <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-primary" checked={otherTabsClosed} onChange={(event) => setOtherTabsClosed(event.target.checked)} />I closed the other Poultry Prophet tabs and sign-in requests have finished</label>
-          <Button type="button" variant="outline" disabled={!otherTabsClosed || resettingLock} onClick={resetLock}>Reset sign-in lock</Button>
+          <p className="font-semibold">{displayText("Sign-in was interrupted")}</p>
+          <p>{displayText("Close all other Poultry Prophet tabs and wait for any sign-in requests to finish before resetting the sign-in lock. Your offline records will be kept.")}</p>
+          <label className="flex items-start gap-2"><input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-primary" checked={otherTabsClosed} onChange={(event) => setOtherTabsClosed(event.target.checked)} />{displayText("I closed the other Poultry Prophet tabs and sign-in requests have finished")}</label>
+          <Button type="button" variant="outline" disabled={!otherTabsClosed || resettingLock} onClick={resetLock}>{displayText("Reset sign-in lock")}</Button>
         </div>}
         {lockMessage && <p role="status" className="text-sm leading-5">{lockMessage}</p>}
       </FieldGroup>

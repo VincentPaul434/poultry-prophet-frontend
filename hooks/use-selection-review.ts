@@ -2,6 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { selectionReviewApi } from "@/lib/api";
+import { shouldUseOfflineSnapshot } from "@/lib/api-client";
+import { useAuth } from "@/lib/auth-context";
+import { getSelectionReviewSnapshot, saveSelectionReviewSnapshot } from "@/lib/offline-db";
 import { qk } from "@/lib/query-keys";
 import type {
   FinalizeSelectionReviewRequest,
@@ -14,11 +17,30 @@ export function useSelectionReviewPreview(
   params?: { periodStart?: string; periodEnd?: string; asOfDate?: string },
   enabled = true,
 ) {
+  const { user } = useAuth();
   return useQuery<SelectionReviewPayload>({
+    networkMode: "always",
     queryKey: qk.batches.selectionReviewPreview(batchId, params),
-    queryFn: () => selectionReviewApi.preview(batchId, params),
+    queryFn: async () => {
+      try {
+        const payload = await selectionReviewApi.preview(batchId, params);
+        if (user?.farmId) {
+          try { await saveSelectionReviewSnapshot(user.userId, user.farmId, Number(batchId), payload, params, user.role); } catch { /* A full device must not block online reports. */ }
+        }
+        return payload;
+      } catch (error) {
+        if (!shouldUseOfflineSnapshot(error) || !user?.farmId) throw error;
+        try {
+          const cached = await getSelectionReviewSnapshot(user.userId, user.farmId, Number(batchId), params, user.role);
+          if (cached) return cached;
+        } catch { /* Preserve the API error if browser storage is unavailable. */ }
+        throw error;
+      }
+    },
     enabled: enabled && batchId != null && batchId !== "",
     staleTime: 30_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
   });
 }
 
@@ -28,6 +50,8 @@ export function useSelectionReviews(batchId: number | string, enabled = true) {
     queryFn: () => selectionReviewApi.list(batchId),
     enabled: enabled && batchId != null && batchId !== "",
     staleTime: 30_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
   });
 }
 

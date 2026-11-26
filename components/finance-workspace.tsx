@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 import { Suspense, useMemo, useState } from "react";
@@ -13,7 +15,8 @@ import { useAuth } from "@/lib/auth-context";
 import { useLocale } from "@/components/locale-provider";
 import { ApiError } from "@/lib/api-client";
 import { shiftCalendarDate, todayIso } from "@/lib/format";
-import type { Batch, FinanceAnalytics, FinanceCurrencyReport, FinanceTransactionType } from "@/lib/types";
+import type { Batch, CreateFinancialTransactionRequest, FinanceAnalytics, FinanceCurrencyReport, FinanceTransactionType } from "@/lib/types";
+import { ManagerIntentRecovery, useManagerIntentRecovery } from "@/components/manager-intent-recovery";
 import type { TranslationKey } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -152,14 +155,17 @@ function updateFinanceUrl(
 }
 
 export default function FinanceWorkspace() {
-  return <Suspense fallback={<div className="mx-auto w-full max-w-7xl p-6 text-sm text-muted-foreground">Loading finance…</div>}><FinancePageContent /></Suspense>;
+  const { display: displayText } = useDisplayLocale();
+  return <Suspense fallback={<div className="mx-auto w-full max-w-7xl p-6 text-sm text-muted-foreground">{displayText("Loading finance…")}</div>}><FinancePageContent /></Suspense>;
 }
 
 function FinancePageContent() {
+  const { display: displayText } = useDisplayLocale();
   const { user } = useAuth();
   const { t } = useLocale();
   const { data: batches } = useBatches();
   const create = useCreateFinanceTransaction();
+  const recovery = useManagerIntentRecovery<CreateFinancialTransactionRequest>("FINANCE_CREATE");
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -207,6 +213,7 @@ function FinancePageContent() {
     if (!date) return setFormError("Choose the transaction date.");
     if (!category) return setFormError("Choose a category.");
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) return setFormError("Enter an amount greater than zero.");
+    if (!recovery.ready || recovery.intents.some((intent) => intent.targetId === scope)) return setFormError(displayText("Review the previous request before saving another."));
 
     try {
       await create.mutateAsync({
@@ -223,7 +230,7 @@ function FinancePageContent() {
       draft.clearDraft();
       setFormOpen(false);
     } catch (error) {
-      const message = error instanceof ApiError ? error.message : "Could not save the transaction.";
+      const message = error instanceof ApiError && error.status === 409 ? error.message : displayText("The request may have been saved. Close this window and retry the original details.");
       setFormError(message);
     }
   }
@@ -238,26 +245,28 @@ function FinancePageContent() {
         <Button type="button" className="w-full sm:w-auto" onClick={() => setFormOpen(true)}><WalletCards aria-hidden="true" />{t("finance.recordTransaction")}</Button>
       </header>
 
+      <ManagerIntentRecovery intents={recovery.intents} ready={recovery.ready} isError={recovery.isError} busy={create.isPending} describe={(intent) => `${intent.targetId === "farm" ? t("finance.generalFarmRecords") : batchNames.get(Number(intent.targetId)) ?? `${displayText("Batch")} ${intent.targetId}`} · ${intent.payload.category} · ${intent.payload.currency ?? "PHP"} ${intent.payload.amount} · ${intent.payload.transactionDate}`} retry={async (intent) => { await create.mutateAsync(intent.payload); const payload = intent.payload; if ((payload.batchId == null ? "farm" : String(payload.batchId)) === scope && payload.transactionDate === date && payload.type === type && payload.category === category && Number(payload.amount) === Number(amount) && (payload.description ?? null) === (description.trim() || null)) draft.clearDraft(); toast.success(displayText("Saved transaction")); }} />
+
       <div className="flex flex-col gap-4 rounded-2xl bg-muted/55 p-3 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-4">
         <p className="min-w-0 text-sm text-foreground/80" title={filterSummary}>{filterSummary}</p>
         <Button type="button" variant="secondary" className="w-full shrink-0 bg-background sm:w-auto" onClick={openFilters} aria-haspopup="dialog"><SlidersHorizontal aria-hidden="true" />{t("finance.filters")}{activeFilterCount > 0 && <Badge variant="secondary" className="ml-1">{activeFilterCount}</Badge>}</Button>
       </div>
 
-      <nav aria-label="Finance views" className="flex flex-wrap gap-2">
-        <Button variant="outline" type="button" aria-current={filters.view === "report" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "report" })} className={`min-h-11 px-4 text-sm font-semibold ${filters.view === "report" ? "border-primary bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" : "border-input bg-background text-foreground hover:bg-muted"}`}>Report</Button>
-        <Button variant="outline" type="button" aria-current={filters.view === "transactions" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "transactions" })} className={`min-h-11 px-4 text-sm font-semibold ${filters.view === "transactions" ? "border-primary bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" : "border-input bg-background text-foreground hover:bg-muted"}`}>Transactions <span className="ml-1 font-normal">{transactionPage?.totalItems ?? 0}</span></Button>
+      <nav aria-label={displayText("Finance views")} className="flex flex-wrap gap-2">
+        <Button variant="outline" type="button" aria-current={filters.view === "report" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "report" })} className={`min-h-11 px-4 text-sm font-semibold ${filters.view === "report" ? "border-primary bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" : "border-input bg-background text-foreground hover:bg-muted"}`}>{displayText("Report")}</Button>
+        <Button variant="outline" type="button" aria-current={filters.view === "transactions" ? "page" : undefined} onClick={() => updateFinanceUrl(router, pathname, searchParams, { view: "transactions" })} className={`min-h-11 px-4 text-sm font-semibold ${filters.view === "transactions" ? "border-primary bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground" : "border-input bg-background text-foreground hover:bg-muted"}`}>{displayText("Transactions")}{" "}<span className="ml-1 font-normal">{transactionPage?.totalItems ?? 0}</span></Button>
       </nav>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader><DialogTitle>{t("finance.record")}</DialogTitle><DialogDescription>{t("finance.batchHint")}</DialogDescription></DialogHeader>
-          {draft.hasDraft && <p role="status" className="rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-foreground">Draft restored. Check the batch, date, and amount before saving.</p>}
+          {draft.hasDraft && <p role="status" className="rounded-xl border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-foreground">{displayText("Draft restored. Check the batch, date, and amount before saving.")}</p>}
           <form onSubmit={submit} className="space-y-5" noValidate>
             <div className="grid gap-4 rounded-2xl bg-muted/40 p-4 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="finance-scope">{t("finance.where")} <span className="text-destructive">*</span></Label>
                 <NativeSelect id="finance-scope" required value={scope} onChange={(event) => draft.setValue((current) => ({ ...current, scope: event.target.value }))}>
-                  <option value="">Choose a batch or {t("finance.generalFarmRecords")}</option>
+                  <option value="">{displayText("Choose a batch or")}{" "}{t("finance.generalFarmRecords")}</option>
                   <option value="farm">{t("finance.generalFarmRecords")}</option>
                   {(batches ?? []).map((batch) => <option key={batch.id} value={batch.id}>{batch.name}</option>)}
                 </NativeSelect>
@@ -270,8 +279,8 @@ function FinancePageContent() {
               <div className="space-y-2">
                 <Label htmlFor="finance-type">{t("common.type")}</Label>
                 <NativeSelect id="finance-type" value={type} onChange={(event) => draft.setValue((current) => ({ ...current, type: event.target.value as FinanceTransactionType }))}>
-                  <option value="EXPENSE">Expense</option>
-                  <option value="INCOME">Income</option>
+                  <option value="EXPENSE">{displayText("Expense")}</option>
+                  <option value="INCOME">{displayText("Income")}</option>
                 </NativeSelect>
               </div>
             </div>
@@ -280,7 +289,7 @@ function FinancePageContent() {
               <div className="space-y-2">
                 <Label htmlFor="finance-category">{t("finance.category")}</Label>
                 <NativeSelect id="finance-category" required value={category} onChange={(event) => draft.setValue((current) => ({ ...current, category: event.target.value }))}>
-                  <option value="">Choose a category</option>
+                  <option value="">{displayText("Choose a category")}</option>
                   {CATEGORIES.map((item) => <option key={item} value={item}>{item}</option>)}
                 </NativeSelect>
               </div>
@@ -290,16 +299,15 @@ function FinancePageContent() {
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="finance-description">{t("common.description")} <span className="font-normal text-muted-foreground">({t("common.optional")})</span></Label>
-                <Input id="finance-description" value={description} onChange={(event) => draft.setValue((current) => ({ ...current, description: event.target.value }))} placeholder="Supplier, buyer, or short reference" />
+                <Input id="finance-description" value={description} onChange={(event) => draft.setValue((current) => ({ ...current, description: event.target.value }))} placeholder={displayText("Supplier, buyer, or short reference")} />
               </div>
             </div>
 
             {formError && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{formError}</p>}
-            <Button type="submit" disabled={create.isPending} className="w-full sm:w-auto">
+            <Button type="submit" disabled={create.isPending || !recovery.ready || recovery.intents.some((intent) => intent.targetId === scope)} className="w-full sm:w-auto">
               {create.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : <WalletCards aria-hidden="true" />}
-              {t("common.save")} transaction
-            </Button>
-            {lastSaved && <p role="status" aria-live="polite" className="rounded-xl border border-success-border bg-success-muted px-4 py-3 text-sm text-success">Saved: {lastSaved}</p>}
+              {t("common.save")} {displayText("transaction")}</Button>
+            {lastSaved && <p role="status" aria-live="polite" className="rounded-xl border border-success-border bg-success-muted px-4 py-3 text-sm text-success">{displayText("Saved:")}{" "}{lastSaved}</p>}
           </form>
         </DialogContent>
       </Dialog>
@@ -320,25 +328,25 @@ function FinancePageContent() {
       ) : (
         <section data-testid="finance-transaction-panel" className="min-w-0 space-y-5">
           <div className="flex flex-wrap items-end justify-between gap-2">
-            <div><h2 className="text-2xl font-semibold tracking-tight">{t("finance.history")}</h2><p className="mt-1 text-sm text-muted-foreground">Recorded income and expenses for this view.</p></div>
+            <div><h2 className="text-2xl font-semibold tracking-tight">{t("finance.history")}</h2><p className="mt-1 text-sm text-muted-foreground">{displayText("Recorded income and expenses for this view.")}</p></div>
             <p className="text-sm text-muted-foreground">{transactionPage?.totalItems ?? 0} {t("finance.matchingRecord")}{transactionPage && transactionPage.totalItems !== 1 ? "s" : ""}</p>
           </div>
           <div className="overflow-hidden rounded-2xl bg-card shadow-sm shadow-foreground/5">
-            <div className="hidden grid-cols-[8rem_minmax(0,1fr)_9rem_8rem] gap-4 bg-muted/50 px-5 py-3 text-xs font-medium text-muted-foreground md:grid"><span>Date</span><span>Record</span><span>Scope</span><span className="text-right">Amount</span></div>
-            {isLoading && <p className="p-6 text-sm text-muted-foreground">Loading transactions…</p>}
+            <div className="hidden grid-cols-[8rem_minmax(0,1fr)_9rem_8rem] gap-4 bg-muted/50 px-5 py-3 text-xs font-medium text-muted-foreground md:grid"><span>{displayText("Date")}</span><span>{displayText("Record")}</span><span>{displayText("Scope")}</span><span className="text-right">{displayText("Amount")}</span></div>
+            {isLoading && <p className="p-6 text-sm text-muted-foreground">{displayText("Loading transactions…")}</p>}
             <div data-testid="finance-transaction-list" className="divide-y divide-border/50">
               {visibleTransactions.map((transaction) => (
                 <div key={transaction.id} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 px-4 py-4 sm:px-5 md:grid-cols-[8rem_minmax(0,1fr)_9rem_8rem] md:items-center md:gap-4">
                   <p className="order-2 col-span-2 text-xs text-muted-foreground md:order-none md:col-span-1 md:text-sm">{transaction.transactionDate}</p>
-                  <div className="min-w-0"><p className="truncate font-medium">{transaction.category}{transaction.description?.trimStart().toUpperCase().startsWith("DEMO / TEST DATA;") && <Badge variant="secondary" className="ml-2">Demo</Badge>}</p><p className="truncate text-xs text-muted-foreground">{transaction.description || (transaction.sourceType === "SALE_EVENT" ? "Linked sale event" : transaction.type === "INCOME" ? "Income" : "Expense")}{transaction.status === "VOIDED" ? " · Voided" : ""}</p></div>
+                  <div className="min-w-0"><p className="truncate font-medium">{transaction.category}{transaction.description?.trimStart().toUpperCase().startsWith("DEMO / TEST DATA;") && <Badge variant="secondary" className="ml-2">{displayText("Demo")}</Badge>}</p><p className="truncate text-xs text-muted-foreground">{transaction.description || (transaction.sourceType === "SALE_EVENT" ? "Linked sale event" : transaction.type === "INCOME" ? "Income" : "Expense")}{transaction.status === "VOIDED" ? " · Voided" : ""}</p></div>
                   <p className="hidden truncate text-sm text-muted-foreground md:block">{transaction.batchId == null ? t("finance.generalFarmRecords") : batchNames.get(transaction.batchId) ?? `Batch ${transaction.batchId}`}</p>
                   <p className={`text-right font-semibold tabular-nums ${transaction.type === "EXPENSE" ? "text-foreground" : "text-primary"}`}>{transaction.type === "EXPENSE" ? "−" : "+"}{formatMoney(transaction.amount, transaction.currency)}</p>
                 </div>
               ))}
             </div>
-            {!isLoading && visibleTransactions.length === 0 && <p className="px-5 py-14 text-center text-sm text-muted-foreground">No transactions match this view.</p>}
+            {!isLoading && visibleTransactions.length === 0 && <p className="px-5 py-14 text-center text-sm text-muted-foreground">{displayText("No transactions match this view.")}</p>}
           </div>
-          {!isLoading && transactionPage && transactionPage.totalPages > 1 && <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground"><span>{transactionPage.totalItems} transaction{transactionPage.totalItems === 1 ? "" : "s"}</span><div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!transactionPage.hasPrevious} onClick={() => updateFinanceUrl(router, pathname, searchParams, { page: Math.max(0, filters.page - 1) })}><ChevronLeft className="size-4" />Previous</Button><span>Page {transactionPage.page + 1} of {transactionPage.totalPages}</span><Button type="button" variant="outline" size="sm" disabled={!transactionPage.hasNext} onClick={() => updateFinanceUrl(router, pathname, searchParams, { page: filters.page + 1 })}>Next<ChevronRight className="size-4" /></Button></div></div>}
+          {!isLoading && transactionPage && transactionPage.totalPages > 1 && <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground"><span>{transactionPage.totalItems} {displayText("transaction")}{transactionPage.totalItems === 1 ? "" : "s"}</span><div className="flex items-center gap-2"><Button type="button" variant="outline" size="sm" disabled={!transactionPage.hasPrevious} onClick={() => updateFinanceUrl(router, pathname, searchParams, { page: Math.max(0, filters.page - 1) })}><ChevronLeft className="size-4" />{displayText("Previous")}</Button><span>{displayText("Page")}{" "}{transactionPage.page + 1} {displayText("of")}{" "}{transactionPage.totalPages}</span><Button type="button" variant="outline" size="sm" disabled={!transactionPage.hasNext} onClick={() => updateFinanceUrl(router, pathname, searchParams, { page: filters.page + 1 })}>{displayText("Next")}<ChevronRight className="size-4" /></Button></div></div>}
         </section>
       )}
     </div>
@@ -465,24 +473,26 @@ function FinanceReport({
   isLoading: boolean;
   selectedBatchName: string;
 }) {
+  const { display: displayText } = useDisplayLocale();
   if (isLoading) {
-    return <div className="space-y-5" aria-label="Loading finance report"><div className="h-56 animate-pulse rounded-3xl bg-muted" /><div className="h-80 animate-pulse rounded-3xl bg-muted" /></div>;
+    return <div className="space-y-5" aria-label={displayText("Loading finance report")}><div className="h-56 animate-pulse rounded-3xl bg-muted" /><div className="h-80 animate-pulse rounded-3xl bg-muted" /></div>;
   }
 
   if (!analytics) {
-    return <div className="rounded-3xl bg-card px-6 py-16 text-center text-sm text-muted-foreground">No finance analytics are available for this view yet.</div>;
+    return <div className="rounded-3xl bg-card px-6 py-16 text-center text-sm text-muted-foreground">{displayText("No finance analytics are available for this view yet.")}</div>;
   }
 
   const reports = analytics.byCurrency ?? (analytics.totals && analytics.currency
     ? [{ currency: analytics.currency, totals: analytics.totals, series: analytics.series, categoryTotals: analytics.categoryTotals }]
     : []);
   if (reports.length === 0) {
-    return <div className="rounded-3xl bg-card px-6 py-16 text-center text-sm text-muted-foreground">Currency-separated finance data is unavailable.</div>;
+    return <div className="rounded-3xl bg-card px-6 py-16 text-center text-sm text-muted-foreground">{displayText("Currency-separated finance data is unavailable.")}</div>;
   }
-  return <div className="space-y-8">{reports.length > 1 && <p className="text-sm text-muted-foreground">Currencies are reported separately; no conversion is applied.</p>}{reports.map((report) => <FinanceCurrencySection key={report.currency} analytics={analytics} report={report} selectedBatchName={selectedBatchName} />)}</div>;
+  return <div className="space-y-8">{reports.length > 1 && <p className="text-sm text-muted-foreground">{displayText("Currencies are reported separately; no conversion is applied.")}</p>}{reports.map((report) => <FinanceCurrencySection key={report.currency} analytics={analytics} report={report} selectedBatchName={selectedBatchName} />)}</div>;
 }
 
 function FinanceCurrencySection({ analytics, report, selectedBatchName }: { analytics: FinanceAnalytics; report: FinanceCurrencyReport; selectedBatchName: string }) {
+  const { display: displayText } = useDisplayLocale();
   const series = report.series ?? [];
   const totals = report.totals;
   const currency = report.currency;
@@ -502,20 +512,20 @@ function FinanceCurrencySection({ analytics, report, selectedBatchName }: { anal
 
   return (
     <div className="space-y-6">
-      {report.demoTransactionCount === undefined ? <p className="rounded-xl border border-warning-border bg-warning-muted/50 p-3 text-sm text-warning-ink">Demo-record status is unavailable for this report.</p> : report.demoTransactionCount > 0 && <p className="rounded-xl border border-warning-border bg-warning-muted/50 p-3 text-sm text-warning-ink"><strong>Demo records included.</strong> {report.demoTransactionCount} simulated transaction{report.demoTransactionCount === 1 ? "" : "s"} in this view {Number(report.demoExpenseAmount) > 0 ? `include ${formatMoney(Number(report.demoExpenseAmount), currency)} in expenses` : "affect income"}{Number(report.demoIncomeAmount) > 0 && Number(report.demoExpenseAmount) > 0 ? ` and ${formatMoney(Number(report.demoIncomeAmount), currency)} in income` : ""}. Net cash flow includes these amounts.</p>}
-      <section aria-label="Financial summary" className="grid overflow-hidden rounded-[1.75rem] bg-[#194b37] text-white shadow-xl shadow-[#194b37]/10 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,1fr)]">
+      {report.demoTransactionCount === undefined ? <p className="rounded-xl border border-warning-border bg-warning-muted/50 p-3 text-sm text-warning-ink">{displayText("Demo-record status is unavailable for this report.")}</p> : report.demoTransactionCount > 0 && <p className="rounded-xl border border-warning-border bg-warning-muted/50 p-3 text-sm text-warning-ink"><strong>{displayText("Demo records included.")}</strong> {report.demoTransactionCount} {displayText("simulated transaction")}{report.demoTransactionCount === 1 ? "" : "s"} {displayText("in this view")}{" "}{Number(report.demoExpenseAmount) > 0 ? `include ${formatMoney(Number(report.demoExpenseAmount), currency)} in expenses` : "affect income"}{Number(report.demoIncomeAmount) > 0 && Number(report.demoExpenseAmount) > 0 ? ` and ${formatMoney(Number(report.demoIncomeAmount), currency)} in income` : ""}{displayText(". Net cash flow includes these amounts.")}</p>}
+      <section aria-label={displayText("Financial summary")} className="grid overflow-hidden rounded-[1.75rem] bg-[#194b37] text-white shadow-xl shadow-[#194b37]/10 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,1fr)]">
         <div className="flex min-h-64 flex-col justify-between gap-10 p-6 sm:p-8 lg:p-10">
-          <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-medium text-white/85">Net cash flow</h2><p className="mt-1 text-sm text-white/60">{selectedBatchName} · {analytics.startDate} to {analytics.endDate}</p></div><span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/80">{currency} · Recorded cash</span></div>
-          <div><p className="break-words text-[clamp(2.6rem,6vw,5rem)] font-semibold leading-none tracking-[-0.065em] tabular-nums">{formatSignedMoney(net, currency)}</p><p className="mt-3 text-sm text-white/65">Income less cash expenses for this period</p></div>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-lg font-medium text-white/85">{displayText("Net cash flow")}</h2><p className="mt-1 text-sm text-white/60">{selectedBatchName} · {analytics.startDate} {displayText("to")}{" "}{analytics.endDate}</p></div><span className="rounded-full bg-white/10 px-3 py-1 text-xs text-white/80">{currency} {displayText("· Recorded cash")}</span></div>
+          <div><p className="break-words text-[clamp(2.6rem,6vw,5rem)] font-semibold leading-none tracking-[-0.065em] tabular-nums">{formatSignedMoney(net, currency)}</p><p className="mt-3 text-sm text-white/65">{displayText("Income less cash expenses for this period")}</p></div>
         </div>
         <div className="grid bg-white/[0.07] sm:grid-cols-2 lg:grid-cols-1">
-          <div className="flex flex-col justify-center gap-3 p-6 sm:p-8 lg:p-8"><h3 className="text-sm font-medium text-white/75">Income</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatMoney(income, currency)}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#c6e5b4]" style={{ width: `${Math.max(income > 0 ? 2 : 0, income / totalMovement * 100)}%` }} /></div></div>
-          <div className="flex flex-col justify-center gap-3 border-t border-white/10 p-6 sm:border-l sm:border-t-0 sm:p-8 lg:border-l-0 lg:border-t lg:p-8"><h3 className="text-sm font-medium text-white/75">Cash expenses</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatMoney(expense, currency)}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#e5b679]" style={{ width: `${Math.max(expense > 0 ? 2 : 0, expense / totalMovement * 100)}%` }} /></div></div>
+          <div className="flex flex-col justify-center gap-3 p-6 sm:p-8 lg:p-8"><h3 className="text-sm font-medium text-white/75">{displayText("Income")}</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatMoney(income, currency)}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#c6e5b4]" style={{ width: `${Math.max(income > 0 ? 2 : 0, income / totalMovement * 100)}%` }} /></div></div>
+          <div className="flex flex-col justify-center gap-3 border-t border-white/10 p-6 sm:border-l sm:border-t-0 sm:p-8 lg:border-l-0 lg:border-t lg:p-8"><h3 className="text-sm font-medium text-white/75">{displayText("Cash expenses")}</h3><p className="text-2xl font-semibold tracking-tight tabular-nums sm:text-3xl">{formatMoney(expense, currency)}</p><div className="h-1.5 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full bg-[#e5b679]" style={{ width: `${Math.max(expense > 0 ? 2 : 0, expense / totalMovement * 100)}%` }} /></div></div>
         </div>
       </section>
 
       <section className="grid min-w-0 overflow-hidden rounded-[1.75rem] bg-card shadow-sm shadow-foreground/5 lg:grid-cols-[minmax(0,1.65fr)_minmax(18rem,1fr)]">
-        <div className="min-w-0 p-5 sm:p-8"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">Cash movement</h2><p className="mt-1 text-sm text-muted-foreground">Income and expenses over the selected period</p></div><div className="flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><i className="size-2.5 rounded-sm bg-[#467e53]" />Income</span><span className="flex items-center gap-1.5"><i className="size-2.5 rounded-sm bg-[#d3a25e]" />Expenses</span></div></div>
+        <div className="min-w-0 p-5 sm:p-8"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">{displayText("Cash movement")}</h2><p className="mt-1 text-sm text-muted-foreground">{displayText("Income and expenses over the selected period")}</p></div><div className="flex items-center gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1.5"><i className="size-2.5 rounded-sm bg-[#467e53]" />{displayText("Income")}</span><span className="flex items-center gap-1.5"><i className="size-2.5 rounded-sm bg-[#d3a25e]" />{displayText("Expenses")}</span></div></div>
           {series.length > 0 ? (
             <div className="mt-8">
               <div role="img" aria-label={chartDescription}>
@@ -531,14 +541,14 @@ function FinanceCurrencySection({ analytics, report, selectedBatchName }: { anal
                 </svg>
                 <div className="flex justify-between gap-2 px-1 text-xs text-muted-foreground"><span className="truncate">{series[0]?.label}</span>{series.length > 1 && <span className="truncate text-right">{series[series.length - 1]?.label}</span>}</div>
               </div>
-              <details className="mt-5 text-sm"><summary className="w-fit cursor-pointer font-medium text-primary">View period values</summary><div className="mt-3 max-h-60 overflow-auto rounded-xl bg-muted/35 p-3"><Table className="w-full min-w-72 text-left text-xs"><TableHeader><TableRow><TableHead className="pb-2 font-medium">Period</TableHead><TableHead className="pb-2 text-right font-medium">Income</TableHead><TableHead className="pb-2 text-right font-medium">Expenses</TableHead></TableRow></TableHeader><TableBody className="divide-y divide-border/60">{series.map((point, index) => <TableRow key={`${point.label}-${index}`}><TableHead scope="row" className="py-2 font-normal">{point.label}</TableHead><TableCell className="py-2 text-right tabular-nums">{formatMoney(point.income, currency)}</TableCell><TableCell className="py-2 text-right tabular-nums">{formatMoney(point.expense, currency)}</TableCell></TableRow>)}</TableBody></Table></div></details>
+              <details className="mt-5 text-sm"><summary className="w-fit cursor-pointer font-medium text-primary">{displayText("View period values")}</summary><div className="mt-3 max-h-60 overflow-auto rounded-xl bg-muted/35 p-3"><Table className="w-full min-w-72 text-left text-xs"><TableHeader><TableRow><TableHead className="pb-2 font-medium">{displayText("Period")}</TableHead><TableHead className="pb-2 text-right font-medium">{displayText("Income")}</TableHead><TableHead className="pb-2 text-right font-medium">{displayText("Expenses")}</TableHead></TableRow></TableHeader><TableBody className="divide-y divide-border/60">{series.map((point, index) => <TableRow key={`${point.label}-${index}`}><TableHead scope="row" className="py-2 font-normal">{point.label}</TableHead><TableCell className="py-2 text-right tabular-nums">{formatMoney(point.income, currency)}</TableCell><TableCell className="py-2 text-right tabular-nums">{formatMoney(point.expense, currency)}</TableCell></TableRow>)}</TableBody></Table></div></details>
             </div>
-          ) : <p className="mt-8 flex min-h-48 items-center justify-center rounded-2xl bg-muted/35 p-5 text-center text-sm text-muted-foreground">Add a posted income or expense to see the trend.</p>}
+          ) : <p className="mt-8 flex min-h-48 items-center justify-center rounded-2xl bg-muted/35 p-5 text-center text-sm text-muted-foreground">{displayText("Add a posted income or expense to see the trend.")}</p>}
         </div>
-        <div className="bg-muted/35 p-5 sm:p-8"><h2 className="text-xl font-semibold tracking-tight">Where spending went</h2><p className="mt-1 text-sm text-muted-foreground">Top recorded expense categories</p><div className="mt-8 space-y-5">{report.categoryTotals.length === 0 && <p className="text-sm text-muted-foreground">No categories recorded.</p>}{report.categoryTotals.slice(0, 5).map((item) => <div key={item.category}><div className="flex items-baseline justify-between gap-3 text-sm"><span className="truncate font-medium">{item.category}</span><span className="shrink-0 font-semibold tabular-nums">{formatMoney(item.amount, currency)}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/10"><div className="h-full rounded-full bg-[#9ab476]" style={{ width: `${Number(item.amount) / categoryMax * 100}%` }} /></div></div>)}</div></div>
+        <div className="bg-muted/35 p-5 sm:p-8"><h2 className="text-xl font-semibold tracking-tight">{displayText("Where spending went")}</h2><p className="mt-1 text-sm text-muted-foreground">{displayText("Top recorded expense categories")}</p><div className="mt-8 space-y-5">{report.categoryTotals.length === 0 && <p className="text-sm text-muted-foreground">{displayText("No categories recorded.")}</p>}{report.categoryTotals.slice(0, 5).map((item) => <div key={item.category}><div className="flex items-baseline justify-between gap-3 text-sm"><span className="truncate font-medium">{item.category}</span><span className="shrink-0 font-semibold tabular-nums">{formatMoney(item.amount, currency)}</span></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/10"><div className="h-full rounded-full bg-[#9ab476]" style={{ width: `${Number(item.amount) / categoryMax * 100}%` }} /></div></div>)}</div></div>
       </section>
 
-      <section className="rounded-[1.75rem] bg-card p-5 shadow-sm shadow-foreground/5 sm:p-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">Recorded statement</h2><p className="mt-1 text-sm text-muted-foreground">A breakdown of the figures above</p></div><p className="text-sm text-muted-foreground">{totals.postedTransactionCount} posted record{totals.postedTransactionCount === 1 ? "" : "s"}</p></div><dl className="mt-6 divide-y divide-border/60"><StatementRow currency={currency} label="Sale proceeds" value={totals.saleIncome} /><StatementRow currency={currency} label="Other income" value={totals.otherIncome} /><StatementRow currency={currency} label="Total income" value={totals.recordedIncome} emphasis /><StatementRow currency={currency} label="Cash expenses" value={totals.recordedExpense} negative />{analytics.scope === "BATCH" && totals.productsConsumedCost != null && <><StatementRow currency={currency} label="Products consumed" value={totals.productsConsumedCost} negative /><StatementRow currency={currency} label="Total recorded batch cost" value={totals.totalRecordedBatchCost} negative /></>}<StatementRow currency={currency} label={analytics.scope === "BATCH" && totals.recordedContribution != null ? "Recorded contribution" : "Net cash flow"} value={analytics.scope === "BATCH" && totals.recordedContribution != null ? totals.recordedContribution : totals.recordedNetCashFlow} signed emphasis /></dl><div className="mt-6 flex flex-wrap items-start justify-between gap-4 text-xs leading-5 text-muted-foreground"><p className="max-w-2xl">{analytics.limitations.message}{totals.voidedTransactionCount > 0 ? ` ${totals.voidedTransactionCount} voided record${totals.voidedTransactionCount === 1 ? " was" : "s were"} excluded.` : ""}</p><details className="shrink-0"><summary className="cursor-pointer font-medium text-foreground">View period details</summary><p className="mt-1">{analytics.startDate} to {analytics.endDate} · {currency}</p></details></div></section>
+      <section className="rounded-[1.75rem] bg-card p-5 shadow-sm shadow-foreground/5 sm:p-8"><div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-xl font-semibold tracking-tight">{displayText("Recorded statement")}</h2><p className="mt-1 text-sm text-muted-foreground">{displayText("A breakdown of the figures above")}</p></div><p className="text-sm text-muted-foreground">{totals.postedTransactionCount} {displayText("posted record")}{totals.postedTransactionCount === 1 ? "" : "s"}</p></div><dl className="mt-6 divide-y divide-border/60"><StatementRow currency={currency} label={displayText("Sale proceeds")} value={totals.saleIncome} /><StatementRow currency={currency} label={displayText("Other income")} value={totals.otherIncome} /><StatementRow currency={currency} label={displayText("Total income")} value={totals.recordedIncome} emphasis /><StatementRow currency={currency} label={displayText("Cash expenses")} value={totals.recordedExpense} negative />{analytics.scope === "BATCH" && totals.productsConsumedCost != null && <><StatementRow currency={currency} label={displayText("Products consumed")} value={totals.productsConsumedCost} negative /><StatementRow currency={currency} label={displayText("Total recorded batch cost")} value={totals.totalRecordedBatchCost} negative /></>}<StatementRow currency={currency} label={analytics.scope === "BATCH" && totals.recordedContribution != null ? "Recorded contribution" : "Net cash flow"} value={analytics.scope === "BATCH" && totals.recordedContribution != null ? totals.recordedContribution : totals.recordedNetCashFlow} signed emphasis /></dl><div className="mt-6 flex flex-wrap items-start justify-between gap-4 text-xs leading-5 text-muted-foreground"><p className="max-w-2xl">{analytics.limitations.message}{totals.voidedTransactionCount > 0 ? ` ${totals.voidedTransactionCount} voided record${totals.voidedTransactionCount === 1 ? " was" : "s were"} excluded.` : ""}</p><details className="shrink-0"><summary className="cursor-pointer font-medium text-foreground">{displayText("View period details")}</summary><p className="mt-1">{analytics.startDate} {displayText("to")}{" "}{analytics.endDate} · {currency}</p></details></div></section>
     </div>
   );
 }

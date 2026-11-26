@@ -107,3 +107,18 @@ test("labels only products with demo stock history on mobile", async ({ page }, 
   await expect(demo.getByText("Demo stock in history · verify on hand and cost")).toBeVisible();
   await expect(ordinary.getByText(/Demo stock/)).toHaveCount(0);
 });
+
+test("manager sets a low-stock threshold for an existing product", async ({ page }) => {
+  await mockManagerBackend(page);
+  let sent: unknown;
+  await page.route("**/api/backend/inventory/products/2/reorder-level", async route => { sent = route.request().postDataJSON(); return route.fulfill({ json: { id: 2, reorderLevel: 5, lowStock: true } }); });
+  await page.route("**/api/backend/inventory/products?*", route => route.fulfill({ json: [
+    { id: 2, brandName: "Vaccine A", productType: "VACCINE", stockUnit: "vial", stockOnHand: 5, active: true, lowStock: false, demoStockHistory: false },
+  ] }));
+  await page.goto("/inputs");
+  await page.getByRole("button", { name: "Set low-stock reminder for Vaccine A" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Low-stock reminder" });
+  await dialog.getByLabel("Remind at or below").fill("5");
+  await dialog.getByRole("button", { name: "Save reminder" }).click();
+  await expect.poll(() => sent).toEqual({ reorderLevel: 5 });
+});

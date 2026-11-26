@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { recordApi } from "@/lib/api";
 import { qk } from "@/lib/query-keys";
 import { useOfflineSync } from "@/lib/offline-sync-provider";
+import { newSecureUuid } from "@/lib/uuid";
 import { todayIso } from "@/lib/format";
 import type { CreateRecordRequest } from "@/lib/types";
 
@@ -33,7 +34,7 @@ export function useCreateRecord(batchId: number | string) {
         }
         return recordApi.create(batchId, body);
       }
-      const operationId = crypto.randomUUID();
+      const operationId = newSecureUuid();
       return enqueue({
         entityType: "DAILY_RECORD",
         batchId: Number(batchId),

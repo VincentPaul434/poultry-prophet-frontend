@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -14,6 +16,7 @@ import { ApiError } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 
 export default function RegisterPage() {
+  const { display: displayText } = useDisplayLocale();
   const { register } = useAuth();
   const router = useRouter();
   const [fullName, setFullName] = useState("");
@@ -48,28 +51,27 @@ export default function RegisterPage() {
   return (
     <AuthShell
       compact
-      title="Simulan ang farm record."
-      description="Gumawa ng manager account. Maaaring imbitahan ang handlers pagkatapos."
+      title={displayText("Simulan ang farm record.")}
+      description={displayText("Gumawa ng manager account. Maaaring imbitahan ang handlers pagkatapos.")}
       footer={
         <>
-          May account na?{" "}
+          {displayText("May account na?")}{" "}
           <Link href="/login" className="underline underline-offset-4 hover:text-primary">
-            Mag-sign in
-          </Link>
+            {displayText("Mag-sign in")}</Link>
         </>
       }
     >
       <form onSubmit={onSubmit} className="flex flex-col gap-6">
         <FieldGroup className="gap-2.5 [@media(max-height:600px)]:gap-1.5">
           <Field className="gap-1.5 [@media(max-height:600px)]:gap-1">
-            <FieldLabel htmlFor="fullName">Buong pangalan</FieldLabel>
+            <FieldLabel htmlFor="fullName">{displayText("Buong pangalan")}</FieldLabel>
             <Input
               id="fullName"
               name="fullName"
               autoComplete="name"
               required
               autoFocus
-              placeholder="Juan Dela Cruz"
+              placeholder={displayText("Juan Dela Cruz")}
               className="h-11"
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
@@ -77,7 +79,7 @@ export default function RegisterPage() {
           </Field>
 
           <Field className="gap-1.5 [@media(max-height:600px)]:gap-1">
-            <FieldLabel htmlFor="email">Email address</FieldLabel>
+            <FieldLabel htmlFor="email">{displayText("Email address")}</FieldLabel>
             <Input
               id="email"
               name="email"
@@ -85,7 +87,7 @@ export default function RegisterPage() {
               inputMode="email"
               autoComplete="email"
               required
-              placeholder="pangalan@email.com"
+              placeholder={displayText("pangalan@email.com")}
               className="h-11"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -93,7 +95,7 @@ export default function RegisterPage() {
           </Field>
 
           <Field className="gap-1.5 [@media(max-height:600px)]:gap-1">
-            <FieldLabel htmlFor="password">Password</FieldLabel>
+            <FieldLabel htmlFor="password">{displayText("Password")}</FieldLabel>
             <PasswordInput
               id="password"
               name="password"
@@ -101,16 +103,16 @@ export default function RegisterPage() {
               required
               minLength={8}
               aria-describedby="password-help"
-              placeholder="Hindi bababa sa 8 characters"
+              placeholder={displayText("Hindi bababa sa 8 characters")}
               className="h-11"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
             />
-            <FieldDescription id="password-help" className="text-xs [@media(max-height:600px)]:sr-only">Gumamit ng password na mahirap hulaan.</FieldDescription>
+            <FieldDescription id="password-help" className="text-xs [@media(max-height:600px)]:sr-only">{displayText("Gumamit ng password na mahirap hulaan.")}</FieldDescription>
           </Field>
 
           <Field className="gap-1.5 [@media(max-height:600px)]:gap-1" data-invalid={passwordsMismatch || undefined}>
-            <FieldLabel htmlFor="confirmPassword">Ulitin ang password</FieldLabel>
+            <FieldLabel htmlFor="confirmPassword">{displayText("Ulitin ang password")}</FieldLabel>
             <PasswordInput
               ref={confirmPasswordRef}
               id="confirmPassword"
@@ -120,13 +122,13 @@ export default function RegisterPage() {
               minLength={8}
               aria-invalid={passwordsMismatch}
               aria-describedby={passwordsMismatch ? "confirm-password-error" : undefined}
-              placeholder="Ilagay muli ang password"
+              placeholder={displayText("Ilagay muli ang password")}
               className="h-11"
               value={confirmPassword}
               onChange={(event) => setConfirmPassword(event.target.value)}
             />
             {passwordsMismatch && (
-              <FieldError id="confirm-password-error">Hindi magkapareho ang password.</FieldError>
+              <FieldError id="confirm-password-error">{displayText("Hindi magkapareho ang password.")}</FieldError>
             )}
           </Field>
 
@@ -135,8 +137,7 @@ export default function RegisterPage() {
               {submitting ? (
                 <>
                   <Loader2 data-icon="inline-start" className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                  Ginagawa ang account…
-                </>
+                  {displayText("Ginagawa ang account…")}</>
               ) : (
                 "Gumawa ng account"
               )}

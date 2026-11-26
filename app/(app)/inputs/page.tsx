@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Package } from "lucide-react";
@@ -24,6 +26,7 @@ const PRODUCT_TYPES: { value: InputProductType; label: string }[] = [
 ];
 
 export default function InputsPage() {
+  const { display: displayText } = useDisplayLocale();
   const router = useRouter();
   const { user, isManager, isLoading: authLoading } = useAuth();
 
@@ -33,13 +36,14 @@ export default function InputsPage() {
 
   if (authLoading || !user) return null;
   if (!isManager) {
-    return <div className="mx-auto w-full max-w-3xl rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">Product records are available inside each batch.</div>;
+    return <div className="mx-auto w-full max-w-3xl rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">{displayText("Product records are available inside each batch.")}</div>;
   }
 
   return <ManagerInputsPage />;
 }
 
 function ManagerInputsPage() {
+  const { display: displayText } = useDisplayLocale();
   const { data: batches } = useBatches();
   const [activeTab, setActiveTab] = useState<"inventory" | "history">("inventory");
   const [filterBatch, setFilterBatch] = useState("all");
@@ -60,9 +64,9 @@ function ManagerInputsPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-4">
-      <PageHeader icon={Package} title="Products" description="Manage inventory and review product history." />
+      <PageHeader icon={Package} title={displayText("Products")} description={displayText("Manage inventory and review product history.")} />
 
-      <nav data-testid="product-tabs" className="grid grid-cols-2 rounded-xl border bg-muted/30 p-1" role="tablist" aria-label="Product pages">
+      <nav data-testid="product-tabs" className="grid grid-cols-2 rounded-xl border bg-muted/30 p-1" role="tablist" aria-label={displayText("Product pages")}>
         <Button
           variant="ghost"
           type="button"
@@ -71,8 +75,7 @@ function ManagerInputsPage() {
           onClick={() => setActiveTab("inventory")}
           className={activeTab === "inventory" ? "min-h-11 rounded-lg bg-background text-sm font-semibold shadow-sm" : "min-h-11 rounded-lg text-sm font-semibold text-muted-foreground"}
         >
-          Inventory
-        </Button>
+          {displayText("Inventory")}</Button>
         <Button
           variant="ghost"
           type="button"
@@ -81,65 +84,65 @@ function ManagerInputsPage() {
           onClick={() => setActiveTab("history")}
           className={activeTab === "history" ? "min-h-11 rounded-lg bg-background text-sm font-semibold shadow-sm" : "min-h-11 rounded-lg text-sm font-semibold text-muted-foreground"}
         >
-          History {logPage ? `(${logPage.totalItems})` : ""}
+          {displayText("History")}{" "}{logPage ? `(${logPage.totalItems})` : ""}
         </Button>
       </nav>
 
       {activeTab === "inventory" ? (
         <InventoryManagerPanel />
       ) : (
-        <section className="space-y-3" aria-label="Product history">
+        <section className="space-y-3" aria-label={displayText("Product history")}>
           <div className="flex flex-col gap-2 sm:flex-row">
             <NativeSelect
-              aria-label="Filter product records by batch"
+              aria-label={displayText("Filter product records by batch")}
               value={filterBatch}
               onChange={(event) => {
                 setFilterBatch(event.target.value);
                 setHistoryPage(0);
               }}
             >
-              <option value="all">All batches</option>
-              <option value="farm">Farm-wide / no batch</option>
+              <option value="all">{displayText("All batches")}</option>
+              <option value="farm">{displayText("Farm-wide / no batch")}</option>
               {batches?.map((batch) => <option key={batch.id} value={batch.id}>{batch.name}</option>)}
             </NativeSelect>
             <NativeSelect
-              aria-label="Filter product records by type"
+              aria-label={displayText("Filter product records by type")}
               value={filterType}
               onChange={(event) => {
                 setFilterType(event.target.value as typeof filterType);
                 setHistoryPage(0);
               }}
             >
-              <option value="ALL">All product types</option>
+              <option value="ALL">{displayText("All product types")}</option>
               {PRODUCT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
             </NativeSelect>
           </div>
 
-          {isLoading && <p className="text-sm text-muted-foreground">Loading records…</p>}
+          {isLoading && <p className="text-sm text-muted-foreground">{displayText("Loading records…")}</p>}
           {!isLoading && logs.length > 0 && (
             <div className="overflow-hidden rounded-xl border">
               <Table>
                 <TableHeader className="bg-muted/40">
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="min-w-52">Product</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Batch</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead className="text-right">Cost</TableHead>
-                    <TableHead className="text-right">Status</TableHead>
+                    <TableHead>{displayText("Date")}</TableHead>
+                    <TableHead className="min-w-52">{displayText("Product")}</TableHead>
+                    <TableHead>{displayText("Type")}</TableHead>
+                    <TableHead>{displayText("Batch")}</TableHead>
+                    <TableHead className="text-right">{displayText("Quantity")}</TableHead>
+                    <TableHead className="text-right">{displayText("Cost")}</TableHead>
+                    <TableHead className="text-right">{displayText("Status")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {logs.map((log) => {
                     const typeLabel = PRODUCT_TYPES.find((item) => item.value === log.productType)?.label ?? log.productType;
                     const status = log.inventoryStatus === "DEDUCTED"
-                      ? <Badge variant="secondary">Stock deducted</Badge>
+                      ? <Badge variant="secondary">{displayText("Stock deducted")}</Badge>
                       : log.inventoryStatus === "PENDING_STOCK_REVIEW"
-                        ? <Badge variant="secondary">Needs review</Badge>
+                        ? <Badge variant="secondary">{displayText("Needs review")}</Badge>
                         : log.inventoryStatus === "UNTRACKED"
-                          ? <Badge variant="outline">Not tracked</Badge>
-                          : <Badge variant="secondary">Recorded</Badge>;
+                          ? <Badge variant="outline">{displayText("Not tracked")}</Badge>
+                          : <Badge variant="secondary">{displayText("Recorded")}</Badge>;
 
                     return (
                       <TableRow key={log.id}>
@@ -152,7 +155,7 @@ function ManagerInputsPage() {
                         <TableCell>{typeLabel}</TableCell>
                         <TableCell>{log.batchId == null ? "Farm-wide" : batchNames.get(log.batchId) ?? `Batch ${log.batchId}`}</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          {log.quantity != null ? `${Number(log.quantity).toLocaleString()} ${log.unit ?? "units"}` : <span className="text-muted-foreground">Not measured</span>}
+                          {log.quantity != null ? `${Number(log.quantity).toLocaleString()} ${log.unit ?? "units"}` : <span className="text-muted-foreground">{displayText("Not measured")}</span>}
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {log.calculatedCost != null ? `₱${Number(log.calculatedCost).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : <span className="text-muted-foreground">—</span>}
@@ -168,22 +171,20 @@ function ManagerInputsPage() {
 
           {!isLoading && logs.length === 0 && (
             <Card className="border-dashed shadow-none">
-              <CardContent className="p-8 text-center text-sm text-muted-foreground">No product records match this view.</CardContent>
+              <CardContent className="p-8 text-center text-sm text-muted-foreground">{displayText("No product records match this view.")}</CardContent>
             </Card>
           )}
 
           {!isLoading && logPage && logPage.totalPages > 1 && (
             <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm text-muted-foreground">
-              <span>{logPage.totalItems} records</span>
+              <span>{logPage.totalItems} {displayText("records")}</span>
               <div className="flex items-center gap-2">
                 <Button type="button" variant="outline" size="sm" disabled={!logPage.hasPrevious} onClick={() => setHistoryPage((current) => Math.max(0, current - 1))}>
                   <ChevronLeft className="size-4" />
-                  Previous
-                </Button>
-                <span>Page {logPage.page + 1} of {logPage.totalPages}</span>
+                  {displayText("Previous")}</Button>
+                <span>{displayText("Page")}{" "}{logPage.page + 1} {displayText("of")}{" "}{logPage.totalPages}</span>
                 <Button type="button" variant="outline" size="sm" disabled={!logPage.hasNext} onClick={() => setHistoryPage((current) => current + 1)}>
-                  Next
-                  <ChevronRight className="size-4" />
+                  {displayText("Next")}<ChevronRight className="size-4" />
                 </Button>
               </div>
             </div>

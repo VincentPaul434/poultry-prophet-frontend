@@ -15,6 +15,92 @@ function request(options = {}) {
   return req;
 }
 
+function refreshRequest() {
+  const req = new Request('https://frontend.test/api/backend/auth/refresh', {
+    method: 'POST',
+    headers: { origin: 'https://frontend.test', host: 'frontend.test', cookie: 'pp_refresh=test-secret', 'content-type': 'application/json' },
+    body: '{}',
+  });
+  req.nextUrl = new URL(req.url);
+  return req;
+}
+
+test('an unavailable backend does not receive sign-in credentials', async (t) => {
+  const original = process.env.BACKEND_API_URL;
+  process.env.BACKEND_API_URL = 'https://backend.invalid/api';
+  t.after(() => { if (original === undefined) delete process.env.BACKEND_API_URL; else process.env.BACKEND_API_URL = original; });
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push({ url: String(url), ...options });
+    return new Response(null, { status: 503 });
+  });
+  const req = new Request('https://frontend.test/api/backend/auth/login', {
+    method: 'POST',
+    headers: { origin: 'https://frontend.test', host: 'frontend.test', 'content-type': 'application/json' },
+    body: JSON.stringify({ email: 'private@example.test', password: 'private-password' }),
+  });
+  req.nextUrl = new URL(req.url);
+  const response = await route.POST(req, { params: Promise.resolve({ path: ['auth', 'login'] }) });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('x-pp-refresh-not-started'), null);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://backend.invalid/api/health/ready');
+  assert.equal(calls[0].body, undefined);
+  assert.equal(calls[0].redirect, 'manual');
+  assert.doesNotMatch(JSON.stringify(calls[0].headers), /private/);
+});
+
+test('an unavailable backend is checked before sending a one-time refresh credential', async (t) => {
+  const original = process.env.BACKEND_API_URL;
+  process.env.BACKEND_API_URL = 'https://backend.invalid/api';
+  t.after(() => { if (original === undefined) delete process.env.BACKEND_API_URL; else process.env.BACKEND_API_URL = original; });
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push({ url: String(url), method: options.method ?? 'GET', body: options.body });
+    return new Response(null, { status: 503 });
+  });
+  const response = await route.POST(refreshRequest(), { params: Promise.resolve({ path: ['auth', 'refresh'] }) });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('x-pp-refresh-not-started'), '1');
+  assert.equal(response.headers.get('set-cookie'), null);
+  assert.deepEqual(calls, [{ url: 'https://backend.invalid/api/health/ready', method: 'GET', body: undefined }]);
+  assert.doesNotMatch(await response.text(), /test-secret/);
+});
+
+test('a redirected readiness probe is not followed and does not send the refresh credential', async (t) => {
+  const original = process.env.BACKEND_API_URL;
+  process.env.BACKEND_API_URL = 'https://backend.invalid/api';
+  t.after(() => { if (original === undefined) delete process.env.BACKEND_API_URL; else process.env.BACKEND_API_URL = original; });
+  let calls = 0;
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    calls++;
+    assert.equal(options.redirect, 'manual');
+    assert.equal(options.body, undefined);
+    return new Response(null, { status: 302, headers: { location: 'https://other.invalid/' } });
+  });
+  const response = await route.POST(refreshRequest(), { params: Promise.resolve({ path: ['auth', 'refresh'] }) });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('x-pp-refresh-not-started'), '1');
+  assert.equal(calls, 1);
+});
+
+test('a ready backend receives the refresh once and cannot forge the not-started marker', async (t) => {
+  const original = process.env.BACKEND_API_URL;
+  process.env.BACKEND_API_URL = 'https://backend.invalid/api';
+  t.after(() => { if (original === undefined) delete process.env.BACKEND_API_URL; else process.env.BACKEND_API_URL = original; });
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push({ url: String(url), body: options.body });
+    if (calls.length === 1) return Response.json({ status: 'UP' });
+    return new Response(null, { status: 503, headers: { 'x-pp-refresh-not-started': '1' } });
+  });
+  const response = await route.POST(refreshRequest(), { params: Promise.resolve({ path: ['auth', 'refresh'] }) });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('x-pp-refresh-not-started'), null);
+  assert.deepEqual(calls.map(call => call.url), ['https://backend.invalid/api/health/ready', 'https://backend.invalid/api/auth/refresh']);
+  assert.equal(JSON.parse(calls[1].body).refreshToken, 'test-secret');
+});
+
 test('forwards the request with a fresh correlation ID and preserves the streamed response', async (t) => {
   const original = process.env.BACKEND_API_URL;
   process.env.BACKEND_API_URL = 'http://backend.invalid/api';
@@ -77,6 +163,13 @@ test('returns a safe 502 for other upstream failures without logging credentials
   assert.match(response.headers.get('x-request-id'), uuid);
   assert.doesNotMatch(await response.text(), /secret|private/i);
   assert.doesNotMatch(JSON.stringify(logs), /secret|private/i);
+  const entry = logs.find(([event]) => event === 'backend_proxy_failure');
+  assert.equal(entry[1].requestId, response.headers.get('x-request-id'));
+  assert.equal(entry[1].method, 'POST');
+  assert.equal(entry[1].status, 502);
+  assert.equal(entry[1].category, 'api');
+  assert.equal(entry[1].reason, 'unavailable');
+  assert.ok(entry[1].durationMs >= 0);
 });
 
 test('clears the deadline after upstream headers arrive, while the response remains readable', async (t) => {

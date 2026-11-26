@@ -26,7 +26,11 @@ test('login hides refresh credential in an HttpOnly cookie', async (t) => {
 test('refresh uses only the cookie and rotates it; logout clears it', async (t) => {
   process.env.BACKEND_API_URL = 'https://backend.invalid/api';
   const bodies = [];
-  t.mock.method(globalThis, 'fetch', async (_url, options) => { bodies.push(JSON.parse(Buffer.from(options.body).toString())); return bodies.length === 1 ? Response.json(auth) : new Response(null, { status: 204 }); });
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    if (String(url).endsWith('/health/ready')) return Response.json({ status: 'UP' });
+    bodies.push(JSON.parse(Buffer.from(options.body).toString()));
+    return bodies.length === 1 ? Response.json(auth) : new Response(null, { status: 204 });
+  });
   for (const operation of ['refresh', 'logout']) {
     const path = ['auth', operation];
     const response = await route.POST(request(path, 'pp_refresh=old-secret'), { params: Promise.resolve({ path }) });
@@ -50,7 +54,11 @@ test('invite and profile responses also keep refresh credentials server-side', a
 test('refresh requires exactly one cookie and clears rejected credentials', async (t) => {
   process.env.BACKEND_API_URL = 'https://backend.invalid/api';
   let calls = 0;
-  t.mock.method(globalThis, 'fetch', async () => { calls++; return Response.json({ message: 'Invalid refresh token' }, { status: 400 }); });
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    if (String(url).endsWith('/health/ready')) return Response.json({ status: 'UP' });
+    calls++;
+    return Response.json({ message: 'Invalid refresh token' }, { status: 400 });
+  });
   const path = ['auth', 'refresh'];
   for (const cookie of ['', 'pp_refresh=one; pp_refresh=two']) {
     const response = await route.POST(request(path, cookie), { params: Promise.resolve({ path }) });

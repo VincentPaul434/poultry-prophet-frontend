@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ArrowRight, CheckCircle2, FlaskConical, Loader2, ShieldCheck } from "lucide-react";
@@ -19,6 +21,7 @@ import type { GenerateTestBatchResponse, TestLabProfile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export default function TestLabPage() {
+  const { display: displayText } = useDisplayLocale();
   const status = useTestLabStatus();
   const { data: batches, isLoading: batchesLoading } = useBatches();
   const generate = useGenerateTestBatch();
@@ -68,47 +71,47 @@ export default function TestLabPage() {
 
         <PageHeader
           icon={FlaskConical}
-          title="Local Test Lab"
-          description="Gumawa ng 100-day test copy in one step. Hindi mababago ang original batch."
+          title={displayText("Local Test Lab")}
+          description={displayText("Gumawa ng 100-day test copy in one step. Hindi mababago ang original batch.")}
         />
 
         {status.isLoading && (
           <div className="flex min-h-32 items-center justify-center rounded-xl border">
-            <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="Checking Test Lab" />
+            <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label={displayText("Checking Test Lab")} />
           </div>
         )}
 
         {status.data && !status.data.enabled && (
           <Alert variant="destructive">
             <ShieldCheck aria-hidden="true" />
-            <AlertTitle>Test Lab is locked</AlertTitle>
+            <AlertTitle>{displayText("Test Lab is locked")}</AlertTitle>
             <AlertDescription>{status.data.message}</AlertDescription>
           </Alert>
         )}
 
         {status.isError && (
           <Alert variant="destructive">
-            <AlertTitle>Test Lab is unavailable</AlertTitle>
-            <AlertDescription>Make sure you are signed in as manager and the local backend is running.</AlertDescription>
+            <AlertTitle>{displayText("Test Lab is unavailable")}</AlertTitle>
+            <AlertDescription>{displayText("Make sure you are signed in as manager and the local backend is running.")}</AlertDescription>
           </Alert>
         )}
 
         {status.data?.enabled && (
           <Card className="shadow-none">
             <CardHeader className="p-4 pb-2 sm:p-5 sm:pb-2">
-              <CardTitle className="text-lg">Generate test batch</CardTitle>
-              <CardDescription>Uses your current local database and login. No extra test account is needed.</CardDescription>
+              <CardTitle className="text-lg">{displayText("Generate test batch")}</CardTitle>
+              <CardDescription>{displayText("Uses your current local database and login. No extra test account is needed.")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 p-4 pt-2 sm:p-5 sm:pt-2">
               <div className="space-y-1.5">
-                <Label htmlFor="test-source">Source batch</Label>
+                <Label htmlFor="test-source">{displayText("Source batch")}</Label>
                 <NativeSelect
                   id="test-source"
                   value={selectedSourceBatchId}
                   onChange={(event) => setSourceBatchId(event.target.value)}
                   disabled={batchesLoading || generate.isPending}
                 >
-                  {sources.length === 0 && <option value="">No eligible batch</option>}
+                  {sources.length === 0 && <option value="">{displayText("No eligible batch")}</option>}
                   {sources.map((batch) => (
                     <option key={batch.id} value={batch.id}>
                       {batch.name} · {batch.currentPopulation}/{batch.initialPopulation}
@@ -118,23 +121,23 @@ export default function TestLabPage() {
               </div>
 
               <fieldset className="space-y-2">
-                <legend className="text-sm font-semibold">Data pattern</legend>
+                <legend className="text-sm font-semibold">{displayText("Data pattern")}</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <ProfileButton
                     active={profile === "REALISTIC"}
-                    title="Realistic"
+                    title={displayText("Realistic")}
                     detail="9 observation days; best for consultation"
                     onClick={() => setProfile("REALISTIC")}
                   />
                   <ProfileButton
                     active={profile === "DAILY_COVERAGE"}
-                    title="Every day"
+                    title={displayText("Every day")}
                     detail="100 observation days; best for chart testing"
                     onClick={() => setProfile("DAILY_COVERAGE")}
                   />
                                   <ProfileButton
                     active={profile === "ANALYTICS_PACK"}
-                    title="Analytics pack"
+                    title={displayText("Analytics pack")}
                     detail="Daily history plus hatch and task cases"
                     onClick={() => setProfile("ANALYTICS_PACK")}
                   />
@@ -142,8 +145,7 @@ export default function TestLabPage() {
               </fieldset>
 
               <div className="rounded-xl border border-success-border bg-success-muted px-3 py-2 text-sm text-success">
-                <span className="font-semibold">Safe copy:</span> the system creates a new `[TEST COPY]` batch and keeps the selected batch unchanged.
-              </div>
+                <span className="font-semibold">{displayText("Safe copy:")}</span> {displayText("the system creates a new `[TEST COPY]` batch and keeps the selected batch unchanged.")}</div>
 
               <Button
                 type="button"
@@ -164,18 +166,18 @@ export default function TestLabPage() {
               <div className="flex items-start gap-3">
                 <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-success" aria-hidden="true" />
                 <div className="min-w-0">
-                  <p className="font-bold text-success">Test batch ready</p>
+                  <p className="font-bold text-success">{displayText("Test batch ready")}</p>
                   <p className="mt-1 break-words text-sm text-success">{result.batchName}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-                <ResultFact label="Population" value={`${result.finalPopulation}/${result.initialPopulation}`} />
-                <ResultFact label="Events" value={result.eventCount} />
-                <ResultFact label="Observations" value={result.observationCount} />
-                <ResultFact label="Reports" value={result.reportCount} />
+                <ResultFact label={displayText("Population")} value={`${result.finalPopulation}/${result.initialPopulation}`} />
+                <ResultFact label={displayText("Events")} value={result.eventCount} />
+                <ResultFact label={displayText("Observations")} value={result.observationCount} />
+                <ResultFact label={displayText("Reports")} value={result.reportCount} />
               </div>
               <Button render={<Link href={`/batches/${result.batchId}`} />} className="h-11 w-full sm:w-auto">
-                Open test batch <ArrowRight aria-hidden="true" />
+                {displayText("Open test batch")}{" "}<ArrowRight aria-hidden="true" />
               </Button>
             </CardContent>
           </Card>

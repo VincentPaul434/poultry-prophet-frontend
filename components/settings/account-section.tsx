@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 // Account Settings content: profile (full name + email) and change-password.
 // The page-level title/breadcrumb live in the SettingsDetailShell.
 
@@ -48,6 +50,7 @@ export function AccountSection() {
 }
 
 function ProfileForm({ user }: { user: StoredUser }) {
+  const { display: displayText } = useDisplayLocale();
   const { updateProfile } = useAuth();
   const [fullName, setFullName] = useState(user.fullName);
   const [email, setEmail] = useState(user.email);
@@ -76,7 +79,7 @@ function ProfileForm({ user }: { user: StoredUser }) {
     <form onSubmit={save} className="space-y-6 border-t pt-6">
       <div className="grid gap-5 md:grid-cols-2">
         <div className="space-y-2">
-          <Label htmlFor="acct-name" className="font-semibold">Full name</Label>
+          <Label htmlFor="acct-name" className="font-semibold">{displayText("Full name")}</Label>
           <Input
             id="acct-name"
             required
@@ -86,7 +89,7 @@ function ProfileForm({ user }: { user: StoredUser }) {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="acct-email" className="font-semibold">Email address</Label>
+          <Label htmlFor="acct-email" className="font-semibold">{displayText("Email address")}</Label>
           <Input
             id="acct-email"
             type="email"
@@ -95,7 +98,7 @@ function ProfileForm({ user }: { user: StoredUser }) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <p className="text-xs text-muted-foreground">Used to sign in. Changing it keeps you logged in.</p>
+          <p className="text-xs text-muted-foreground">{displayText("Used to sign in. Changing it keeps you logged in.")}</p>
         </div>
       </div>
       <div className="flex justify-end border-t pt-5">
@@ -105,14 +108,14 @@ function ProfileForm({ user }: { user: StoredUser }) {
           disabled={!dirty || saving}
         >
           {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-          Save changes
-        </Button>
+          {displayText("Save changes")}</Button>
       </div>
     </form>
   );
 }
 
 function PasswordForm() {
+  const { display: displayText } = useDisplayLocale();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -149,13 +152,13 @@ function PasswordForm() {
           <KeyRound className="size-5" />
         </span>
         <div>
-          <h3 className="text-sm font-bold">Change password</h3>
-          <p className="text-xs text-muted-foreground">Use at least 8 characters</p>
+          <h3 className="text-sm font-bold">{displayText("Change password")}</h3>
+          <p className="text-xs text-muted-foreground">{displayText("Use at least 8 characters")}</p>
         </div>
       </div>
       <div className="grid gap-5 md:grid-cols-3">
         <div className="space-y-2">
-          <Label htmlFor="pw-current" className="font-semibold">Current password</Label>
+          <Label htmlFor="pw-current" className="font-semibold">{displayText("Current password")}</Label>
           <PasswordInput
             id="pw-current"
             required
@@ -166,7 +169,7 @@ function PasswordForm() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="pw-new" className="font-semibold">New password</Label>
+          <Label htmlFor="pw-new" className="font-semibold">{displayText("New password")}</Label>
           <PasswordInput
             id="pw-new"
             required
@@ -178,7 +181,7 @@ function PasswordForm() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="pw-confirm" className="font-semibold">Confirm new password</Label>
+          <Label htmlFor="pw-confirm" className="font-semibold">{displayText("Confirm new password")}</Label>
           <PasswordInput
             id="pw-confirm"
             required
@@ -196,8 +199,7 @@ function PasswordForm() {
           disabled={saving || !current || !next || !confirm}
         >
           {saving ? <Loader2 className="size-4 animate-spin" /> : <KeyRound className="size-4" />}
-          Change password
-        </Button>
+          {displayText("Change password")}</Button>
       </div>
     </form>
   );

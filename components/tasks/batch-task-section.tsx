@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { useState } from "react";
 import { ChevronLeft, ChevronRight, ClipboardList, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -16,6 +18,7 @@ const PREVIEW_SIZE = 3;
 const PAGE_SIZE = 10;
 
 export function BatchTaskSection({ batchId, batchName }: { batchId: number; batchName: string }) {
+  const { display: displayText } = useDisplayLocale();
   const { t } = useLocale();
   const [allOpen, setAllOpen] = useState(false);
   const [page, setPage] = useState(0);
@@ -78,7 +81,7 @@ export function BatchTaskSection({ batchId, batchName }: { batchId: number; batc
             {allQuery.isError && <div role="alert" className="rounded-2xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{allQuery.error instanceof ApiError ? allQuery.error.message : t("tasks.batchWorkLoadError")}</div>}
             {!allQuery.isLoading && !allQuery.isError && listItems.length === 0 && <div className="rounded-2xl border border-dashed px-4 py-5 text-center text-xs text-muted-foreground">{t("tasks.batchWorkEmpty")}</div>}
             {!allQuery.isLoading && !allQuery.isError && listItems.length > 0 && <div className="space-y-2">{listItems.map((task) => <HandlerTaskRow key={task.id} task={task} batchName={batchName} onOpen={setSelectedTask} />)}</div>}
-            {allQuery.data && <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3"><Button type="button" variant="outline" size="sm" disabled={!allQuery.data.hasPrevious || allQuery.isFetching} onClick={() => setPage((value) => Math.max(0, value - 1))}><ChevronLeft className="size-4" />Previous</Button><span className="text-xs text-muted-foreground">Page {allQuery.data.page + 1} of {Math.max(1, allQuery.data.totalPages)}</span><Button type="button" variant="outline" size="sm" disabled={!allQuery.data.hasNext || allQuery.isFetching} onClick={() => setPage((value) => value + 1)}>Next<ChevronRight className="size-4" /></Button></div>}
+            {allQuery.data && <div className="mt-4 flex items-center justify-between gap-2 border-t pt-3"><Button type="button" variant="outline" size="sm" disabled={!allQuery.data.hasPrevious || allQuery.isFetching} onClick={() => setPage((value) => Math.max(0, value - 1))}><ChevronLeft className="size-4" />{displayText("Previous")}</Button><span className="text-xs text-muted-foreground">{displayText("Page")}{" "}{allQuery.data.page + 1} {displayText("of")}{" "}{Math.max(1, allQuery.data.totalPages)}</span><Button type="button" variant="outline" size="sm" disabled={!allQuery.data.hasNext || allQuery.isFetching} onClick={() => setPage((value) => value + 1)}>{displayText("Next")}<ChevronRight className="size-4" /></Button></div>}
           </div>
         </SheetContent>
       </Sheet>

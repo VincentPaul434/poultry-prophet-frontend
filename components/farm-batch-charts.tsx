@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import Link from "next/link";
 import type { BatchDashboardItem } from "@/lib/types";
 import { useAuth } from "@/lib/auth-context";
@@ -32,6 +34,7 @@ function rank(rows: ChartRow[]) {
 }
 
 export function FarmBatchCharts({ items, isLoading, isError }: FarmBatchChartsProps) {
+  const { display: displayText } = useDisplayLocale();
   const { isManager } = useAuth();
   const stockHistory = useFarmProducts(true, isManager);
   const products = Array.isArray(stockHistory.data) ? stockHistory.data : undefined;
@@ -74,20 +77,20 @@ export function FarmBatchCharts({ items, isLoading, isError }: FarmBatchChartsPr
 
   return <section aria-labelledby="batch-charts-heading" className="space-y-5 border-t border-border pt-7">
     <div className="space-y-1.5">
-      <h2 id="batch-charts-heading" className="ledger-card-title text-2xl sm:text-3xl">Batch charts</h2>
-      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">Up to 10 non-archived batches with the most current birds. Figures cover recorded batch history and are independent of the Snapshot review dates. Cached offline figures may lag.</p>
+      <h2 id="batch-charts-heading" className="ledger-card-title text-2xl sm:text-3xl">{displayText("Batch charts")}</h2>
+      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{displayText("Up to 10 non-archived batches with the most current birds. Figures cover recorded batch history and are independent of the Snapshot review dates. Cached offline figures may lag.")}</p>
     </div>
-    {isLoading && <p className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground" role="status">Loading batch charts…</p>}
-    {isError && <p role="alert" className="rounded-xl bg-destructive/8 px-4 py-3 text-sm text-destructive">Batch charts could not be loaded. Refresh the page to try again.</p>}
-    {isManager && stockHistory.isLoading && <p role="status" className="text-xs text-muted-foreground">Checking demo stock history…</p>}
-    {isManager && demoStockExists && <p className="rounded-xl bg-warning-muted px-4 py-3 text-sm text-warning-ink">Demo stock is in farm history; cost rankings may be affected. Check each batch report before relying on costs.</p>}
-    {isManager && !demoStockExists && !stockHistory.isLoading && stockStatusUnknown && <p role="status" className="rounded-xl bg-warning-muted px-4 py-3 text-sm text-warning-ink">Demo stock history could not be checked. Verify batch costs before using these rankings.</p>}
-    {!isLoading && !isError && top.length === 0 && <p className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">No batches with a valid current bird count are available.</p>}
-    {!isLoading && !isError && needsReview.length > 0 && <p className="rounded-xl bg-warning-muted px-4 py-3 text-sm text-warning-ink">{number.format(needsReview.length)} batch{needsReview.length === 1 ? " has" : "es have"} population records that need review and {needsReview.length === 1 ? "is" : "are"} excluded from these charts.</p>}
+    {isLoading && <p className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground" role="status">{displayText("Loading batch charts…")}</p>}
+    {isError && <p role="alert" className="rounded-xl bg-destructive/8 px-4 py-3 text-sm text-destructive">{displayText("Batch charts could not be loaded. Refresh the page to try again.")}</p>}
+    {isManager && stockHistory.isLoading && <p role="status" className="text-xs text-muted-foreground">{displayText("Checking demo stock history…")}</p>}
+    {isManager && demoStockExists && <p className="rounded-xl bg-warning-muted px-4 py-3 text-sm text-warning-ink">{displayText("Demo stock is in farm history; cost rankings may be affected. Check each batch report before relying on costs.")}</p>}
+    {isManager && !demoStockExists && !stockHistory.isLoading && stockStatusUnknown && <p role="status" className="rounded-xl bg-warning-muted px-4 py-3 text-sm text-warning-ink">{displayText("Demo stock history could not be checked. Verify batch costs before using these rankings.")}</p>}
+    {!isLoading && !isError && top.length === 0 && <p className="rounded-xl bg-muted/40 px-4 py-3 text-sm text-muted-foreground">{displayText("No batches with a valid current bird count are available.")}</p>}
+    {!isLoading && !isError && needsReview.length > 0 && <p className="rounded-xl bg-warning-muted px-4 py-3 text-sm text-warning-ink">{number.format(needsReview.length)} {displayText("batch")}{needsReview.length === 1 ? " has" : "es have"} {displayText("population records that need review and")}{" "}{needsReview.length === 1 ? "is" : "are"} {displayText("excluded from these charts.")}</p>}
     {!isLoading && !isError && top.length > 0 && <div className="grid items-start gap-4 xl:grid-cols-3">
-      <RankedChart title="Recorded cost per current bird" description="Recorded batch cost divided by current birds. Only PHP costs with valued product usage are ranked; no currency conversion is applied." rows={expenses} color="bg-[#b17618]" />
-      <RankedChart title="Recorded death rate" description="Health-related and accidental deaths as a share of starting birds. Transfers can affect this comparison; other losses are excluded." rows={deaths} color="bg-[#b8493f]" />
-      <RankedChart title="Current birds" description="Batches ranked by birds currently in each batch." rows={population} color="bg-primary" />
+      <RankedChart title={displayText("Recorded cost per current bird")} description={displayText("Recorded batch cost divided by current birds. Only PHP costs with valued product usage are ranked; no currency conversion is applied.")} rows={expenses} color="bg-[#b17618]" />
+      <RankedChart title={displayText("Recorded death rate")} description={displayText("Health-related and accidental deaths as a share of starting birds. Transfers can affect this comparison; other losses are excluded.")} rows={deaths} color="bg-[#b8493f]" />
+      <RankedChart title={displayText("Current birds")} description={displayText("Batches ranked by birds currently in each batch.")} rows={population} color="bg-primary" />
     </div>}
   </section>;
 }

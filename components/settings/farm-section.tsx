@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 // Farm Settings content: the farm profile form (name required, location and
 // description optional). Saving a name is what clears the onboarding banner.
 
@@ -16,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function FarmSection() {
+  const { display: displayText } = useDisplayLocale();
   const farm = useFarm(true);
 
   if (farm.isLoading && !farm.data) {
@@ -26,7 +29,7 @@ export function FarmSection() {
     );
   }
   if (farm.isError && !farm.data) {
-    return <p className="text-sm text-destructive">Failed to load farm profile.</p>;
+    return <p className="text-sm text-destructive">{displayText("Failed to load farm profile.")}</p>;
   }
   if (!farm.data) return null;
 
@@ -36,8 +39,7 @@ export function FarmSection() {
     <div className="space-y-3">
       {farm.isError && (
         <p className="rounded-xl border border-warning-border bg-warning-muted px-3 py-2 text-sm text-warning-ink" role="status">
-          Couldn’t refresh the farm profile. Showing the last loaded details.
-        </p>
+          {displayText("Couldn’t refresh the farm profile. Showing the last loaded details.")}</p>
       )}
       <FarmProfileForm key={farm.data.id} farm={farm.data} />
     </div>
@@ -45,6 +47,7 @@ export function FarmSection() {
 }
 
 function FarmProfileForm({ farm }: { farm: Farm }) {
+  const { display: displayText } = useDisplayLocale();
   const update = useUpdateFarm();
   const [name, setName] = useState(farm.name ?? "");
   const [location, setLocation] = useState(farm.location ?? "");
@@ -74,18 +77,17 @@ function FarmProfileForm({ farm }: { farm: Farm }) {
     <form onSubmit={save} className="space-y-6 rounded-2xl border bg-card p-5 sm:p-7">
       {needsSetup && (
         <p className="rounded-xl bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
-          Finish setting up your farm to unlock the full dashboard.
-        </p>
+          {displayText("Finish setting up your farm to unlock the full dashboard.")}</p>
       )}
       <div className="grid gap-5 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="farm-name" className="font-semibold">
-            Farm name <span className="text-destructive">*</span>
+            {displayText("Farm name")}{" "}<span className="text-destructive">*</span>
           </Label>
           <Input
             id="farm-name"
             required
-            placeholder="e.g. Sunrise Game Fowl Farm"
+            placeholder={displayText("e.g. Sunrise Game Fowl Farm")}
             className="h-11 rounded-xl"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -93,11 +95,11 @@ function FarmProfileForm({ farm }: { farm: Farm }) {
         </div>
         <div className="space-y-2">
           <Label htmlFor="farm-location" className="font-semibold">
-            Location <span className="font-normal text-muted-foreground">(optional)</span>
+            {displayText("Location")}{" "}<span className="font-normal text-muted-foreground">{displayText("(optional)")}</span>
           </Label>
           <Input
             id="farm-location"
-            placeholder="e.g. Batangas, Philippines"
+            placeholder={displayText("e.g. Batangas, Philippines")}
             className="h-11 rounded-xl"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
@@ -106,11 +108,11 @@ function FarmProfileForm({ farm }: { farm: Farm }) {
       </div>
       <div className="space-y-2">
         <Label htmlFor="farm-description" className="font-semibold">
-          Description <span className="font-normal text-muted-foreground">(optional)</span>
+          {displayText("Description")}{" "}<span className="font-normal text-muted-foreground">{displayText("(optional)")}</span>
         </Label>
         <Textarea
           id="farm-description"
-          placeholder="A short description of your farm (optional)"
+          placeholder={displayText("A short description of your farm (optional)")}
           className="rounded-xl"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -123,8 +125,7 @@ function FarmProfileForm({ farm }: { farm: Farm }) {
           disabled={update.isPending || !name.trim()}
         >
           {update.isPending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-          Save changes
-        </Button>
+          {displayText("Save changes")}</Button>
       </div>
     </form>
   );

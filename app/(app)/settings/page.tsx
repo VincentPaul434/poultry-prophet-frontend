@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 // Settings hub: a card per category. Manager-only categories are hidden from
 // handlers. Each card links to its own /settings/<section> route.
 
@@ -13,8 +15,9 @@ import { PageHeader } from "@/components/page-header";
 import { useLocale } from "@/components/locale-provider";
 
 export default function SettingsPage() {
+  const { display: displayText } = useDisplayLocale();
   const { isManager } = useAuth();
-  const { t } = useLocale();
+  const { t, display } = useLocale();
   const sections = SETTINGS_SECTIONS.filter((s) => !s.managerOnly || isManager);
 
   return (
@@ -23,7 +26,7 @@ export default function SettingsPage() {
       <PageHeader
         title={t("settings.title")}
         titleClassName="text-3xl sm:text-4xl"
-        description="Manage your account and farm configuration."
+        description={displayText("Manage your account and farm configuration.")}
       />
 
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -38,8 +41,8 @@ export default function SettingsPage() {
                   <ChevronRight className="size-5 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
                 </div>
                 <div className="mt-auto space-y-2">
-                  <h2 className="text-lg font-bold">{s.key === "preferences" ? t("settings.preferences") : s.title}</h2>
-                  <p className="text-sm leading-relaxed text-muted-foreground">{s.key === "preferences" ? t("settings.preferencesDescription") : s.description}</p>
+                  <h2 className="text-lg font-bold">{s.key === "preferences" ? t("settings.preferences") : display(s.title)}</h2>
+                  <p className="text-sm leading-relaxed text-muted-foreground">{s.key === "preferences" ? t("settings.preferencesDescription") : display(s.description)}</p>
                 </div>
               </CardContent>
             </Link>

@@ -3,6 +3,49 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 
+test("successful sync timestamps stay scoped to the user and farm", async ({ context }) => {
+  await context.route("http://offline.test/**", (route) => route.fulfill({ contentType: "text/html", body: "<html></html>" }));
+  const page = await context.newPage();
+  await loadDatabase(page);
+  const result = await page.evaluate(async () => {
+    const db = (window as unknown as { offlineDb: {
+      setLastSuccessfulSync: (user: number, farm: number, value: string) => Promise<void>;
+      getLastSuccessfulSync: (user: number, farm: number) => Promise<string | null>;
+    } }).offlineDb;
+    await db.setLastSuccessfulSync(1, 2, "2026-11-25T00:01:00.000Z");
+    const otherBefore = await db.getLastSuccessfulSync(7, 2);
+    const otherFarmBefore = await db.getLastSuccessfulSync(1, 3);
+    await db.setLastSuccessfulSync(7, 2, "2026-11-25T00:02:00.000Z");
+    return { first: await db.getLastSuccessfulSync(1, 2), otherBefore, otherFarmBefore, second: await db.getLastSuccessfulSync(7, 2) };
+  });
+  expect(result).toEqual({ first: "2026-11-25T00:01:00.000Z", otherBefore: null, otherFarmBefore: null, second: "2026-11-25T00:02:00.000Z" });
+});
+
+for (const [name, initial, acknowledgment, expected] of [
+  ["clear", true, false, false],
+  ["clear an omitted legacy", true, undefined, false],
+  ["set", false, true, true],
+] as const) test(`acknowledged selection updates ${name} cached newer-data acknowledgment`, async ({ context }) => {
+  await context.route("http://offline.test/**", (route) => route.fulfill({ contentType: "text/html", body: "<html></html>" }));
+  const page = await context.newPage();
+  await loadDatabase(page);
+  const result = await page.evaluate(async ({ initial, acknowledgment }) => {
+    const db = (window as unknown as { offlineDb: {
+      upsertSelectionSessionSnapshot: (user: number, farm: number, batch: number, session: object) => Promise<void>;
+      commitSyncedSelectionSession: (operation: object, serverId: number, serverTime: string) => Promise<void>;
+      getSelectionSessionSnapshot: (user: number, farm: number, batch: number) => Promise<Array<{ sourceDataAcknowledged: boolean }> | null>;
+    } }).offlineDb;
+    await db.upsertSelectionSessionSnapshot(1, 2, 3, {
+      id: 4, batchId: 3, farmId: 2, sourceDataAcknowledged: initial, selectionDate: "2026-11-25",
+      createdAt: "2026-11-25T00:00:00Z", evaluatedCount: 1, acceptedCount: 1,
+    });
+    await db.commitSyncedSelectionSession({ entityType: "SELECTION_SESSION_UPDATE", userId: 1, farmId: 2, batchId: 3,
+      payload: { sessionId: 4, ...(acknowledgment === undefined ? {} : { sourceDataAcknowledged: acknowledgment }) } }, 4, "2026-11-25T00:01:00Z");
+    return (await db.getSelectionSessionSnapshot(1, 2, 3))?.[0]?.sourceDataAcknowledged;
+  }, { initial, acknowledgment });
+  expect(result).toBe(expected);
+});
+
 async function loadDatabase(page: import("@playwright/test").Page) {
   const source = readFileSync(join(process.cwd(), "lib/offline-db.ts"), "utf8");
   const script = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;

@@ -1,5 +1,8 @@
 import type { NextRequest } from "next/server";
 
+// Keep the refresh readiness probe and upstream deadline inside the host limit.
+export const maxDuration = 60;
+
 type RouteContext = {
   params: Promise<{ path: string[] }>;
 };
@@ -18,7 +21,9 @@ const HOP_BY_HOP_HEADERS = [
 ];
 
 const UPSTREAM_TIMEOUT_MS = 30_000;
+const READINESS_TIMEOUT_MS = 15_000;
 const REFRESH_COOKIE = "pp_refresh";
+const REFRESH_NOT_STARTED = "x-pp-refresh-not-started";
 
 function firstForwardedValue(value: string | null) {
   return value?.split(",", 1)[0]?.trim() || null;
@@ -75,10 +80,12 @@ function cookieHeader(request: NextRequest, value: string, maxAge: number) {
 }
 
 async function proxy(request: NextRequest, { params }: RouteContext) {
+  const startedAt = Date.now();
   const requestId = crypto.randomUUID();
   const errorHeaders: Record<string, string> = { "x-request-id": requestId, "cache-control": "no-store" };
   const path = (await params).path;
   const sameOrigin = hasExactRequestOrigin(request);
+  const refreshRequest = request.method === "POST" && path.length === 2 && path[0] === "auth" && path[1] === "refresh";
   // Clear the browser cookie even if backend configuration is unavailable.
   if (request.method === "POST" && path.length === 2 && path[0] === "auth" && path[1] === "logout" && sameOrigin) {
     errorHeaders["set-cookie"] = cookieHeader(request, "", 0);
@@ -87,6 +94,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
     process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL;
 
   if (!backendApiUrl) {
+    if (refreshRequest) errorHeaders[REFRESH_NOT_STARTED] = "1";
     return Response.json(
       {
         status: 500,
@@ -112,6 +120,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
     base.hash = "";
     target = new URL(`${pathname}${request.nextUrl.search}`, base);
   } catch {
+    if (refreshRequest) errorHeaders[REFRESH_NOT_STARTED] = "1";
     return Response.json(
       {
         status: 500,
@@ -123,6 +132,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
   }
 
   if (!target.pathname.startsWith(apiBasePath)) {
+    if (refreshRequest) errorHeaders[REFRESH_NOT_STARTED] = "1";
     return Response.json(
       { status: 400, error: "Bad Request", message: "Invalid backend API path." },
       { status: 400, headers: errorHeaders }
@@ -133,7 +143,9 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
   // responses which also contain fresh credentials. Require an exact origin;
   // SameSite cookies alone do not distinguish sibling origins on the same site.
   const relativePath = target.pathname.slice(apiBasePath.length);
+  const category = relativePath.startsWith("auth/") ? "auth" : relativePath.startsWith("health") ? "health" : "api";
   const refresh = request.method === "POST" && relativePath === "auth/refresh";
+  const login = request.method === "POST" && relativePath === "auth/login";
   const logout = request.method === "POST" && relativePath === "auth/logout";
   const changesCredentials =
     (request.method === "POST" &&
@@ -142,6 +154,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
     (request.method === "PUT" && relativePath === "account/profile");
   if (changesCredentials) {
     if (!sameOrigin) {
+      if (refresh) errorHeaders[REFRESH_NOT_STARTED] = "1";
       return Response.json(
         { status: 403, error: "Forbidden", message: "Invalid request origin." },
         { status: 403, headers: errorHeaders }
@@ -163,6 +176,25 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
     }
     if (logout && !credential) {
       return new Response(null, { status: 204, headers: { ...errorHeaders, "set-cookie": cookieHeader(request, "", 0) } });
+    }
+    if (refresh || login) {
+      // Check readiness before forwarding credentials or consuming a one-time token.
+      const readiness = new URL(`${apiBasePath}health/ready`, target.origin);
+      try {
+        const response = await fetch(readiness, {
+          cache: "no-store",
+          headers: { "x-request-id": requestId },
+          redirect: "manual",
+          signal: AbortSignal.timeout(READINESS_TIMEOUT_MS),
+        });
+        if (!response.ok) throw new Error("Backend not ready");
+      } catch {
+        console.warn("backend_auth_not_ready", { requestId, method: request.method, category, status: 503, durationMs: Date.now() - startedAt });
+        return Response.json(
+          { status: 503, error: "Service Unavailable", message: "The server is temporarily unavailable. Please try again." },
+          { status: 503, headers: refresh ? { ...errorHeaders, [REFRESH_NOT_STARTED]: "1" } : errorHeaders },
+        );
+      }
     }
     const body = refresh || logout
       ? JSON.stringify({ refreshToken: credential })
@@ -191,6 +223,8 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
 
     const responseHeaders = new Headers(upstream.headers);
     for (const header of HOP_BY_HOP_HEADERS) responseHeaders.delete(header);
+    // Only this proxy can assert that a refresh credential was not sent.
+    responseHeaders.delete(REFRESH_NOT_STARTED);
     responseHeaders.delete("set-cookie");
     responseHeaders.set("cache-control", "no-store");
     responseHeaders.set("x-request-id", requestId);
@@ -222,6 +256,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
       headers: responseHeaders,
     });
   } catch {
+    console.warn("backend_proxy_failure", { requestId, method: request.method, category, status: timedOut ? 504 : 502, durationMs: Date.now() - startedAt, reason: timedOut ? "timeout" : "unavailable" });
     if (logout) errorHeaders["set-cookie"] = cookieHeader(request, "", 0);
     return Response.json(
       timedOut

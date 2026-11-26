@@ -87,7 +87,7 @@ lib/
   `gcTime` 5m, retry transient errors only (never 4xx), refetch on window focus.
 - **Per-query tuning**: lifecycle stages are `staleTime: Infinity` (static reference
   data); handlers/thresholds 5m; live data (overview, alerts, indicators) 15s.
-- **Live refresh**: active batch queries and the farm alert feed refresh every 30s.
+- **Live refresh**: active farm queries refresh every 60 seconds while the app is visible and online. The Refresh button also sends due queued records and reloads active data without replacing form input.
 - **Hierarchical keys** ([lib/query-keys.ts](lib/query-keys.ts)): everything for a batch
   lives under `["batches", id, ...]`, so a mutation can invalidate the whole subtree
   (e.g. logging a daily record recomputes indicators + alerts, so it invalidates
@@ -100,3 +100,48 @@ For controlled stakeholder validation, point `BACKEND_API_URL` at the isolated v
 set the version/environment variables from `.env.validation.example`, and confirm the in-app
 validation banner before entering synthetic data. The primary MVP flow excludes individual
 selection, offline capability claims, report UI, and advanced charts.
+
+
+### Local backend and refresh verification
+
+Start the local backend on port 18080 with your existing local database. To create
+a separate disposable database instead, use the backend repository’s
+`bash scripts/validation-up.sh` after loading its validation environment settings.
+Then run `pnpm dev:local` here and open `http://localhost:3000`. This command
+explicitly uses `http://127.0.0.1:18080/api`, overriding the usual backend URL.
+It also enables the existing offline development mode for local recording tests.
+
+Run `pnpm check:local-sync` to verify receipt-backed death-event syncing. This
+check accepts only HTTP loopback URLs and refuses redirects; it cannot contact
+a live deployment. An optional first argument selects another local version URL.
+
+Population totals show confirmed records. Locally queued deaths are labelled
+separately until their original operation IDs are acknowledged, so a lost reply
+cannot produce a second deduction.
+
+### Disposable outage-recovery test
+
+Use a separate local validation backend on `127.0.0.1:18081` backed by a
+disposable database. The test creates synthetic farms, accounts and records;
+never point that backend at real farm data. Start the local test gate in one
+terminal:
+
+```bash
+RUN_DISPOSABLE_RECOVERY=true RECOVERY_QA_PORT=18084 node scripts/qa-outage-gate.cjs
+```
+
+In a separate frontend checkout or build directory, build with
+`NEXT_PUBLIC_ENABLE_OFFLINE=true`, `NEXT_PUBLIC_OFFLINE_DAILY_RECORDS=true` and
+`NEXT_PUBLIC_APP_ENVIRONMENT=validation`. Start the built frontend on port
+33309 with `BACKEND_API_URL=http://127.0.0.1:18084/api`. Then run:
+
+```bash
+RUN_DISPOSABLE_RECOVERY=true RECOVERY_QA_GATE=http://127.0.0.1:18084 \
+  PLAYWRIGHT_BASE_URL=http://127.0.0.1:33309 \
+  pnpm exec playwright test e2e/disposable-outage-recovery.spec.ts --project=chromium
+```
+
+Before creating fixtures, the test checks that the frontend is connected to
+the exact local gate and that the backend advertises receipt-backed validation
+mode. It exercises an unavailable refresh, a 504 after a committed measurement,
+and an automatic retry of the original operation.

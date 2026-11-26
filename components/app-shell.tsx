@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -18,6 +20,8 @@ import { useLocale } from "@/components/locale-provider";
 import type { TranslationKey } from "@/lib/i18n";
 import { NetworkStatusBanner } from "@/components/network-status-banner";
 import { SyncStatusIndicator } from "@/components/sync-status-indicator";
+import { DataRefreshControl } from "@/components/data-refresh-control";
+import { SyncReadinessBanner } from "@/components/sync-readiness-banner";
 import { MobileAppHeader } from "@/components/mobile-app-header";
 import { PoultryProphetMark } from "@/components/poultry-prophet-mark";
 import { RecordBatchPicker } from "@/components/record-batch-picker";
@@ -85,6 +89,7 @@ function initials(name: string | undefined) {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const { display: displayText } = useDisplayLocale();
   const pathname = usePathname();
   const { user, logout, authRequired } = useAuth();
   const { t } = useLocale();
@@ -173,9 +178,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </SidebarHeader>
 
         <SidebarContent className="py-1">
-          <nav data-testid="desktop-primary-navigation" aria-label="Primary navigation" className="px-3 py-4">
+          <nav data-testid="desktop-primary-navigation" aria-label={displayText("Primary navigation")} className="px-3 py-4">
             <SidebarGroup className="p-0">
-              <SidebarGroupLabel className="h-7 px-3 text-xs font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/55">Navigation</SidebarGroupLabel>
+              <SidebarGroupLabel className="h-7 px-3 text-xs font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/55">{displayText("Navigation")}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu className="gap-1.5">
                   {NAV.filter((item) => item.managerOnly !== true || user?.role === "MANAGER").map(({ href, labelKey, icon: Icon }) => {
@@ -212,7 +217,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <SidebarFooter className="gap-1 border-t border-sidebar-border px-3 py-4">
           <DropdownMenu open={profileOpen} onOpenChange={setProfileOpen}>
             <DropdownMenuTrigger
-              render={<Button type="button" variant="ghost" aria-label="Open account menu" />}
+              render={<Button type="button" variant="ghost" aria-label={displayText("Open account menu")} />}
               className="flex min-h-12 w-full items-center gap-3 rounded-xl bg-sidebar-accent/70 px-3 py-2.5 text-left outline-hidden transition-colors hover:bg-sidebar-accent focus-visible:ring-2 focus-visible:ring-sidebar-ring"
             >
               <Avatar className="size-9 shrink-0 ring-1 ring-sidebar-primary/30">
@@ -237,12 +242,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <DropdownMenuContent side="top" align="start" className="w-56">
               <DropdownMenuItem render={<Link href="/settings" />}>
                 <Settings className="size-4" aria-hidden="true" />
-                Settings
-              </DropdownMenuItem>
+                {displayText("Settings")}</DropdownMenuItem>
               <DropdownMenuItem variant="destructive" onClick={() => setLogoutDialogOpen(true)}>
                 <LogOut className="size-4" aria-hidden="true" />
-                Sign out
-              </DropdownMenuItem>
+                {displayText("Sign out")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </SidebarFooter>
@@ -254,20 +257,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           initialFocus={() => document.getElementById("logout-cancel")}
         >
           <DialogHeader>
-            <DialogTitle>Sign out?</DialogTitle>
+            <DialogTitle>{displayText("Sign out?")}</DialogTitle>
             <DialogDescription>
-              You will need to sign in again to access your farm data.
-            </DialogDescription>
+              {displayText("You will need to sign in again to access your farm data.")}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DialogClose
               render={<Button id="logout-cancel" variant="outline" />}
             >
-              Cancel
-            </DialogClose>
+              {displayText("Cancel")}</DialogClose>
             <Button variant="destructive" onClick={logout}>
-              Sign out
-            </Button>
+              {displayText("Sign out")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -294,10 +294,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <div className={cn("shrink-0 px-4 sm:px-6 lg:px-8 xl:px-10", pathname === "/tasks" ? "pt-0" : "pt-3")}>
             <NetworkStatusBanner />
-            <div className="mb-4 hidden justify-end md:flex"><SyncStatusIndicator /></div>
+            <div aria-label={displayText("Page tools")} className="mb-2 flex min-w-0 items-center justify-between gap-3">
+              <div className="min-w-0">{backendEnvironment === "local" || backendEnvironment === "validation" ? <span className="inline-flex rounded-full bg-muted px-3 py-1.5 text-sm font-medium text-muted-foreground">{backendEnvironment === "local" ? "Local preview" : "Test environment"}</span> : null}</div>
+              <div className="flex shrink-0 items-center gap-3"><span className="hidden md:inline-flex"><SyncStatusIndicator /></span><DataRefreshControl /></div>
+            </div>
+            <SyncReadinessBanner />
             {compatibilityMismatch && (
               <div className="mt-3 mb-6 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive md:mt-0" role="alert">
-                Frontend/backend version mismatch. Frontend {frontendVersion}; backend expects {" "}{release.data?.compatibleFrontendVersion}.
+                {displayText("Frontend/backend version mismatch. Frontend")}{" "}{frontendVersion}{displayText("; backend expects")}{" "}{" "}{release.data?.compatibleFrontendVersion}.
               </div>
             )}
           </div>
@@ -312,10 +316,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           >
             {children}
-            {pathname !== "/tasks" && <footer className="mt-10 border-t pt-4 text-xs text-muted-foreground">
-              Poultry Prophet {release.data?.version ?? frontendVersion} · {backendEnvironment}
-              {release.data?.commitSha && release.data.commitSha !== "unknown" ? ` · ${release.data.commitSha.slice(0, 7)}` : ""}
-            </footer>}
+
           </div>
         </div>
         <MobileBottomNav isManager={user?.role === "MANAGER"} unread={unread} />
@@ -331,6 +332,7 @@ type MobileNavItem = {
 };
 
 function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: number }) {
+  const { display: displayText } = useDisplayLocale();
   const pathname = usePathname();
   const router = useRouter();
   const { toggleSidebar } = useSidebar();
@@ -373,7 +375,7 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
   return (
     <>
       <nav
-        aria-label="Mobile navigation"
+        aria-label={displayText("Mobile navigation")}
         className="fixed inset-x-0 bottom-0 z-40 bg-card/95 shadow-[var(--shadow-mobile-dock)] backdrop-blur md:hidden"
       >
         <div className={cn("safe-nav-pb mx-auto grid max-w-lg items-center gap-0.5 px-1 pt-2 min-[375px]:gap-1 min-[375px]:px-2", isManager ? "grid-cols-4" : "grid-cols-5")}>
@@ -400,7 +402,7 @@ function MobileBottomNav({ isManager, unread }: { isManager: boolean; unread: nu
               variant="ghost"
               onClick={toggleSidebar}
               className="flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
-              aria-label="Open more navigation options"
+              aria-label={displayText("Open more navigation options")}
             >
               <MoreHorizontal className="size-5" aria-hidden="true" />
               <span className="text-xs font-semibold">{t("nav.more")}</span>
@@ -425,6 +427,7 @@ function HandlerProfileSheet({
   user: ReturnType<typeof useAuth>["user"];
   onSignOut: () => void;
 }) {
+  const { display: displayText } = useDisplayLocale();
   if (!user || user.role !== "HANDLER") return null;
 
   return (
@@ -437,7 +440,7 @@ function HandlerProfileSheet({
             </Avatar>
             <div className="min-w-0">
               <SheetTitle className="truncate">{user.fullName}</SheetTitle>
-              <SheetDescription>Handler · {user.email}</SheetDescription>
+              <SheetDescription>{displayText("Handler ·")}{" "}{user.email}</SheetDescription>
             </div>
           </div>
         </SheetHeader>
@@ -448,7 +451,7 @@ function HandlerProfileSheet({
             className="flex min-h-12 items-center gap-3 rounded-xl border px-3 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
           >
             <UserCircle2 className="size-5 text-primary" aria-hidden="true" />
-            <span>My profile</span>
+            <span>{displayText("My profile")}</span>
           </Link>
           <Link
             href="/settings"
@@ -456,12 +459,11 @@ function HandlerProfileSheet({
             className="flex min-h-12 items-center gap-3 rounded-xl border px-3 text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
           >
             <Settings className="size-5 text-primary" aria-hidden="true" />
-            <span>Settings</span>
+            <span>{displayText("Settings")}</span>
           </Link>
           <Button type="button" variant="destructive" className="mt-4 min-h-12 w-full" onClick={onSignOut}>
             <LogOut aria-hidden="true" />
-            Sign out
-          </Button>
+            {displayText("Sign out")}</Button>
         </div>
       </SheetContent>
     </Sheet>

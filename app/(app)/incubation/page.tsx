@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { Suspense, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -46,10 +48,12 @@ function updateUrl(router: ReturnType<typeof useRouter>, pathname: string, curre
 }
 
 export default function IncubationPage() {
-  return <Suspense fallback={<div className="mx-auto w-full max-w-5xl p-6 text-sm text-muted-foreground">Loading incubation…</div>}><IncubationPageContent /></Suspense>;
+  const { display: displayText } = useDisplayLocale();
+  return <Suspense fallback={<div className="mx-auto w-full max-w-5xl p-6 text-sm text-muted-foreground">{displayText("Loading incubation…")}</div>}><IncubationPageContent /></Suspense>;
 }
 
 function IncubationPageContent() {
+  const { display: displayText } = useDisplayLocale();
   const { isManager } = useAuth();
   const { t } = useLocale();
   const router = useRouter();
@@ -138,7 +142,7 @@ function IncubationPageContent() {
 
       {isManager && summary && summary.dueForReview > 0 && <div className="flex items-center gap-2 rounded-xl border border-warning-border bg-warning-muted/60 px-3 py-2 text-sm font-semibold text-warning-ink"><AlertTriangle className="size-4 shrink-0" aria-hidden="true" />{summary.dueForReview} {t("incubation.dueReview")}</div>}
 
-      {linkedCycleId !== null && linkedCycle.isError && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">Could not open this incubation load. It may no longer be available. <button type="button" className="font-semibold underline" onClick={() => linkedCycle.refetch()}>Try again</button></p>}
+      {linkedCycleId !== null && linkedCycle.isError && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{displayText("Could not open this incubation load. It may no longer be available.")}{" "}<button type="button" className="font-semibold underline" onClick={() => linkedCycle.refetch()}>{displayText("Try again")}</button></p>}
 
       <div className="grid grid-cols-3 gap-1 rounded-2xl bg-muted/50 p-1" role="tablist" aria-label={t("incubation.title")}>
         <IncubationTab active={view === "ACTIVE"} label={t("incubation.active")} count={summary?.active} onClick={() => { setSelectedCycle(null); updateUrl(router, pathname, searchParams, { view: "ACTIVE", page: 0 }); }} />

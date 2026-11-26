@@ -107,3 +107,13 @@ test.describe("Manager batch card metrics", () => {
     expect(dimensions.documentWidth).toBeLessThanOrEqual(dimensions.viewportWidth + 1);
   });
 });
+
+
+test("manager dashboard displays a current low-stock reminder", async ({ page, context }) => {
+  await context.addInitScript((profile) => { localStorage.setItem("pp_auth_session", JSON.stringify({ sessionId: "low-stock", user: profile })); localStorage.setItem("pp_language", "en"); }, manager);
+  await mockManagerBackend(page);
+  await page.route("**/api/backend/inventory/products?*", route => route.fulfill({ json: [{ id: 15, brandName: "Vaccine A", stockOnHand: 3, stockUnit: "vial", reorderLevel: 5, lowStock: true, active: true }] }));
+  await page.goto("/dashboard");
+  await expect(page.getByText("Vaccine A: 3 vial")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Manage inventory" })).toHaveAttribute("href", "/inputs");
+});
