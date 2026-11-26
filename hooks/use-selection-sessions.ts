@@ -117,7 +117,8 @@ function applyQueuedOperations(
       criterionCodes: Array.isArray(payload.criterionCodes) ? payload.criterionCodes.filter((item): item is string => typeof item === "string") : existing.criterionCodes,
       criteriaNotes: typeof payload.criteriaNotes === "string" ? payload.criteriaNotes : null,
       sessionNotes: typeof payload.sessionNotes === "string" ? payload.sessionNotes : null,
-        sourceDataAcknowledged: payload.sourceDataAcknowledged === true || existing.sourceDataAcknowledged,
+      // The server's primitive boolean defaults omitted legacy fields to false.
+      sourceDataAcknowledged: payload.sourceDataAcknowledged === true,
       updatedAt: operation.queuedAt,
       offlineSyncStatus: operation.status,
     });

@@ -130,7 +130,14 @@ export async function refreshAccessToken() {
         return null;
       }
     };
-    refreshPromise = withAuthLock(rotate).catch(() => null).finally(() => { refreshPromise = null; });
+    refreshPromise = withAuthLock(rotate).catch((error: unknown) => {
+      // An expired credential lease may still belong to a suspended tab, so
+      // never steal it or retry an uncertain cookie. Require sign-in instead;
+      // the login screen explains how to recover an abandoned lock safely.
+      if (error instanceof AuthCoordinationError && error.reason === "abandoned"
+        && getSessionScope() === scope && isRefreshUncertain()) markAuthRequired();
+      return null;
+    }).finally(() => { refreshPromise = null; });
   }
   return refreshPromise;
 }

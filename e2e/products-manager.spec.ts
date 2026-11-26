@@ -74,7 +74,7 @@ async function mockManagerBackend(page: Page) {
   });
 }
 
-test("manager products separates inventory from handler-recorded usage history", async ({ page }) => {
+test("manager products separates inventory from handler-recorded usage history", async ({ page }, testInfo) => {
   await mockManagerBackend(page);
   await page.goto("/inputs");
 
@@ -89,9 +89,17 @@ test("manager products separates inventory from handler-recorded usage history",
   await expect(page.getByText("Record product used", { exact: true })).toHaveCount(0);
 
   await tabs.getByRole("tab", { name: "History (1)" }).click();
-  await expect(page.getByRole("table")).toBeVisible();
-  await expect(page.getByText("Recovery Plus", { exact: true })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "October Hatch" })).toBeVisible();
+  const history = page.getByRole("region", { name: "Product history" });
+  if (testInfo.project.name.startsWith("mobile-chromium-")) {
+    const record = history.getByRole("article").filter({ has: page.getByRole("heading", { name: "Recovery Plus" }) });
+    await expect(record).toBeVisible();
+    await expect(record.getByText("October Hatch", { exact: true })).toBeVisible();
+  } else {
+    const table = history.getByRole("table");
+    await expect(table).toBeVisible();
+    await expect(table.getByText("Recovery Plus", { exact: true })).toBeVisible();
+    await expect(table.getByRole("cell", { name: "October Hatch" })).toBeVisible();
+  }
 });
 
 test("refreshes an expired access token and retries adding a product after a 401", async ({ page }) => {
@@ -134,4 +142,19 @@ test("labels only products with demo stock history on mobile", async ({ page }, 
   const ordinary = page.locator("article").filter({ hasText: "Ordinary feed" });
   await expect(demo.getByText("Demo stock in history · verify on hand and cost")).toBeVisible();
   await expect(ordinary.getByText(/Demo stock/)).toHaveCount(0);
+});
+
+test("manager sets a low-stock threshold for an existing product", async ({ page }) => {
+  await mockManagerBackend(page);
+  let sent: unknown;
+  await page.route("**/api/backend/inventory/products/2/reorder-level", async route => { sent = route.request().postDataJSON(); return route.fulfill({ json: { id: 2, reorderLevel: 5, lowStock: true } }); });
+  await page.route("**/api/backend/inventory/products?*", route => route.fulfill({ json: [
+    { id: 2, brandName: "Vaccine A", productType: "VACCINE", stockUnit: "vial", stockOnHand: 5, active: true, lowStock: false, demoStockHistory: false },
+  ] }));
+  await page.goto("/inputs");
+  await page.getByRole("button", { name: "Set low-stock reminder for Vaccine A" }).first().click();
+  const dialog = page.getByRole("dialog", { name: "Low-stock reminder" });
+  await dialog.getByLabel("Remind at or below").fill("5");
+  await dialog.getByRole("button", { name: "Save reminder" }).click();
+  await expect.poll(() => sent).toEqual({ reorderLevel: 5 });
 });

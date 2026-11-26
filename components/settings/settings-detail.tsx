@@ -21,7 +21,7 @@ export function SettingsDetailShell({
   children: React.ReactNode;
 }) {
   const meta = getSection(section);
-  const { t } = useLocale();
+  const { t, display } = useLocale();
   const { isManager, isLoading } = useAuth();
   const router = useRouter();
 
@@ -53,8 +53,8 @@ export function SettingsDetailShell({
 
       <PageHeader
         icon={Icon}
-        title={section === "preferences" ? t("settings.preferences") : meta.title}
-        description={section === "preferences" ? t("settings.preferencesDescription") : meta.description}
+        title={section === "preferences" ? t("settings.preferences") : display(meta.title)}
+        description={section === "preferences" ? t("settings.preferencesDescription") : display(meta.description)}
         titleClassName="text-2xl sm:text-3xl"
         descriptionClassName="mt-1 max-w-2xl leading-relaxed"
         className="rounded-2xl border bg-card p-5 sm:p-6"

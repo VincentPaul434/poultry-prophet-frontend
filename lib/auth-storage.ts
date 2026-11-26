@@ -1,5 +1,6 @@
 // Only the non-secret profile and session identifier persist across tabs.
 import type { AuthResponse } from "./types";
+import { newSecureUuid } from "./uuid";
 
 export const AUTH_SESSION_KEY = "pp_auth_session";
 export const AUTH_STATE_EVENT = "poultry-auth-state";
@@ -55,6 +56,7 @@ export function markRefreshUncertain() {
   const current = session();
   if (current) window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ ...current, refreshUncertain: true }));
 }
+/** Only call after the same-origin proxy proves the refresh was not sent. */
 export function clearRefreshUncertain() {
   const current = session();
   if (!current?.refreshUncertain) return;
@@ -66,10 +68,10 @@ export function getAuthRevision() { return typeof window === "undefined" ? null 
 export function saveSession(auth: ClientAuthResponse, preserveSession = false): StoredUser {
   const user: StoredUser = { userId: auth.userId, email: auth.email, fullName: auth.fullName, role: auth.role, farmId: auth.farmId };
   const previous = preserveSession ? session() : null;
-  const sessionId = previous?.sessionId ?? crypto.randomUUID();
+  const sessionId = previous?.sessionId ?? newSecureUuid();
   if (typeof window !== "undefined") {
     purgeLegacyCredentials();
-    if (!preserveSession) window.localStorage.setItem(REVISION_KEY, crypto.randomUUID());
+    if (!preserveSession) window.localStorage.setItem(REVISION_KEY, newSecureUuid());
     window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify({ sessionId, user }));
   }
   accessToken = auth.token;
@@ -81,6 +83,6 @@ export function clearSession() {
   tokenSessionId = null;
   if (typeof window === "undefined") return;
   for (const key of LEGACY_KEYS) window.localStorage.removeItem(key);
-  window.localStorage.setItem(REVISION_KEY, crypto.randomUUID());
+  window.localStorage.setItem(REVISION_KEY, newSecureUuid());
   window.localStorage.removeItem(AUTH_SESSION_KEY);
 }

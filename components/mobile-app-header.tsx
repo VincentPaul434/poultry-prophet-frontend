@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { SyncStatusIndicator } from "@/components/sync-status-indicator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -27,6 +29,7 @@ type MobileAppHeaderProps = {
 };
 
 export function MobileAppHeader({ farmName, roleLabel, isManager, fullName, onProfileClick }: MobileAppHeaderProps) {
+  const { display: displayText } = useDisplayLocale();
   return (
     <header
       data-testid="mobile-app-header"
@@ -39,7 +42,7 @@ export function MobileAppHeader({ farmName, roleLabel, isManager, fullName, onPr
           <span
             data-testid="mobile-app-logo"
             role="img"
-            aria-label="Poultry Prophet"
+            aria-label={displayText("Poultry Prophet")}
             className="flex size-11 items-center justify-center rounded-xl bg-primary"
           >
             <PoultryProphetMark className="h-6 w-5" tone="light" />
@@ -67,7 +70,7 @@ export function MobileAppHeader({ farmName, roleLabel, isManager, fullName, onPr
               size="icon"
               onClick={onProfileClick}
               className="flex size-11 items-center justify-center rounded-full border bg-background text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
-              aria-label="Open profile menu"
+              aria-label={displayText("Open profile menu")}
             >
               <Avatar className="size-9">
                 <AvatarFallback className="bg-primary/15 text-xs font-bold text-primary">

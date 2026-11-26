@@ -1,6 +1,6 @@
 "use client";
 
-import type { Batch, BatchDashboardItem, BatchEvent, BatchOverview, FarmProduct, OfflineBootstrap, SelectionSession } from "./types";
+import type { Batch, BatchDashboardItem, BatchEvent, BatchOverview, FarmProduct, OfflineBootstrap, SelectionSession, SelectionReviewPayload } from "./types";
 
 export class OfflineStorageError extends Error {
   constructor(message: string, readonly code: string) {
@@ -211,18 +211,6 @@ function openDatabase() {
   return dbPromise;
 }
 
-export async function getDeviceId() {
-  ensureBrowser();
-  const key = "pp_offline_device_id";
-  const existing = window.localStorage.getItem(key);
-  if (existing) return existing;
-  const created = typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  window.localStorage.setItem(key, created);
-  return created;
-}
-
 export async function putOutboxOperation(operation: Omit<OutboxOperation, "sequence" | "status" | "attemptCount">) {
   const db = await openDatabase();
   const tx = db.transaction([OUTBOX_STORE, META_STORE], "readwrite");
@@ -244,6 +232,20 @@ export async function putOutboxOperation(operation: Omit<OutboxOperation, "seque
     await transactionDone(tx);
     if (!identical) throw new Error("This offline record already exists with different details. Its original queued record was preserved.");
     return existing;
+  }
+  // A scheduled dose can only be completed once. After an offline reload its
+  // cached plan can still say SCHEDULED, so block a second intent while the
+  // first one is pending, uncertain, rejected, or waiting for review. This
+  // read shares the write transaction: another tab cannot race the check.
+  const planId = Number(operation.payload.planId);
+  if (operation.entityType === "VACCINATION_PLAN" && Number.isSafeInteger(planId) && planId > 0) {
+    const sameOwner = await requestResult(store.index("byUserFarm").getAll([operation.userId, operation.farmId])) as OutboxOperation[];
+    const duplicate = sameOwner.some((item) => item.entityType === "VACCINATION_PLAN"
+      && item.batchId === operation.batchId && Number(item.payload.planId) === planId);
+    if (duplicate) {
+      await transactionDone(tx);
+      throw new OfflineStorageError("This vaccination is already saved on this phone. Check its sync status or ask a manager to review it before recording again.", "VACCINATION_ALREADY_QUEUED");
+    }
   }
   const meta = tx.objectStore(META_STORE);
   const current = (await requestResult(meta.get("sequence")) as { value?: number } | undefined)?.value ?? 0;
@@ -545,6 +547,28 @@ export async function getBatchOverviewSnapshot(userId: number, farmId: number, b
   return result?.overview ?? null;
 }
 
+function reviewSnapshotKey(userId: number, farmId: number, batchId: number,
+  params: { periodStart?: string; periodEnd?: string; asOfDate?: string } | undefined, role: string) {
+  return `review:${userId}:${farmId}:${batchId}:${role}:${JSON.stringify([params?.periodStart ?? null, params?.periodEnd ?? null, params?.asOfDate ?? null])}`;
+}
+
+export async function saveSelectionReviewSnapshot(userId: number, farmId: number, batchId: number,
+  payload: SelectionReviewPayload, params: { periodStart?: string; periodEnd?: string; asOfDate?: string } | undefined, role: string) {
+  const db = await openDatabase();
+  const tx = db.transaction([META_STORE], "readwrite");
+  tx.objectStore(META_STORE).put({ key: reviewSnapshotKey(userId, farmId, batchId, params, role), payload });
+  await transactionDone(tx);
+}
+
+export async function getSelectionReviewSnapshot(userId: number, farmId: number, batchId: number,
+  params: { periodStart?: string; periodEnd?: string; asOfDate?: string } | undefined, role: string) {
+  const db = await openDatabase();
+  const tx = db.transaction([META_STORE], "readonly");
+  const result = await requestResult(tx.objectStore(META_STORE).get(reviewSnapshotKey(userId, farmId, batchId, params, role))) as { payload: SelectionReviewPayload } | undefined;
+  await transactionDone(tx);
+  return result?.payload ?? null;
+}
+
 export async function saveBatchEventSnapshot(userId: number, farmId: number, batchId: number, events: BatchEvent[]) {
   const db = await openDatabase();
   const tx = db.transaction([EVENT_STORE], "readwrite");
@@ -676,23 +700,25 @@ export async function commitSyncedSelectionSession(operation: OutboxOperation, s
     criterionCodes: Array.isArray(payload.criterionCodes) ? payload.criterionCodes.filter((item): item is string => typeof item === "string") : existing.criterionCodes,
     criteriaNotes: typeof payload.criteriaNotes === "string" ? payload.criteriaNotes : null,
     sessionNotes: typeof payload.sessionNotes === "string" ? payload.sessionNotes : null,
-    sourceDataAcknowledged: payload.sourceDataAcknowledged === true || existing.sourceDataAcknowledged,
+    // Match the backend DTO: an omitted legacy boolean is interpreted as false.
+    sourceDataAcknowledged: payload.sourceDataAcknowledged === true,
     updatedAt: serverTime,
   };
   await upsertSelectionSessionSnapshot(userId, farmId, batchId, updated);
 }
 
-export async function setLastSuccessfulSync(value: string) {
+export async function setLastSuccessfulSync(userId: number, farmId: number, value: string) {
   const db = await openDatabase();
   const tx = db.transaction([META_STORE], "readwrite");
-  tx.objectStore(META_STORE).put({ key: "lastSuccessfulSync", value });
+  tx.objectStore(META_STORE).put({ key: `lastSuccessfulSync:${userId}:${farmId}`, value });
   await transactionDone(tx);
 }
 
-export async function getLastSuccessfulSync() {
+export async function getLastSuccessfulSync(userId: number, farmId: number) {
   const db = await openDatabase();
   const tx = db.transaction([META_STORE], "readonly");
-  const result = await requestResult(tx.objectStore(META_STORE).get("lastSuccessfulSync")) as { value?: string } | undefined;
+  // Legacy unscoped timestamps have no reliable owner, so leave them untouched.
+  const result = await requestResult(tx.objectStore(META_STORE).get(`lastSuccessfulSync:${userId}:${farmId}`)) as { value?: string } | undefined;
   await transactionDone(tx);
   return result?.value ?? null;
 }
@@ -701,7 +727,7 @@ export async function getLastSuccessfulSync() {
 // deliberately retained so deletion never silently discards unsynchronized work.
 export async function removeDeletedBatchSnapshots(userId: number, farmId: number, batchId: number) {
   const db = await openDatabase();
-  const stores = [SNAPSHOT_STORE, OVERVIEW_STORE, EVENT_STORE, SELECTION_SESSION_STORE, DASHBOARD_STORE, FIELD_STORE];
+  const stores = [SNAPSHOT_STORE, OVERVIEW_STORE, EVENT_STORE, SELECTION_SESSION_STORE, DASHBOARD_STORE, FIELD_STORE, META_STORE];
   const tx = db.transaction(stores, "readwrite");
   const key = `${userId}:${farmId}:${batchId}`;
   for (const store of [SNAPSHOT_STORE, OVERVIEW_STORE, EVENT_STORE, SELECTION_SESSION_STORE]) tx.objectStore(store).delete(key);
@@ -710,6 +736,14 @@ export async function removeDeletedBatchSnapshots(userId: number, farmId: number
   request.onsuccess = () => {
     const snapshot = request.result as StoredDashboardSnapshot | undefined;
     if (snapshot) dashboard.put({ ...snapshot, items: snapshot.items.filter(item => item.batch.id !== batchId) });
+  };
+  const reviews = tx.objectStore(META_STORE);
+  const cursor = reviews.openCursor();
+  cursor.onsuccess = () => {
+    const item = cursor.result;
+    if (!item) return;
+    if (String(item.key).startsWith(`review:${userId}:${farmId}:${batchId}:`)) item.delete();
+    item.continue();
   };
   tx.objectStore(FIELD_STORE).delete(`${userId}:${farmId}`);
   await transactionDone(tx);

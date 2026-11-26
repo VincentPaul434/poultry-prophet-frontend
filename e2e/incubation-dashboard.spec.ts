@@ -115,7 +115,7 @@ test.describe("Incubation dashboard on mobile", () => {
     await page.goto("/incubation");
 
     await expect(page.getByTestId("incubation-page")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Incubation" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Pagpapapisa" })).toBeVisible();
     const cards = page.getByTestId("incubation-cycle-card");
     await expect(cards).toHaveCount(2);
 

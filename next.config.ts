@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
     root: path.resolve(__dirname),
   },
   experimental: {
+    // React's development debug channel uses the HMR connection to decode
+    // the initial page. Keep offline development pages able to hydrate when
+    // that WebSocket is unreachable; production builds do not use it.
+    reactDebugChannel: false,
     // Next 16 defaults to invoking `tsc` in a child process. In this workspace,
     // that process returns an empty `--showConfig` response even though the
     // TypeScript API and direct compiler check succeed. Use the supported API

@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { use, useState } from "react";
 import Link from "next/link";
 import { Activity, AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, ClipboardList, FileText, Loader2, Package } from "lucide-react";
@@ -28,7 +30,9 @@ import { PageBackLink } from "@/components/page-back-link";
 import { getEventLogHref, getLoggingHref, LOGGING_ORIGINS } from "@/lib/logging-navigation";
 import { SelectionReviewSummary } from "@/components/selection-review-summary";
 import { BatchLifecycleActions } from "@/components/batch-lifecycle-actions";
+import { BatchExpenses } from "@/components/batch-expenses";
 import { VaccinationPlanCard } from "@/components/vaccination-plan-card";
+import { EventSyncStatus } from "@/components/event-sync-status";
 import { PopulationReconciliationReview } from "@/components/population-reconciliation-review";
 
 function daysElapsed(startDate: string) {
@@ -42,6 +46,7 @@ const severityConfig: Record<Severity, { label: string; cls: string }> = {
 };
 
 function AlertItem({ batchId, alert, canAck }: { batchId: number; alert: Alert; canAck: boolean }) {
+  const { display: displayText } = useDisplayLocale();
   const acknowledge = useAcknowledgeAlert(batchId);
   const cfg = severityConfig[alert.severity];
   return (
@@ -58,8 +63,7 @@ function AlertItem({ batchId, alert, canAck }: { batchId: number; alert: Alert; 
             <Button size="sm" variant="outline" className="mt-1 h-10 w-full rounded-lg text-sm font-semibold" disabled={acknowledge.isPending}
               onClick={() => acknowledge.mutateAsync({ id: alert.id }).then(() => toast.success("Alert acknowledged")).catch((err) => toast.error(err instanceof ApiError ? err.message : "Failed"))}>
               {acknowledge.isPending && <Loader2 className="size-3 animate-spin" />}
-              Mark as seen
-            </Button>
+              {displayText("Mark as seen")}</Button>
           )}
         </div>
       </div>
@@ -117,6 +121,7 @@ function DerbyDateFact({ batch }: { batch: Batch }) {
 }
 
 export default function BatchDetailPage({ params }: { params: Promise<{ batchId: string }> }) {
+  const { display: displayText } = useDisplayLocale();
   const { batchId } = use(params);
   const { isManager } = useAuth();
   const { t } = useLocale();
@@ -192,7 +197,7 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Badge variant={batch.status === "ACTIVE" ? "default" : "secondary"}>{batch.status}</Badge>
-                  {activeAlerts.length > 0 && <Badge variant="outline" className="border-warning-border bg-warning-muted text-warning-ink"><AlertTriangle className="size-3" />{activeAlerts.length} alert{activeAlerts.length === 1 ? "" : "s"}</Badge>}
+                  {activeAlerts.length > 0 && <Badge variant="outline" className="border-warning-border bg-warning-muted text-warning-ink"><AlertTriangle className="size-3" />{activeAlerts.length} {displayText("alert")}{activeAlerts.length === 1 ? "" : "s"}</Badge>}
                 </div>
                 {batch.populationStatus === "RECONCILIATION_REQUIRED" && (
                   <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-warning-border bg-warning-muted px-3 py-2">
@@ -203,10 +208,10 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
                 )}
               </div>
               <div className={cn("ml-auto flex max-w-full items-center justify-end gap-1.5 sm:gap-2", batch.status === "ARCHIVED" && "flex-wrap")}>
-                {!isManager && batch.status !== "ARCHIVED" && <Link className={cn(buttonVariants(), "hidden min-h-11 rounded-xl md:inline-flex")} href={getLoggingHref(batch.id, LOGGING_ORIGINS.batch, true)}><ClipboardList className="size-4" />Mag-record</Link>}
+                {!isManager && batch.status !== "ARCHIVED" && <Link className={cn(buttonVariants(), "hidden min-h-11 rounded-xl md:inline-flex")} href={getLoggingHref(batch.id, LOGGING_ORIGINS.batch, true)}><ClipboardList className="size-4" />{displayText("Mag-record")}</Link>}
                 {isManager && <BatchLifecycleActions batch={batch} />}
                 <div className="flex shrink-0 flex-col items-end gap-1">
-                  {activeSelectionDraft && <Badge variant="secondary" className="px-2 py-0.5 text-[10px]">Draft</Badge>}
+                  {activeSelectionDraft && <Badge variant="secondary" className="px-2 py-0.5 text-[10px]">{displayText("Draft")}</Badge>}
                   <Link
                     className={cn(buttonVariants(), "h-11 rounded-xl px-2 font-semibold sm:px-4")}
                     aria-label={`${reviewActionLabel} for ${batch.name}`}
@@ -222,19 +227,20 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
           </div>
 
           <div className={cn("mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border bg-border/70", batch.derbyDate !== undefined ? "sm:grid-cols-4" : "sm:grid-cols-3")}>
-            <BatchFact label="Bloodline" value={batch.bloodline || "Not recorded"} />
-            <BatchFact label="Hatch date" value={formatDate(hatchDate)} />
-            <BatchFact className={batch.derbyDate === undefined ? "col-span-2 sm:col-span-1" : undefined} label="Farm entry" value={batch.farmEntryDate ? formatDate(batch.farmEntryDate) : "Not recorded"} />
+            <BatchFact label={displayText("Bloodline")} value={batch.bloodline || "Not recorded"} />
+            <BatchFact label={displayText("Hatch date")} value={formatDate(hatchDate)} />
+            <BatchFact className={batch.derbyDate === undefined ? "col-span-2 sm:col-span-1" : undefined} label={displayText("Farm entry")} value={batch.farmEntryDate ? formatDate(batch.farmEntryDate) : "Not recorded"} />
             {batch.derbyDate !== undefined && <DerbyDateFact batch={batch} />}
           </div>
         </div>
       </header>
 
-      {batch.status === "ARCHIVED" && <div role="status" className="flex items-start gap-2 rounded-2xl border border-warning-border bg-warning-muted px-4 py-3 text-sm text-warning-ink"><span className="mt-2 size-2 shrink-0 rounded-full bg-current" aria-hidden="true" /><p><strong>Archived batch.</strong> Records are read-only. Restore the batch before adding new logs, expenses, products, tasks, or selection sessions.</p></div>}
+      {batch.status === "ARCHIVED" && <div role="status" className="flex items-start gap-2 rounded-2xl border border-warning-border bg-warning-muted px-4 py-3 text-sm text-warning-ink"><span className="mt-2 size-2 shrink-0 rounded-full bg-current" aria-hidden="true" /><p><strong>{displayText("Archived batch.")}</strong> {displayText("Records are read-only. Restore the batch before adding new logs, expenses, products, tasks, or selection sessions.")}</p></div>}
 
       {/* Keep the schedule beside the batch identity. Managers can set it immediately;
           handlers can see the next dated step before recording work. */}
-      {batch.status !== "ARCHIVED" && <section className="rounded-3xl border bg-card p-4 shadow-sm sm:p-5"><VaccinationPlanCard batch={batch} canEditSchedule /></section>}
+      <section className="rounded-3xl border bg-card p-4 shadow-sm sm:p-5"><VaccinationPlanCard batch={batch} canEditSchedule={batch.status !== "ARCHIVED"} canReviewLegacy={isManager} /></section>
+      {isManager && <BatchExpenses batchId={batch.id} readOnly={batch.status === "ARCHIVED"} />}
 
 
       <section className="rounded-3xl border bg-card p-4 shadow-sm sm:p-5">
@@ -244,15 +250,15 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
       <section className="space-y-3">
         <div className="flex items-center gap-2 px-1">
           <span className="flex size-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><Activity className="size-4" aria-hidden="true" /></span>
-          <div><h2 className="text-base font-bold">Batch activity</h2></div>
+          <div><h2 className="text-base font-bold">{displayText("Batch activity")}</h2></div>
         </div>
         <div className={cn("grid min-w-0 gap-4", activeAlerts.length > 0 && "lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]")}>
           <main className="grid min-w-0 gap-4 xl:grid-cols-2">
           <section className="min-w-0 overflow-hidden rounded-3xl border bg-card shadow-sm">
             <div className="flex flex-col gap-3 border-b px-4 py-3.5 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
-              <div className="flex min-w-0 items-center gap-2"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><ClipboardList className="size-4" /></span><h3 className="font-bold">Recent events</h3></div>
+              <div className="flex min-w-0 items-center gap-2"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><ClipboardList className="size-4" /></span><h3 className="font-bold">{displayText("Recent events")}</h3></div>
               <Link href={getEventLogHref(batch.id)} className={cn(buttonVariants({ variant: "outline" }), "min-h-11 w-full shrink-0 rounded-xl border-primary/25 bg-primary/5 px-3 text-sm font-semibold text-primary hover:bg-primary/10 hover:text-primary min-[420px]:w-auto")}>
-                Event log<ChevronRight className="size-4" aria-hidden="true" />
+                {displayText("Event log")}<ChevronRight className="size-4" aria-hidden="true" />
               </Link>
             </div>
             {recentEvents && recentEvents.length > 0 ? (
@@ -261,27 +267,28 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
                   <div key={ev.id} className={cn("flex items-start gap-3 px-4 py-3", idx !== 0 && "border-t")}>
                     <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"><CalendarDays className="size-3.5" aria-hidden="true" /></span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2"><p className="truncate text-sm font-semibold">{ev.title}</p>{ev.affectedCount > 0 && <span className="shrink-0 text-xs text-muted-foreground">{ev.affectedCount} bird{ev.affectedCount !== 1 ? "s" : ""}</span>}</div>
+                      <div className="flex items-center justify-between gap-2"><p className="truncate text-sm font-semibold">{ev.title}</p>{ev.affectedCount > 0 && <span className="shrink-0 text-xs text-muted-foreground">{ev.affectedCount} {displayText("bird")}{ev.affectedCount !== 1 ? "s" : ""}</span>}</div>
                       <p className="mt-0.5 text-xs text-muted-foreground">{ev.handlerName} · {formatDate(ev.eventDate)}</p>
-                      {ev.eventType === "SALE" && ev.saleAmount != null && <p className="mt-0.5 text-xs font-semibold text-success">Sale proceeds: ₱{Number(ev.saleAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>}
+                      <EventSyncStatus status={ev.syncStatus} />
+                      {ev.eventType === "SALE" && ev.saleAmount != null && <p className="mt-0.5 text-xs font-semibold text-success">{displayText("Sale proceeds: ₱")}{Number(ev.saleAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>}
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="m-4 rounded-2xl border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">No events yet.</div>
+              <div className="m-4 rounded-2xl border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">{displayText("No events yet.")}</div>
             )}
           </section>
 
           <section className="min-w-0 overflow-hidden rounded-3xl border bg-card shadow-sm">
             <div className="flex flex-col gap-3 border-b px-4 py-3.5 min-[420px]:flex-row min-[420px]:items-center min-[420px]:justify-between">
-              <div className="flex min-w-0 items-center gap-2"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Package className="size-4" /></span><h3 className="font-bold">Products used</h3></div>
+              <div className="flex min-w-0 items-center gap-2"><span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Package className="size-4" /></span><h3 className="font-bold">{displayText("Products used")}</h3></div>
               <Button type="button" variant="outline" className="min-h-11 w-full shrink-0 rounded-xl px-3 text-sm font-semibold min-[420px]:w-auto" onClick={() => setProductsOpen(true)}>
-                View all{recentInputPage?.totalItems != null ? ` (${recentInputPage.totalItems})` : ""}<ChevronRight className="size-3.5" />
+                {displayText("View all")}{recentInputPage?.totalItems != null ? ` (${recentInputPage.totalItems})` : ""}<ChevronRight className="size-3.5" />
               </Button>
             </div>
             {recentInputsLoading ? (
-              <div className="px-4 py-8 text-center text-xs text-muted-foreground">Loading product history…</div>
+              <div className="px-4 py-8 text-center text-xs text-muted-foreground">{displayText("Loading product history…")}</div>
             ) : recentInputs.length > 0 ? (
               <div>
                 {recentInputs.map((input, index) => (
@@ -289,12 +296,12 @@ export default function BatchDetailPage({ params }: { params: Promise<{ batchId:
                 ))}
               </div>
             ) : (
-              <div className="m-4 rounded-2xl border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">No products yet.</div>
+              <div className="m-4 rounded-2xl border border-dashed px-4 py-8 text-center text-xs text-muted-foreground">{displayText("No products yet.")}</div>
             )}
           </section>
         </main>
 
-          {activeAlerts.length > 0 && <aside className="min-w-0 rounded-3xl border bg-card p-4 shadow-sm"><h3 className="mb-3 flex items-center gap-2 font-bold"><span className="flex size-8 items-center justify-center rounded-lg bg-warning-muted text-warning-ink"><AlertTriangle className="size-4" /></span>{activeAlerts.length} active alert{activeAlerts.length !== 1 ? "s" : ""}</h3><div className="space-y-2">{activeAlerts.map((alert) => <AlertItem key={alert.id} batchId={batch.id} alert={alert} canAck={isManager} />)}</div></aside>}
+          {activeAlerts.length > 0 && <aside className="min-w-0 rounded-3xl border bg-card p-4 shadow-sm"><h3 className="mb-3 flex items-center gap-2 font-bold"><span className="flex size-8 items-center justify-center rounded-lg bg-warning-muted text-warning-ink"><AlertTriangle className="size-4" /></span>{activeAlerts.length} {displayText("active alert")}{activeAlerts.length !== 1 ? "s" : ""}</h3><div className="space-y-2">{activeAlerts.map((alert) => <AlertItem key={alert.id} batchId={batch.id} alert={alert} canAck={isManager} />)}</div></aside>}
         </div>
       </section>
       <ProductHistorySheet
@@ -361,37 +368,37 @@ function ProductHistorySheet({
   isManager: boolean;
   batchName: string;
 }) {
+  const { display: displayText } = useDisplayLocale();
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-[min(94vw,34rem)] p-0">
         <SheetHeader className="border-b px-5 py-5 pr-12">
-          <SheetTitle>Products used</SheetTitle>
-          <SheetDescription>{batchName} · complete product history</SheetDescription>
+          <SheetTitle>{displayText("Products used")}</SheetTitle>
+          <SheetDescription>{batchName} {displayText("· complete product history")}</SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-          <NativeSelect aria-label="Filter products by type" value={productType} onChange={(event) => onProductTypeChange(event.target.value as "ALL" | InputProductType)}>
-            <option value="ALL">All product types</option>
-            <option value="FEED">Feed</option>
-            <option value="VITAMIN">Vitamin</option>
-            <option value="MEDICINE">Medicine</option>
-            <option value="VACCINE">Vaccine</option>
-            <option value="OTHER">Other</option>
+          <NativeSelect aria-label={displayText("Filter products by type")} value={productType} onChange={(event) => onProductTypeChange(event.target.value as "ALL" | InputProductType)}>
+            <option value="ALL">{displayText("All product types")}</option>
+            <option value="FEED">{displayText("Feed")}</option>
+            <option value="VITAMIN">{displayText("Vitamin")}</option>
+            <option value="MEDICINE">{displayText("Medicine")}</option>
+            <option value="VACCINE">{displayText("Vaccine")}</option>
+            <option value="OTHER">{displayText("Other")}</option>
           </NativeSelect>
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-            {isLoading && <p className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">Loading product history…</p>}
+            {isLoading && <p className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">{displayText("Loading product history…")}</p>}
             {!isLoading && data?.items.map((input, index) => <ProductHistoryRow key={input.id} input={input} isManager={isManager} first={index === 0} />)}
-            {!isLoading && (data?.items.length ?? 0) === 0 && <p className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">No products match this filter.</p>}
+            {!isLoading && (data?.items.length ?? 0) === 0 && <p className="rounded-xl border border-dashed p-5 text-center text-sm text-muted-foreground">{displayText("No products match this filter.")}</p>}
           </div>
           {!isLoading && data && data.totalPages > 1 && (
             <div className="flex shrink-0 items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">
-              <span>{data.totalItems} records</span>
+              <span>{data.totalItems} {displayText("records")}</span>
               <div className="flex items-center gap-2">
                 <Button type="button" variant="outline" size="sm" className="min-h-9" disabled={!data.hasPrevious} onClick={() => onPageChange(Math.max(0, page - 1))}>
-                  <ChevronLeft className="size-4" aria-hidden="true" />Previous
-                </Button>
-                <span>Page {data.page + 1} of {data.totalPages}</span>
+                  <ChevronLeft className="size-4" aria-hidden="true" />{displayText("Previous")}</Button>
+                <span>{displayText("Page")}{" "}{data.page + 1} {displayText("of")}{" "}{data.totalPages}</span>
                 <Button type="button" variant="outline" size="sm" className="min-h-9" disabled={!data.hasNext} onClick={() => onPageChange(page + 1)}>
-                  Next<ChevronRight className="size-4" aria-hidden="true" />
+                  {displayText("Next")}<ChevronRight className="size-4" aria-hidden="true" />
                 </Button>
               </div>
             </div>

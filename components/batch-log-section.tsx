@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 // Self-contained "Quick Log" widget.
 // Renders the 4+1 action buttons and manages all form dialogs internally.
 // Import and drop onto any page that needs inline event logging.
@@ -24,7 +26,7 @@ import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useCreateRecord, useRecords } from "@/hooks/use-records";
 import { useCreateEvent } from "@/hooks/use-events";
-import { useCreateFarmInput, useFarmProducts, useSexComposition } from "@/hooks/use-operations";
+import { useCreateFarmInput, useFarmProducts, useRecordVaccination, useSexComposition, useVaccinationPlan } from "@/hooks/use-operations";
 import { ApiError } from "@/lib/api-client";
 import { OfflineStorageError } from "@/lib/offline-db";
 import { formatDate, formatDateTime, isFutureDate, todayIso } from "@/lib/format";
@@ -32,6 +34,7 @@ import type { BatchEvent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useLocale } from "@/components/locale-provider";
 import { DemoStockNotice } from "@/components/demo-stock-notice";
+import { StockConfirmationNotice } from "@/components/stock-confirmation-notice";
 import type { TranslationKey } from "@/lib/i18n";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -158,14 +161,14 @@ const ACTION_LABEL_KEYS: Record<DialogType, TranslationKey> = {
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 function NoAnimalsAlert({ population, allowPopulationRestore = false }: { population: number; allowPopulationRestore?: boolean }) {
+  const { display: displayText } = useDisplayLocale();
   if (population > 0 || allowPopulationRestore) return null;
   return (
     <Alert variant="destructive">
       <AlertCircle className="size-4" />
-      <AlertTitle>No birds alive</AlertTitle>
+      <AlertTitle>{displayText("No birds alive")}</AlertTitle>
       <AlertDescription>
-        This batch has 0 birds remaining. No events can be logged until the count is corrected.
-      </AlertDescription>
+        {displayText("This batch has 0 birds remaining. No events can be logged until the count is corrected.")}</AlertDescription>
     </Alert>
   );
 }
@@ -188,12 +191,13 @@ function EventDateControl({
   showOverride: boolean;
   onShowOverrideChange: (open: boolean) => void;
 }) {
+  const { display: displayText } = useDisplayLocale();
   const today = todayIso();
   return (
     <div className="space-y-1.5">
       <div className="flex min-h-11 items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">When / Kailan</p>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{displayText("When / Kailan")}</p>
           <p className="text-sm font-semibold">{date === today ? "Ngayon · Today" : formatDate(date)}</p>
         </div>
         <Button variant="ghost"
@@ -201,12 +205,12 @@ function EventDateControl({
           className="shrink-0 text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
           onClick={() => onShowOverrideChange(!showOverride)}
         >
-          {showOverride ? "Use today" : "Ibang date"}
+          {showOverride ? displayText("Use today") : displayText("Ibang date")}
         </Button>
       </div>
       {showOverride && (
         <div>
-          <Label htmlFor={id} className="sr-only">Different date</Label>
+          <Label htmlFor={id} className="sr-only">{displayText("Different date")}</Label>
           <Input id={id} type="date" required max={today} value={date} onChange={(event) => onChange(event.target.value)} className="h-11 rounded-lg" />
         </div>
       )}
@@ -253,6 +257,7 @@ type SexChoice = "MALE" | "FEMALE" | "UNCLASSIFIED" | "MIXED" | "";
 type DeathObservation = "SIGNS" | "NO_SIGNS" | "UNKNOWN" | "";
 
 function MortalityForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
+  const { display: displayText } = useDisplayLocale();
   const id = useId();
   const createEvent = useCreateEvent(batchId);
   const { data: sexComposition } = useSexComposition(Number(batchId));
@@ -383,38 +388,38 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
       <NoAnimalsAlert population={population} allowPopulationRestore={canLogWithNoPopulation} />
       <div className="grid grid-cols-2 gap-2.5">
         <EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} />
-        <div className="space-y-1.5"><Label htmlFor={`${id}-count`} className="text-sm font-semibold">{isCountCorrection ? "Signed adjustment" : "How many?"}</Label><Input id={`${id}-count`} type="number" min={isCountCorrection ? undefined : 1} max={!isCountCorrection && !addsPopulation ? population : undefined} step={1} required value={count} onChange={(e) => setCount(e.target.value)} placeholder={isCountCorrection ? "+2 or -1" : undefined} className="h-11 rounded-lg text-center text-base font-bold" /></div>
+        <div className="space-y-1.5"><Label htmlFor={`${id}-count`} className="text-sm font-semibold">{isCountCorrection ? displayText("Signed adjustment") : displayText("How many?")}</Label><Input id={`${id}-count`} type="number" min={isCountCorrection ? undefined : 1} max={!isCountCorrection && !addsPopulation ? population : undefined} step={1} required value={count} onChange={(e) => setCount(e.target.value)} placeholder={isCountCorrection ? "+2 or -1" : undefined} className="h-11 rounded-lg text-center text-base font-bold" /></div>
       </div>
       <div className="space-y-1.5">
-        <span id={`${id}-event-type`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">What happened?</span>
+        <span id={`${id}-event-type`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">{displayText("What happened?")}</span>
         <ToggleGroup aria-labelledby={`${id}-event-type`} variant="outline" value={lossType ? [lossType] : []} onValueChange={(values) => { const next = LOSS_CATEGORIES.find((category) => category.type === values[0]); if (next) setLossType(next.type); }} className="grid w-full grid-cols-2 gap-2 lg:grid-cols-3">
-          {LOSS_CATEGORIES.map((category) => <ToggleGroupItem key={category.type} value={category.type} className="h-auto min-h-11 min-w-0 justify-start whitespace-normal py-2 text-left leading-snug">{category.label}</ToggleGroupItem>)}
+          {LOSS_CATEGORIES.map((category) => <ToggleGroupItem key={category.type} value={category.type} className="h-auto min-h-11 min-w-0 justify-start whitespace-normal py-2 text-left leading-snug">{displayText(category.label)}</ToggleGroupItem>)}
         </ToggleGroup>
-        {selectedCategory && <p className="text-xs text-muted-foreground">{selectedCategory.hint}</p>}
+        {selectedCategory && <p className="text-xs text-muted-foreground">{displayText(selectedCategory.hint)}</p>}
       {lossType === "SALE" && (
         <div className="space-y-1.5">
-          <Label htmlFor={`${id}-sale-purpose`} className="text-sm font-semibold">Sale purpose <span className="font-normal text-muted-foreground">(optional)</span></Label>
+          <Label htmlFor={`${id}-sale-purpose`} className="text-sm font-semibold">{displayText("Sale purpose")}{" "}<span className="font-normal text-muted-foreground">{displayText("(optional)")}</span></Label>
           <NativeSelect id={`${id}-sale-purpose`} value={salePurpose} onChange={(event) => setSalePurpose(event.target.value as typeof salePurpose)}>
-            <option value="">Not specified</option>
-            <option value="BREEDING">Sold as breeder</option>
-            <option value="OTHER">Other purpose</option>
+            <option value="">{displayText("Not specified")}</option>
+            <option value="BREEDING">{displayText("Sold as breeder")}</option>
+            <option value="OTHER">{displayText("Other purpose")}</option>
           </NativeSelect>
-          <p className="text-xs text-muted-foreground">This describes the sale only. It does not change the batch stage.</p>
+          <p className="text-xs text-muted-foreground">{displayText("This describes the sale only. It does not change the batch stage.")}</p>
           <div className="space-y-1.5">
-            <Label htmlFor={`${id}-sale-amount`} className="text-sm font-semibold">Total amount received <span className="font-normal text-muted-foreground">(PHP) *</span></Label>
+            <Label htmlFor={`${id}-sale-amount`} className="text-sm font-semibold">{displayText("Total amount received")}{" "}<span className="font-normal text-muted-foreground">{displayText("(PHP) *")}</span></Label>
             <Input id={`${id}-sale-amount`} type="number" min="0.01" step="0.01" value={saleAmount} onChange={(event) => setSaleAmount(event.target.value)} placeholder="e.g. 2500" className="h-11" />
-            <p className="text-xs text-muted-foreground">Enter the total for all birds in this sale, not a per-bird price. It creates one auditable income record.</p>
+            <p className="text-xs text-muted-foreground">{displayText("Enter the total for all birds in this sale, not a per-bird price. It creates one auditable income record.")}</p>
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <div className="space-y-1.5"><Label htmlFor={`${id}-sale-buyer`} className="text-sm font-semibold">Buyer <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id={`${id}-sale-buyer`} value={saleBuyer} onChange={(event) => setSaleBuyer(event.target.value)} placeholder="Buyer or customer" className="h-11" /></div>
-            <div className="space-y-1.5"><Label htmlFor={`${id}-sale-reference`} className="text-sm font-semibold">Reference <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id={`${id}-sale-reference`} value={saleReference} onChange={(event) => setSaleReference(event.target.value)} placeholder="Receipt or note" className="h-11" /></div>
+            <div className="space-y-1.5"><Label htmlFor={`${id}-sale-buyer`} className="text-sm font-semibold">{displayText("Buyer")}{" "}<span className="font-normal text-muted-foreground">{displayText("(optional)")}</span></Label><Input id={`${id}-sale-buyer`} value={saleBuyer} onChange={(event) => setSaleBuyer(event.target.value)} placeholder={displayText("Buyer or customer")} className="h-11" /></div>
+            <div className="space-y-1.5"><Label htmlFor={`${id}-sale-reference`} className="text-sm font-semibold">{displayText("Reference")}{" "}<span className="font-normal text-muted-foreground">{displayText("(optional)")}</span></Label><Input id={`${id}-sale-reference`} value={saleReference} onChange={(event) => setSaleReference(event.target.value)} placeholder={displayText("Receipt or note")} className="h-11" /></div>
           </div>
         </div>
       )}
       </div>
       {lossType === "HEALTH_DEATH" && <fieldset className="space-y-2 rounded-lg border border-border bg-muted/20 px-3 pb-3 pt-2" aria-describedby={`${id}-observation-help`}>
-        <legend id={`${id}-observation-label`} className="px-1 text-sm font-semibold">What was observed? <span className="font-normal text-muted-foreground">(required)</span></legend>
-        <p id={`${id}-observation-help`} className="text-xs leading-5 text-muted-foreground">Choose what you know. Describe signs, not a diagnosis.</p>
+        <legend id={`${id}-observation-label`} className="px-1 text-sm font-semibold">{displayText("What was observed?")}{" "}<span className="font-normal text-muted-foreground">{displayText("(required)")}</span></legend>
+        <p id={`${id}-observation-help`} className="text-xs leading-5 text-muted-foreground">{displayText("Choose what you know. Describe signs, not a diagnosis.")}</p>
         <div role="radiogroup" aria-labelledby={`${id}-observation-label`} aria-describedby={`${id}-observation-help`} aria-required="true" className="grid gap-2 sm:grid-cols-3">
           {([
             { value: "SIGNS", label: "Signs noticed" },
@@ -422,17 +427,17 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
             { value: "UNKNOWN", label: "Not observed / unknown" },
           ] as const).map((option) => <label key={option.value} className={cn("flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm font-medium focus-within:ring-3 focus-within:ring-ring/60", deathObservation === option.value ? "border-primary bg-primary/5" : "border-input")}>
             <input type="radio" name={`${id}-death-observation`} value={option.value} checked={deathObservation === option.value} onChange={() => setDeathObservation(option.value)} className="size-4 shrink-0 accent-primary" />
-            <span>{option.label}</span>
+            <span>{displayText(option.label)}</span>
           </label>)}
         </div>
         {deathObservation === "SIGNS" && <div className="space-y-1.5 pt-1">
-          <Label htmlFor={`${id}-death-signs`} className="text-sm font-semibold">Describe the signs <span className="font-normal text-muted-foreground">(required)</span></Label>
-          <Textarea id={`${id}-death-signs`} aria-required="true" rows={2} value={deathSigns} onChange={(event) => setDeathSigns(event.target.value)} placeholder="e.g. stopped eating or had trouble breathing" className="resize-y rounded-lg" />
+          <Label htmlFor={`${id}-death-signs`} className="text-sm font-semibold">{displayText("Describe the signs")}{" "}<span className="font-normal text-muted-foreground">{displayText("(required)")}</span></Label>
+          <Textarea id={`${id}-death-signs`} aria-required="true" rows={2} value={deathSigns} onChange={(event) => setDeathSigns(event.target.value)} placeholder={displayText("e.g. stopped eating or had trouble breathing")} className="resize-y rounded-lg" />
         </div>}
       </fieldset>}
       {lossType && (
         <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
-          <span id={`${id}-sex`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Which birds were affected?</span>
+          <span id={`${id}-sex`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">{displayText("Which birds were affected?")}</span>
           {sexProjectionReady ? (
             <>
               <ToggleGroup aria-labelledby={`${id}-sex`} variant="outline" value={sexChoice ? [sexChoice] : []} onValueChange={(values) => { const next = (["MALE", "FEMALE", "UNCLASSIFIED", "MIXED"] as const).find((choice) => choice === values[0]); if (next) setSexChoice(next); }} className="grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
@@ -442,14 +447,14 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
                   </ToggleGroupItem>
                 ))}
               </ToggleGroup>
-              {sexChoice === "MIXED" && <div className="grid grid-cols-3 gap-2"><Input aria-label="Male allocation" type="number" min={0} max={allocationAmount} step={1} value={maleSplit} onChange={(e) => setMaleSplit(e.target.value)} placeholder="Male" className="h-9 text-center text-xs" /><Input aria-label="Female allocation" type="number" min={0} max={allocationAmount} step={1} value={femaleSplit} onChange={(e) => setFemaleSplit(e.target.value)} placeholder="Female" className="h-9 text-center text-xs" /><Input aria-label="Unclassified allocation" type="number" min={0} max={allocationAmount} step={1} value={unclassifiedSplit} onChange={(e) => setUnclassifiedSplit(e.target.value)} placeholder="Unclassified" className="h-9 text-center text-xs" /></div>}
-              <p className="text-xs text-muted-foreground">Current: {sexComposition?.maleCount} male · {sexComposition?.femaleCount} female · {sexComposition?.unclassifiedCount} unclassified</p>
+              {sexChoice === "MIXED" && <div className="grid grid-cols-3 gap-2"><Input aria-label={displayText("Male allocation")} type="number" min={0} max={allocationAmount} step={1} value={maleSplit} onChange={(e) => setMaleSplit(e.target.value)} placeholder={displayText("Male")} className="h-9 text-center text-xs" /><Input aria-label={displayText("Female allocation")} type="number" min={0} max={allocationAmount} step={1} value={femaleSplit} onChange={(e) => setFemaleSplit(e.target.value)} placeholder={displayText("Female")} className="h-9 text-center text-xs" /><Input aria-label={displayText("Unclassified allocation")} type="number" min={0} max={allocationAmount} step={1} value={unclassifiedSplit} onChange={(e) => setUnclassifiedSplit(e.target.value)} placeholder={displayText("Unclassified")} className="h-9 text-center text-xs" /></div>}
+              <p className="text-xs text-muted-foreground">{displayText("Current:")}{" "}{sexComposition?.maleCount} {displayText("male ·")}{" "}{sexComposition?.femaleCount} {displayText("female ·")}{" "}{sexComposition?.unclassifiedCount} {displayText("unclassified")}</p>
             </>
           ) : hasSexBaseline ? <p className="text-xs text-warning-ink">{sexComposition?.projectionMessage ?? "Sex composition needs review."}</p>
-            : <p className="text-xs text-muted-foreground">Record the whole-batch male/female count first. This event will update the total population only.</p>}
+            : <p className="text-xs text-muted-foreground">{displayText("Record the whole-batch male/female count first. This event will update the total population only.")}</p>}
         </div>
       )}
-      <div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">{lossType === "HEALTH_DEATH" ? "Additional notes" : "Notes"} <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea id={`${id}-notes`} rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder={lossType === "HEALTH_DEATH" ? "Anything else that may help?" : "What did you observe?"} className="resize-none rounded-lg" /></div>
+      <div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">{lossType === "HEALTH_DEATH" ? displayText("Additional notes") : displayText("Notes")} <span className="font-normal text-muted-foreground">{displayText("(optional)")}</span></Label><Textarea id={`${id}-notes`} rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder={lossType === "HEALTH_DEATH" ? displayText("Anything else that may help?") : displayText("What did you observe?")} className="resize-none rounded-lg" /></div>
       <InlineError message={formError} />
       <Button type="submit" variant="destructive" className="h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || (population <= 0 && !canLogWithNoPopulation)}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save population event"}</Button>
     </form>
@@ -459,6 +464,7 @@ function MortalityForm({ batchId, population, onDone }: { batchId: string; popul
 // ─── Form: Health concern ─────────────────────────────────────────────────────
 
 function HealthForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
+  const { display: displayText } = useDisplayLocale();
   const id = useId();
   const createEvent = useCreateEvent(batchId);
   const [count, setCount] = useState("1");
@@ -483,10 +489,10 @@ function HealthForm({ batchId, population, onDone }: { batchId: string; populati
   return (
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label htmlFor={`${id}-count`} className="text-sm font-semibold">Affected birds</Label><Input id={`${id}-count`} type="number" min={1} max={population} required value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg text-center font-bold" /></div></div>
-      <div className="space-y-1.5"><span id={`${id}-concern`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Concern level</span><ToggleGroup aria-labelledby={`${id}-concern`} variant="outline" value={severity ? [severity] : []} onValueChange={(values) => { if (values[0]) setSeverity(values[0]); }} className="grid w-full grid-cols-3 gap-2">{[{ v: "MINOR", label: "Mild" }, { v: "MODERATE", label: "Serious" }, { v: "MAJOR", label: "Urgent" }].map((item) => <ToggleGroupItem key={item.v} value={item.v} className="min-h-11">{item.label}</ToggleGroupItem>)}</ToggleGroup></div>
-      <div className="space-y-1.5"><span id={`${id}-signs`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Signs noticed</span><div role="group" aria-labelledby={`${id}-signs`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{HEALTH_SYMPTOMS.map((item) => <TagPill key={item} label={item} selected={symptoms.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
-      <div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Textarea id={`${id}-notes`} rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you observe?" className="resize-none rounded-lg" /></div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label htmlFor={`${id}-count`} className="text-sm font-semibold">{displayText("Affected birds")}</Label><Input id={`${id}-count`} type="number" min={1} max={population} required value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg text-center font-bold" /></div></div>
+      <div className="space-y-1.5"><span id={`${id}-concern`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">{displayText("Concern level")}</span><ToggleGroup aria-labelledby={`${id}-concern`} variant="outline" value={severity ? [severity] : []} onValueChange={(values) => { if (values[0]) setSeverity(values[0]); }} className="grid w-full grid-cols-3 gap-2">{[{ v: "MINOR", label: "Mild" }, { v: "MODERATE", label: "Serious" }, { v: "MAJOR", label: "Urgent" }].map((item) => <ToggleGroupItem key={item.v} value={item.v} className="min-h-11">{item.label}</ToggleGroupItem>)}</ToggleGroup></div>
+      <div className="space-y-1.5"><span id={`${id}-signs`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">{displayText("Signs noticed")}</span><div role="group" aria-labelledby={`${id}-signs`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{HEALTH_SYMPTOMS.map((item) => <TagPill key={item} label={displayText(item)} selected={symptoms.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
+      <div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">{displayText("Notes")}{" "}<span className="font-normal text-muted-foreground">{displayText("(optional)")}</span></Label><Textarea id={`${id}-notes`} rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder={displayText("What did you observe?")} className="resize-none rounded-lg" /></div>
       <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || population <= 0}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save sickness report"}</Button>
     </form>
   );
@@ -495,9 +501,13 @@ function HealthForm({ batchId, population, onDone }: { batchId: string; populati
 // ─── Form: Treatment ──────────────────────────────────────────────────────────
 
 function TreatmentForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
+  const { display: displayText } = useDisplayLocale();
   const id = useId();
   const createInput = useCreateFarmInput();
-  const { data: farmProducts } = useFarmProducts(false);
+  const recordVaccination = useRecordVaccination();
+  const { data: vaccinationPlan, isError: vaccinationPlanError } = useVaccinationPlan(Number(batchId));
+  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const { data: farmProducts, isLoading: productsLoading, isError: productsError } = useFarmProducts(false);
   const [farmProductId, setFarmProductId] = useState<number | null>(null);
   const [productType, setProductType] = useState<"FEED" | "VITAMIN" | "MEDICINE" | "VACCINE" | "OTHER">("MEDICINE");
   const [productName, setProductName] = useState("");
@@ -515,14 +525,20 @@ function TreatmentForm({ batchId, population, onDone }: { batchId: string; popul
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setFormError("");
     if (!date || isFutureDate(date)) { setFormError("Choose a valid date."); return; }
-    if (!productName.trim() || !productType) { setFormError("Enter the product name and choose its type."); return; }
+    if (!farmProductId || !productName.trim()) { setFormError("Choose a product from farm stock."); return; }
     if (farmProductId && (!quantity || !Number.isFinite(Number(quantity)) || Number(quantity) <= 0)) { setFormError("Enter the units used so stock and batch cost can be updated."); return; }
     if (!farmProductId && quantity && (!Number.isFinite(Number(quantity)) || Number(quantity) <= 0)) { setFormError("Enter a quantity greater than zero, or leave it blank if it was not measured."); return; }
     if (purposeRequired && !purpose) { setFormError("Choose what the product is for."); return; }
     const treated = allBirds ? population : Number(count);
     if (treated < 1 || treated > population) { setFormError(`Enter 1–${population} affected bird${population === 1 ? "" : "s"}.`); return; }
     try {
-      const result = await createInput.mutateAsync({
+      const selectedPlan = vaccinationPlan?.find((item) => item.id === Number(selectedPlanId) && item.status === "SCHEDULED" && item.farmProductId === farmProductId);
+      if (selectedPlanId && !selectedPlan) { setFormError(displayText("That scheduled dose is no longer available. Refresh and choose again.")); return; }
+      const note = [dose ? `Dose: ${dose}` : "", `Applied to ${treated} birds`, details].filter(Boolean).join(" · ") || null;
+      const result = selectedPlan ? await recordVaccination.mutateAsync({ plan: selectedPlan, body: {
+        ...(showDateOverride ? { recordedAt: new Date(`${date}T12:00:00`).toISOString() } : {}),
+        quantity: Number(quantity), unit: farmProducts?.find((item) => item.id === farmProductId)?.stockUnit ?? null, notes: note,
+      } }) : await createInput.mutateAsync({
         batchId: Number(batchId),
         ...(showDateOverride ? { recordedAt: new Date(`${date}T12:00:00`).toISOString() } : {}),
         productType,
@@ -532,7 +548,7 @@ function TreatmentForm({ batchId, population, onDone }: { batchId: string; popul
         unit: farmProducts?.find((item) => item.id === farmProductId)?.stockUnit ?? null,
         affectedBirdCount: treated,
         purpose: purpose || null,
-        notes: [dose ? `Dose: ${dose}` : "", `Applied to ${treated} birds`, details].filter(Boolean).join(" · ") || null,
+        notes: note,
       });
       const queued = "queued" in result && result.queued;
       toast.success(queued ? "Saved on this phone; it will sync when online." : "Product record saved to this batch."); onDone();
@@ -544,15 +560,16 @@ function TreatmentForm({ batchId, population, onDone }: { batchId: string; popul
   return (
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
-      {farmProducts && farmProducts.length > 0 && <div className="space-y-1.5"><Label htmlFor={`${id}-stock`} className="text-sm font-semibold">Product from farm stock</Label><NativeSelect id={`${id}-stock`} value={farmProductId ?? ""} onChange={(e) => { const value = e.target.value ? Number(e.target.value) : null; const selected = farmProducts.find((item) => item.id === value); setFarmProductId(value); if (selected) { setProductName(selected.brandName); setProductType(selected.productType); } }}><option value="">Product not listed</option>{farmProducts.map((item) => <option key={item.id} value={item.id}>{item.brandName} · {item.stockOnHand} {item.stockUnit}{item.lowStock ? " · low stock" : ""}</option>)}</NativeSelect></div>}
+      <div className="space-y-1.5"><Label htmlFor={`${id}-stock`} className="text-sm font-semibold">{displayText("Product from farm stock")}</Label><NativeSelect id={`${id}-stock`} value={farmProductId ?? ""} onChange={(event) => { const selected = farmProducts?.find((item) => item.id === Number(event.target.value)); setSelectedPlanId(""); setFarmProductId(selected?.id ?? null); setProductName(selected?.brandName ?? ""); if (selected) setProductType(selected.productType); }}><option value="">{productsLoading ? "Loading products…" : productsError ? "Products unavailable" : "Choose a product"}</option>{farmProducts?.filter((item) => item.active).map((item) => <option key={item.id} value={item.id}>{item.brandName} · {item.stockOnHand} {item.stockUnit}{item.lowStock ? " · low stock" : ""}</option>)}</NativeSelect>{!productsLoading && !productsError && farmProducts?.length === 0 && <p className="text-sm text-muted-foreground">No products are available. Ask a manager to add one in Products.</p>}{productsError && <p role="alert" className="text-sm text-destructive">Could not load products. Connect and try again.</p>}</div>
+      {selectedProduct?.productType === "VACCINE" && <div className="space-y-1.5"><Label htmlFor={`${id}-scheduled-dose`}>{displayText("Scheduled vaccination")}</Label><NativeSelect id={`${id}-scheduled-dose`} value={selectedPlanId} onChange={(event) => { setSelectedPlanId(event.target.value); if (event.target.value) setPurpose("Vaccination"); }}><option value="">{displayText("Unscheduled use")}</option>{vaccinationPlan?.filter((item) => item.status === "SCHEDULED" && item.farmProductId === selectedProduct.id).map((item) => <option key={item.id} value={item.id}>Day {item.ageDay} · {item.dueDate}</option>)}</NativeSelect>{vaccinationPlanError && <p role="alert">{displayText("Could not load scheduled doses. Connect and try again before choosing a dose.")}</p>}</div>}
       {selectedProduct && <DemoStockNotice demoStockHistory={selectedProduct.demoStockHistory} />}
-      <div className="grid grid-cols-[minmax(0,1fr)_9rem] gap-2.5"><div className="space-y-1.5"><Label htmlFor={`${id}-product`} className="text-sm font-semibold">Product / brand</Label><Input id={`${id}-product`} required value={productName} onChange={(e) => { setProductName(e.target.value); setFarmProductId(null); }} placeholder="e.g. Baby Stag Booster" className="h-11 rounded-lg" /></div><div className="space-y-1.5"><Label htmlFor={`${id}-quantity`} className="text-sm font-semibold">Units used {farmProductId ? <span className="font-normal text-destructive">required</span> : <span className="font-normal text-muted-foreground">optional</span>}</Label><Input id={`${id}-quantity`} required={Boolean(farmProductId)} type="number" min="0.001" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder={selectedProduct?.stockUnit ?? "If known"} className="h-11 rounded-lg" />{selectedProduct && <p className="text-[11px] text-muted-foreground">Available: {selectedProduct.stockOnHand} {selectedProduct.stockUnit}{estimatedCost != null ? ` · Estimated batch cost ₱${estimatedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : " · Cost unavailable"}</p>}</div></div>
-      <div className="space-y-1.5"><span id={`${id}-type`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Product type</span><ToggleGroup aria-labelledby={`${id}-type`} variant="outline" value={productType ? [productType] : []} onValueChange={(values) => { if (values[0]) setProductType(values[0] as typeof productType); }} className="grid w-full grid-cols-3 gap-2 sm:grid-cols-5">{[{ v: "FEED", label: "Feed" }, { v: "VITAMIN", label: "Vitamin" }, { v: "MEDICINE", label: "Medicine" }, { v: "VACCINE", label: "Vaccine" }, { v: "OTHER", label: "Other" }].map((item) => <ToggleGroupItem key={item.v} value={item.v} className="min-h-11">{item.label}</ToggleGroupItem>)}</ToggleGroup></div>
-      {purposeRequired && <div className="space-y-1.5"><span id={`${id}-purpose`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Purpose</span><div role="group" aria-labelledby={`${id}-purpose`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{MEDICINE_PURPOSES.map((item) => <Button variant="ghost" key={item} type="button" aria-pressed={purpose === item} onClick={() => setPurpose(item)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", purpose === item ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{purpose === item ? "✓ " : ""}{item}</Button>)}</div></div>}
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><span id={`${id}-applied-to`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Applied to</span><div role="group" aria-labelledby={`${id}-applied-to`} className="flex h-11 gap-1.5"><Button variant="ghost" type="button" aria-pressed={allBirds} onClick={() => setAllBirds(true)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", allBirds ? "border-success bg-success-muted text-success" : "border-border")}>All {population}</Button><Button variant="ghost" type="button" aria-pressed={!allBirds} onClick={() => setAllBirds(false)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", !allBirds ? "border-success bg-success-muted text-success" : "border-border")}>Some</Button></div></div></div>
-      {!allBirds && <Input aria-label="Number of birds treated" type="number" min={1} max={population} value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg" placeholder={`1 – ${population}`} />}
-      <details open={showDetails} onToggle={(e) => setShowDetails(e.currentTarget.open)} className="rounded-lg border px-3"><summary className="flex min-h-10 cursor-pointer items-center text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">More details <span className="ml-1 font-normal text-muted-foreground">(optional)</span></summary><div className="space-y-2 pb-3"><Input aria-label="Dose guidance or application note" value={dose} onChange={(e) => setDose(e.target.value)} placeholder="Dose guidance or application note" className="h-10 rounded-lg" /><Textarea aria-label="Product notes" rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Notes" className="resize-none rounded-lg" /></div></details>
-      <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createInput.isPending || population <= 0}>{createInput.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save product record"}</Button>
+      <StockConfirmationNotice products={[selectedProduct]} />
+      <div className="space-y-1.5"><Label htmlFor={`${id}-quantity`} className="text-sm font-semibold">{displayText("Units used")} <span className="font-normal text-destructive">{displayText("required")}</span></Label><Input id={`${id}-quantity`} required type="number" min={selectedProduct?.allowFractionalQuantity === false ? "1" : "0.001"} step={selectedProduct?.allowFractionalQuantity === false ? "1" : "0.001"} value={quantity} onChange={(event) => setQuantity(event.target.value)} placeholder={selectedProduct?.stockUnit ?? ""} className="h-11 rounded-lg" />{selectedProduct && <p className="text-sm text-muted-foreground">{displayText(selectedProduct.stockIsCached || selectedProduct.hasPendingInventoryUse ? "Last confirmed:" : "Available:")} {selectedProduct.stockOnHand} {selectedProduct.stockUnit}{estimatedCost != null ? ` · Estimated batch cost ₱${estimatedCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ""}</p>}</div>
+      {purposeRequired && <div className="space-y-1.5"><span id={`${id}-purpose`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">{displayText("Purpose")}</span><div role="group" aria-labelledby={`${id}-purpose`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{MEDICINE_PURPOSES.map((item) => <Button variant="ghost" key={item} type="button" disabled={Boolean(selectedPlanId) && item !== "Vaccination"} aria-pressed={purpose === item} onClick={() => setPurpose(item)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-left text-sm font-medium focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", purpose === item ? "border-success bg-success-muted text-success" : "border-border hover:bg-muted")}>{purpose === item ? "✓ " : ""}{displayText(item)}</Button>)}</div></div>}
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><span id={`${id}-applied-to`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">{displayText("Applied to")}</span><div role="group" aria-labelledby={`${id}-applied-to`} className="flex h-11 gap-1.5"><Button variant="ghost" type="button" aria-pressed={allBirds} onClick={() => setAllBirds(true)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", allBirds ? "border-success bg-success-muted text-success" : "border-border")}>{displayText("All")}{" "}{population}</Button><Button variant="ghost" type="button" aria-pressed={!allBirds} onClick={() => setAllBirds(false)} className={cn("min-w-0 flex-1 rounded-lg border px-2 text-xs font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", !allBirds ? "border-success bg-success-muted text-success" : "border-border")}>{displayText("Some")}</Button></div></div></div>
+      {!allBirds && <Input aria-label={displayText("Number of birds treated")} type="number" min={1} max={population} value={count} onChange={(e) => setCount(e.target.value)} className="h-11 rounded-lg" placeholder={`1 – ${population}`} />}
+      <details open={showDetails} onToggle={(e) => setShowDetails(e.currentTarget.open)} className="rounded-lg border px-3"><summary className="flex min-h-10 cursor-pointer items-center text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60">{displayText("More details")}{" "}<span className="ml-1 font-normal text-muted-foreground">{displayText("(optional)")}</span></summary><div className="space-y-2 pb-3"><Input aria-label={displayText("Dose guidance or application note")} value={dose} onChange={(e) => setDose(e.target.value)} placeholder={displayText("Dose guidance or application note")} className="h-10 rounded-lg" /><Textarea aria-label={displayText("Product notes")} rows={2} value={details} onChange={(e) => setDetails(e.target.value)} placeholder={displayText("Notes")} className="resize-none rounded-lg" /></div></details>
+      <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createInput.isPending || recordVaccination.isPending || population <= 0}>{createInput.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save product record"}</Button>
     </form>
   );
 }
@@ -560,6 +577,7 @@ function TreatmentForm({ batchId, population, onDone }: { batchId: string; popul
 // ─── Form: Behavior ───────────────────────────────────────────────────────────
 
 function BehaviorForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
+  const { display: displayText } = useDisplayLocale();
   const id = useId();
   const createEvent = useCreateEvent(batchId);
   const [signs, setSigns] = useState<string[]>([]);
@@ -579,9 +597,9 @@ function BehaviorForm({ batchId, population, onDone }: { batchId: string; popula
   return (
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
-      <div className="space-y-1.5"><span id={`${id}-signs`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Signs noticed</span><div role="group" aria-labelledby={`${id}-signs`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{BEHAVIOR_SIGNS.map((item) => <TagPill key={item} label={item} selected={signs.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
-      <div className="space-y-1.5"><span id={`${id}-attention`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">Attention level</span><div role="group" aria-labelledby={`${id}-attention`} className="grid grid-cols-3 gap-2">{[{ v: "LOW", label: "Watch" }, { v: "MEDIUM", label: "Check" }, { v: "HIGH", label: "Now" }].map((item) => <Button variant="ghost" key={item.v} type="button" aria-pressed={concern === item.v} onClick={() => setConcern(item.v)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", concern === item.v ? "border-warning bg-warning-muted text-warning-ink" : "border-border hover:bg-muted")}>{item.label}</Button>)}</div></div>
-      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">Notes <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id={`${id}-notes`} value={details} onChange={(e) => setDetails(e.target.value)} placeholder="What did you see?" className="h-11 rounded-lg" /></div></div>
+      <div className="space-y-1.5"><span id={`${id}-signs`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">{displayText("Signs noticed")}</span><div role="group" aria-labelledby={`${id}-signs`} className="grid grid-cols-2 gap-2 sm:grid-cols-3">{BEHAVIOR_SIGNS.map((item) => <TagPill key={item} label={displayText(item)} selected={signs.includes(item)} onToggle={() => toggle(item)} />)}</div></div>
+      <div className="space-y-1.5"><span id={`${id}-attention`} className="flex items-center gap-2 text-sm leading-none font-semibold select-none">{displayText("Attention level")}</span><div role="group" aria-labelledby={`${id}-attention`} className="grid grid-cols-3 gap-2">{[{ v: "LOW", label: "Watch" }, { v: "MEDIUM", label: "Check" }, { v: "HIGH", label: "Now" }].map((item) => <Button variant="ghost" key={item.v} type="button" aria-pressed={concern === item.v} onClick={() => setConcern(item.v)} className={cn("min-h-11 rounded-lg border px-2 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60", concern === item.v ? "border-warning bg-warning-muted text-warning-ink" : "border-border hover:bg-muted")}>{item.label}</Button>)}</div></div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2"><EventDateControl id={`${id}-date`} date={date} onChange={setDate} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) setDate(todayIso()); }} /><div className="space-y-1.5"><Label htmlFor={`${id}-notes`} className="text-sm font-semibold">{displayText("Notes")}{" "}<span className="font-normal text-muted-foreground">{displayText("(optional)")}</span></Label><Input id={`${id}-notes`} value={details} onChange={(e) => setDetails(e.target.value)} placeholder={displayText("What did you see?")} className="h-11 rounded-lg" /></div></div>
       <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createEvent.isPending || population <= 0}>{createEvent.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save behavior note"}</Button>
     </form>
   );
@@ -590,6 +608,7 @@ function BehaviorForm({ batchId, population, onDone }: { batchId: string; popula
 // ─── Form: Daily vitals ───────────────────────────────────────────────────────
 
 function VitalsForm({ batchId, population, onDone }: { batchId: string; population: number; onDone: () => void }) {
+  const { display: displayText } = useDisplayLocale();
   const id = useId();
   const createRecord = useCreateRecord(batchId);
   const [form, setForm] = useState({ recordDate: todayIso(), temperatureC: "", feedIntakeG: "", waterIntakeMl: "", feedQuality: "MEASURED", waterQuality: "MEASURED", behaviorNotes: "" });
@@ -608,9 +627,9 @@ function VitalsForm({ batchId, population, onDone }: { batchId: string; populati
   return (
     <form onSubmit={submit} className="space-y-3">
       <NoAnimalsAlert population={population} />
-      <p className="rounded-lg border border-success-border bg-success-muted px-3 py-2 text-xs text-success">Optional lang: record only what the farm actually measures. Hindi kailangan araw-araw.</p>
+      <p className="rounded-lg border border-success-border bg-success-muted px-3 py-2 text-xs text-success">{displayText("Optional lang: record only what the farm actually measures. Hindi kailangan araw-araw.")}</p>
       <EventDateControl id={`${id}-date`} date={form.recordDate} onChange={(value) => set("recordDate", value)} showOverride={showDateOverride} onShowOverrideChange={(open) => { setShowDateOverride(open); if (!open) set("recordDate", todayIso()); }} />
-      <div className="grid grid-cols-2 gap-2.5"><div className="space-y-1.5"><Label htmlFor={`${id}-temperature`} className="text-sm font-semibold">Temperature °C <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input id={`${id}-temperature`} type="number" step="0.1" min={0} max={60} value={form.temperatureC} onChange={(e) => set("temperatureC", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label htmlFor={`${id}-feed`} className="text-sm font-semibold">Feed grams <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input id={`${id}-feed`} type="number" step="0.1" min={0} value={form.feedIntakeG} onChange={(e) => set("feedIntakeG", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label htmlFor={`${id}-water`} className="text-sm font-semibold">Water ml <span className="font-normal text-muted-foreground">(if measured)</span></Label><Input id={`${id}-water`} type="number" step="0.1" min={0} value={form.waterIntakeMl} onChange={(e) => set("waterIntakeMl", e.target.value)} className="h-11 rounded-lg" placeholder="Not measured" /></div><div className="space-y-1.5"><Label htmlFor={`${id}-note`} className="text-sm font-semibold">Note <span className="font-normal text-muted-foreground">(optional)</span></Label><Input id={`${id}-note`} value={form.behaviorNotes} onChange={(e) => set("behaviorNotes", e.target.value)} placeholder="e.g. cold / normal" className="h-11 rounded-lg" /></div></div>
+      <div className="grid grid-cols-2 gap-2.5"><div className="space-y-1.5"><Label htmlFor={`${id}-temperature`} className="text-sm font-semibold">{displayText("Temperature °C")}{" "}<span className="font-normal text-muted-foreground">{displayText("(if measured)")}</span></Label><Input id={`${id}-temperature`} type="number" step="0.1" min={0} max={60} value={form.temperatureC} onChange={(e) => set("temperatureC", e.target.value)} className="h-11 rounded-lg" placeholder={displayText("Not measured")} /></div><div className="space-y-1.5"><Label htmlFor={`${id}-feed`} className="text-sm font-semibold">{displayText("Feed grams")}{" "}<span className="font-normal text-muted-foreground">{displayText("(if measured)")}</span></Label><Input id={`${id}-feed`} type="number" step="0.1" min={0} value={form.feedIntakeG} onChange={(e) => set("feedIntakeG", e.target.value)} className="h-11 rounded-lg" placeholder={displayText("Not measured")} /></div><div className="space-y-1.5"><Label htmlFor={`${id}-water`} className="text-sm font-semibold">{displayText("Water ml")}{" "}<span className="font-normal text-muted-foreground">{displayText("(if measured)")}</span></Label><Input id={`${id}-water`} type="number" step="0.1" min={0} value={form.waterIntakeMl} onChange={(e) => set("waterIntakeMl", e.target.value)} className="h-11 rounded-lg" placeholder={displayText("Not measured")} /></div><div className="space-y-1.5"><Label htmlFor={`${id}-note`} className="text-sm font-semibold">{displayText("Note")}{" "}<span className="font-normal text-muted-foreground">{displayText("(optional)")}</span></Label><Input id={`${id}-note`} value={form.behaviorNotes} onChange={(e) => set("behaviorNotes", e.target.value)} placeholder={displayText("e.g. cold / normal")} className="h-11 rounded-lg" /></div></div>
       <InlineError message={formError} /><Button type="submit" className="h-11 w-full rounded-lg text-base font-bold" disabled={createRecord.isPending || population <= 0}>{createRecord.isPending ? <Loader2 className="size-5 animate-spin" /> : "Save measurement"}</Button>
     </form>
   );
@@ -733,6 +752,7 @@ export function BatchLogSection({
   batchName?: string;
   stageName?: string;
 }) {
+  const { display: displayText } = useDisplayLocale();
   const { t } = useLocale();
   const [activeDialog, setActiveDialog] = useState<DialogType | null>(null);
   const triggerRefs = useRef<Partial<Record<DialogType, HTMLButtonElement | null>>>({});
@@ -786,8 +806,8 @@ export function BatchLogSection({
         <DialogContent className="w-[min(100%-1rem,50rem)] max-h-[calc(100dvh-1rem)] overflow-y-auto overscroll-contain p-0 sm:max-w-3xl">
           {meta && (
             <DialogHeader className="border-b px-5 py-4">
-              <DialogTitle className="text-lg">{meta.title}</DialogTitle>
-              <p className="text-xs text-muted-foreground">{batchName ? `${batchName}${stageName ? ` · ${stageName.replace("-", " ")}` : ""}` : `Batch ${batchId}`} · Date defaults to now</p>
+              <DialogTitle className="text-lg">{displayText(meta.title)}</DialogTitle>
+              <p className="text-xs text-muted-foreground">{batchName ? `${batchName}${stageName ? ` · ${stageName.replace("-", " ")}` : ""}` : `Batch ${batchId}`} {displayText("· Date defaults to now")}</p>
             </DialogHeader>
           )}
           <div className="px-4 py-4 sm:px-5">

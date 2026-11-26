@@ -18,7 +18,7 @@ async function outbox(page: Page) {
   });
 }
 
-async function setup(page: Page, origin: string, state: { reachable: boolean; attempts: Array<Record<string, unknown>>; persistedAtSend: boolean[]; directWrites: number }) {
+async function setup(page: Page, origin: string, state: { reachable: boolean; attempts: Array<Record<string, unknown>>; persistedAtSend: boolean[]; directWrites: number; vaccine?: boolean; wholeUnits?: boolean }) {
   await page.addInitScript(profile => {
     if (!localStorage.getItem("pp_auth_session")) localStorage.setItem("pp_auth_session", JSON.stringify({ sessionId: "durable-product-fixture", user: profile }));
     localStorage.setItem("pp_language", "en");
@@ -41,8 +41,9 @@ async function setup(page: Page, origin: string, state: { reachable: boolean; at
     if (request.method() !== "GET") { state.directWrites++; return route.abort("blockedbyclient"); }
     if (path === "/health") return route.fulfill({ status: state.reachable ? 200 : 503, json: { status: state.reachable ? "UP" : "DOWN" } });
     if (path === "/farm") return route.fulfill({ json: { id: 1, name: "Fixture farm" } });
-    if (path === "/version") return route.fulfill({ json: { version: "test", offlineCapabilities: { protocolVersions: [2], commandReceipts: true, schemaReady: true, receiptEntityTypes: ["FARM_INPUT"] } } });
-    if (path === "/inventory/products") return route.fulfill({ json: [product] });
+    if (path === "/version") return route.fulfill({ json: { version: "test", offlineCapabilities: { protocolVersions: [2], commandReceipts: true, schemaReady: true, receiptEntityTypes: ["FARM_INPUT", "VACCINATION_PLAN"] } } });
+    if (path === "/inventory/products") return route.fulfill({ json: [state.vaccine ? { ...product, productType: "VACCINE", brandName: "Fixture vaccine", stockUnit: "vial", allowFractionalQuantity: !state.wholeUnits } : { ...product, allowFractionalQuantity: !state.wholeUnits }] });
+    if (path === "/batches/2/vaccination-plan") return route.fulfill({ json: state.vaccine ? [{ id: 31, batchId: 2, farmProductId: 9, vaccineName: "Fixture vaccine", ageDay: 7, dueDate: "2026-11-08", status: "SCHEDULED", displayState: "OVERDUE" }, { id: 32, batchId: 2, farmProductId: 9, vaccineName: "Fixture vaccine", ageDay: 14, dueDate: "2026-11-15", status: "SCHEDULED", displayState: "OVERDUE" }] : [] });
     if (path === "/batches") return route.fulfill({ json: [batch] });
     if (path === "/batches/2") return route.fulfill({ json: batch });
     if (path === "/batches/2/overview") return route.fulfill({ json: { batch, latestIndicator: null, recentRecords: [], activeAlerts: [] } });
@@ -56,6 +57,7 @@ async function setup(page: Page, origin: string, state: { reachable: boolean; at
   await page.goto("/batches/2/data-entry?from=batch");
   await page.getByRole("button", { name: "Feed or medicine used" }).click();
   const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("textbox", { name: "Product / brand" })).toHaveCount(0);
   await dialog.getByLabel("Product from farm stock").selectOption("9");
   await dialog.getByLabel(/Units used/).fill("1");
 }
@@ -98,4 +100,29 @@ test("mobile product form stays open and unsaved when its local commit aborts", 
   expect(await outbox(page)).toHaveLength(0);
   expect(state.attempts).toHaveLength(0);
   expect(state.directWrites).toBe(0);
+});
+
+
+test("offline product entry queues the specifically selected vaccination dose", async ({ page, baseURL }) => {
+  const state = { reachable: false, attempts: [] as Array<Record<string, unknown>>, persistedAtSend: [] as boolean[], directWrites: 0, vaccine: true };
+  await setup(page, new URL(baseURL!).origin, state);
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("Scheduled vaccination").selectOption("32");
+  await expect(dialog.getByRole("button", { name: /Vaccination/ })).toHaveAttribute("aria-pressed", "true");
+  await dialog.getByRole("button", { name: "Save product record" }).click();
+  await expect.poll(async () => (await outbox(page)).length).toBe(1);
+  const [saved] = await outbox(page);
+  expect(saved.payload).toMatchObject({ planId: 32, quantity: 1, unit: "vial", operationId: saved.operationId });
+  await page.reload();
+  expect((await outbox(page))[0].payload).toEqual(saved.payload);
+});
+
+
+test("whole-unit products reject fractional quantities before saving", async ({ page, baseURL }) => {
+  const state = { reachable: false, attempts: [] as Array<Record<string, unknown>>, persistedAtSend: [] as boolean[], directWrites: 0, wholeUnits: true };
+  await setup(page, new URL(baseURL!).origin, state);
+  const amount = page.getByRole("dialog").getByLabel(/Units used/);
+  await amount.fill("1.5");
+  expect(await amount.evaluate((element: HTMLInputElement) => element.checkValidity())).toBe(false);
+  expect(await outbox(page)).toHaveLength(0);
 });

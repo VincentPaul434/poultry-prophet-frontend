@@ -78,3 +78,12 @@ test('cross-tab account switch stops subsequent singleton sends even with a stal
   assert.equal(h.calls.filter(b=>b.operations.length===1).length,1);
   assert.equal(h.rows()[0].operationId,b.operationId);assert.equal(h.rows()[0].status,'AUTH_REQUIRED');
 });
+
+
+test('a held or rejected command never advances the successful sync time',async()=>{
+  for (const status of ['RETRYABLE','REJECTED','CONFLICT']) {
+    const h=loadProvider([record(1)],async body=>({results:body.operations.map(operation=>({operationId:operation.operationId,status,serverId:null,message:'retained'}))}));
+    await h.sync();assert.equal(h.successfulSyncs(),0);assert.equal(h.rows().length,1);
+  }
+  const h=loadProvider([record(1)],response);await h.sync();assert.equal(h.successfulSyncs(),1);
+});

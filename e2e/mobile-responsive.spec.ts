@@ -96,16 +96,16 @@ test.describe("Mobile responsive smoke tests", () => {
     });
 
     await page.goto("/alerts");
-    await expect(page.getByRole("heading", { name: "Alerts" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Babala" })).toBeVisible();
 
     const header = page.getByTestId("mobile-app-header");
     await expect(header.getByText(farmName)).toBeVisible();
-    await expect(header.getByText("Manager ng farm")).toBeVisible();
-    const navigation = page.getByRole("navigation", { name: "Mobile navigation" });
+    await expect(header.getByText("Tagapamahala")).toBeVisible();
+    const navigation = page.getByRole("navigation", { name: "Mga pahina sa telepono" });
     await expect(navigation.getByRole("link")).toHaveCount(3);
-    await expect(navigation.getByRole("link", { name: "Finance" })).toHaveCount(0);
-    await expect(navigation.getByRole("link", { name: "Farm overview" })).toBeVisible();
-    await expect(navigation.getByRole("button", { name: "Open more navigation options" })).toBeVisible();
+    await expect(navigation.getByRole("link", { name: "Pananalapi" })).toHaveCount(0);
+    await expect(navigation.getByRole("link", { name: "Buod ng manukan" })).toBeVisible();
+    await expect(navigation.getByRole("button", { name: "Buksan ang iba pang pahina" })).toBeVisible();
 
     const columns = await header.evaluate((element) => {
       const [left, center, right] = Array.from(element.children).map((child) => child.getBoundingClientRect());
@@ -180,13 +180,13 @@ test.describe("Mobile responsive smoke tests", () => {
     });
 
     await page.goto("/alerts");
-    await expect(page.getByRole("heading", { name: "Alerts" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Babala" })).toBeVisible();
 
     const header = page.getByTestId("mobile-app-header");
     const logo = header.getByTestId("mobile-app-logo");
     const identity = header.getByTestId("mobile-farm-identity");
     const status = header.getByRole("status");
-    const profile = header.getByRole("button", { name: "Open profile menu" });
+    const profile = header.getByRole("button", { name: "Buksan ang mga pagpipilian sa sarili" });
     await expect(logo).toBeVisible();
     await expect(status).toBeVisible();
     await expect(profile).toBeVisible();

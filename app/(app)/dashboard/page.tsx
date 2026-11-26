@@ -1,5 +1,8 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
+import { PopulationPendingNotice } from "@/components/population-pending-notice";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -15,7 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useArchivedBatches, useCreateBatch, useDashboardBatches, useRestoreBatch } from "@/hooks/use-batches";
-import { useHandlerTaskQueueSummary, useTaskQueue, useTaskSummary } from "@/hooks/use-operations";
+import { useFarmProducts, useHandlerTaskQueueSummary, useTaskQueue, useTaskSummary } from "@/hooks/use-operations";
 import { useAuth } from "@/lib/auth-context";
 import { ApiError } from "@/lib/api-client";
 import { formatDate, isFutureDate, todayIso } from "@/lib/format";
@@ -87,10 +90,13 @@ function batchNeedsAttention({ batch, summary }: BatchDashboardItem) {
 }
 
 export default function DashboardPage() {
+  const { display: displayText } = useDisplayLocale();
   const { isManager, user } = useAuth();
   const { t } = useLocale();
   const { data: dashboardItems, isLoading, isError, error } = useDashboardBatches();
   const { data: archivedBatches } = useArchivedBatches(isManager);
+  const { data: inventoryProducts } = useFarmProducts(false, isManager);
+  const lowStockProducts = (Array.isArray(inventoryProducts) ? inventoryProducts : []).filter((product) => product.active && product.lowStock);
   const handlerTaskQueue = useTaskQueue("NOW", !isManager);
   const { data: handlerTaskSummary } = useHandlerTaskQueueSummary(!isManager);
   const { data: taskSummary } = useTaskSummary({}, Boolean(user?.farmId));
@@ -124,6 +130,10 @@ export default function DashboardPage() {
         action={<CreateBatchDialog className="w-full sm:w-auto" />}
       />
 
+      {isManager && lowStockProducts.length > 0 && <section role="status" className="rounded-2xl border border-warning-border bg-warning-muted/50 p-4 text-sm">
+        <h2 className="font-semibold">{displayText("Low stock")}</h2><ul className="mt-2 space-y-1">{lowStockProducts.map((product) => <li key={product.id}>{product.brandName}: {product.stockOnHand} {product.stockUnit}</li>)}</ul><Link className="mt-2 inline-block font-semibold underline" href="/inputs">{displayText("Manage inventory")}</Link>
+      </section>}
+
       {dashboardItems && dashboardItems.length > 0 && (
         <div className="ledger-toolbar flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-center">
           <div className="ledger-search relative min-w-0 border border-foreground/10 transition-colors focus-within:border-ring/60 sm:w-64 sm:flex-none lg:w-72">
@@ -138,7 +148,7 @@ export default function DashboardPage() {
               className="min-h-11 rounded-full border-0 bg-transparent pl-11 pr-4 shadow-none focus-visible:ring-2 focus-visible:ring-ring/40"
             />
           </div>
-          <NativeSelect aria-label={t("dashboard.filterLabel")} value={stageFilter} onChange={(event) => { setStageFilter(event.target.value); setVisibleCount(PAGE_SIZE); }} className="ledger-filter w-full sm:w-44" selectClassName="h-11 rounded-full border-0 bg-[var(--ledger-card)] px-3 pr-9 text-sm shadow-none focus-visible:ring-2 focus-visible:ring-ring/40"><option value="all">{t("dashboard.allStages")}</option>{Array.from(new Set(dashboardItems.map(({ batch }) => batch.stageName))).map((stage) => <option key={stage} value={stage}>{stageDisplayName(stage)}</option>)}</NativeSelect>
+          <NativeSelect aria-label={t("dashboard.filterLabel")} value={stageFilter} onChange={(event) => { setStageFilter(event.target.value); setVisibleCount(PAGE_SIZE); }} className="ledger-filter w-full sm:w-44" selectClassName="h-11 rounded-full border-0 bg-[var(--ledger-card)] px-3 pr-9 text-sm shadow-none focus-visible:ring-2 focus-visible:ring-ring/40"><option value="all">{t("dashboard.allStages")}</option>{Array.from(new Set(dashboardItems.map(({ batch }) => batch.stageName))).map((stage) => <option key={stage} value={stage}>{displayText(stageDisplayName(stage))}</option>)}</NativeSelect>
         </div>
       )}
 
@@ -229,8 +239,8 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           )}
-          {needsAttention.length > 0 && <section aria-labelledby="needs-attention-heading" className="space-y-3 sm:space-y-4"><h2 id="needs-attention-heading" className="ledger-section-heading">Needs attention</h2><div className="grid gap-4 sm:grid-cols-2">{needsAttention.map((item) => <BatchCard key={item.batch.id} item={item} isManager={isManager} />)}</div></section>}
-          {allGood.length > 0 && <section aria-labelledby="no-batch-alerts-heading" className="space-y-3 sm:space-y-4"><h2 id="no-batch-alerts-heading" className="ledger-section-heading">No active alerts or count issues</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{allGood.map((item) => <BatchCard key={item.batch.id} item={item} isManager={isManager} />)}</div></section>}
+          {needsAttention.length > 0 && <section aria-labelledby="needs-attention-heading" className="space-y-3 sm:space-y-4"><h2 id="needs-attention-heading" className="ledger-section-heading">{displayText("Needs attention")}</h2><div className="grid gap-4 sm:grid-cols-2">{needsAttention.map((item) => <BatchCard key={item.batch.id} item={item} isManager={isManager} />)}</div></section>}
+          {allGood.length > 0 && <section aria-labelledby="no-batch-alerts-heading" className="space-y-3 sm:space-y-4"><h2 id="no-batch-alerts-heading" className="ledger-section-heading">{displayText("No active alerts or count issues")}</h2><div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{allGood.map((item) => <BatchCard key={item.batch.id} item={item} isManager={isManager} />)}</div></section>}
           {visibleCount < filteredBatches.length && (
             <div className="flex justify-center border-t pt-4">
               <Button
@@ -258,13 +268,14 @@ function DashboardSummaryStrip({
   needsAttentionCount: number | null;
   openTaskCount: number | null;
 }) {
+  const { display: displayText } = useDisplayLocale();
   const items = [
     { label: "Needs attention", value: needsAttentionCount, icon: AlertTriangle, iconClassName: "text-warning" },
     { label: "Open tasks", value: openTaskCount, icon: ClipboardCheck, iconClassName: "text-primary" },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3" aria-label="Dashboard summary" data-testid="dashboard-summary">
+    <div className="grid grid-cols-2 gap-3" aria-label={displayText("Dashboard summary")} data-testid="dashboard-summary">
       {items.map(({ label, value, icon: Icon, iconClassName }) => (
         <div key={label} className="grid min-h-20 min-w-0 grid-cols-[minmax(0,1fr)_auto] content-between gap-x-2 gap-y-1 rounded-xl bg-primary/5 px-3 py-3 sm:px-4">
           <p className="min-w-0 text-sm font-semibold leading-4 [overflow-wrap:anywhere]">{label}</p>
@@ -277,10 +288,11 @@ function DashboardSummaryStrip({
 }
 
 function ArchivedBatches({ batches }: { batches: import("@/lib/types").Batch[] }) {
+  const { display: displayText } = useDisplayLocale();
   const restore = useRestoreBatch();
   return <section className="space-y-3 border-t pt-5">
-    <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Archived batches</h2><p className="mt-0.5 text-xs text-muted-foreground">History is kept and read-only until restored.</p></div><Badge variant="secondary">{batches.length}</Badge></div>
-    <div className="space-y-2">{batches.map((batch) => <div key={batch.id} className="flex flex-col gap-3 rounded-2xl border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"><Link href={`/batches/${batch.id}`} className="min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"><p className="truncate text-sm font-semibold">{batch.name}</p><p className="mt-1 text-xs text-muted-foreground">Archived {batch.archivedAt ? formatDate(batch.archivedAt) : "date unavailable"}{batch.archiveReason ? ` · ${batch.archiveReason}` : ""}</p></Link><div className="flex flex-wrap gap-2"><Link href={`/batches/${batch.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "min-h-11 rounded-xl")}>View records</Link><Button type="button" size="sm" className="min-h-11 rounded-xl" disabled={restore.isPending} onClick={() => restore.mutateAsync(batch.id).then(() => toast.success("Batch restored.")).catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not restore this batch."))}><ArchiveRestore className="size-4" />Restore</Button><ArchivedBatchDeleteAction batch={batch} /></div></div>)}</div>
+    <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">{displayText("Archived batches")}</h2><p className="mt-0.5 text-xs text-muted-foreground">{displayText("History is kept and read-only until restored.")}</p></div><Badge variant="secondary">{batches.length}</Badge></div>
+    <div className="space-y-2">{batches.map((batch) => <div key={batch.id} className="flex flex-col gap-3 rounded-2xl border bg-card p-3 sm:flex-row sm:items-center sm:justify-between"><Link href={`/batches/${batch.id}`} className="min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/60"><p className="truncate text-sm font-semibold">{batch.name}</p><p className="mt-1 text-xs text-muted-foreground">{displayText("Archived")}{" "}{batch.archivedAt ? formatDate(batch.archivedAt) : "date unavailable"}{batch.archiveReason ? ` · ${batch.archiveReason}` : ""}</p></Link><div className="flex flex-wrap gap-2"><Link href={`/batches/${batch.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "min-h-11 rounded-xl")}>{displayText("View records")}</Link><Button type="button" size="sm" className="min-h-11 rounded-xl" disabled={restore.isPending} onClick={() => restore.mutateAsync(batch.id).then(() => toast.success("Batch restored.")).catch((error) => toast.error(error instanceof ApiError ? error.message : "Could not restore this batch."))}><ArchiveRestore className="size-4" />{displayText("Restore")}</Button><ArchivedBatchDeleteAction batch={batch} /></div></div>)}</div>
   </section>;
 }
 
@@ -310,11 +322,11 @@ function BatchCard({ item, isManager }: { item: BatchDashboardItem; isManager: b
 }
 
 function BatchCardHeader({ item }: { item: BatchDashboardItem }) {
-  const { t } = useLocale();
+  const { t, display } = useLocale();
   const { batch, summary } = item;
   const days = daysElapsed(batch.hatchDate ?? batch.startDate);
   const stageBar = stageColor(batch.stageName);
-  const stageLabel = stageDisplayName(batch.stageName);
+  const stageLabel = display(stageDisplayName(batch.stageName));
   const overviewHref = `/batches/${batch.id}`;
   const stageBadgeClass = stageBar === "ledger-stage-warning"
     ? "bg-warning text-white"
@@ -396,6 +408,7 @@ function ManagerBatchCard({ item, taskSummary, taskSummaryError }: { item: Batch
       <BatchCardHeader item={item} />
       <CardContent className="px-3 pb-3 pt-3 sm:px-4 sm:pb-4">
         <BatchMetricStrip items={getBatchMetricItems(item, taskSummary, taskSummaryError, t)} />
+        <PopulationPendingNotice batchId={batch.id} compact />
       </CardContent>
       <CardFooter className="mt-auto border-t-0 p-3 pt-0 sm:p-4 sm:pt-0">
         <Link href={`/batches/${batch.id}`} className={cn(buttonVariants({ size: "lg" }), "h-11 w-full rounded-xl text-base font-semibold")}>
@@ -417,6 +430,7 @@ function HandlerBatchCard({ item, taskSummary, taskSummaryError }: { item: Batch
       <BatchCardHeader item={item} />
       <CardContent className="px-3 pb-3 pt-3 sm:px-4 sm:pb-4">
         <BatchMetricStrip items={getBatchMetricItems(item, taskSummary, taskSummaryError, t)} />
+        <PopulationPendingNotice batchId={batch.id} compact />
       </CardContent>
       <CardFooter className="mt-auto flex flex-col gap-2 border-t-0 p-3 pt-0 sm:p-4 sm:pt-0 lg:flex-row">
         <Link href={logHref} className={cn(buttonVariants({ size: "lg" }), "h-11 w-full rounded-xl text-sm font-semibold lg:min-w-0 lg:flex-1")} aria-label={`Log an event for ${batch.name}`}><ClipboardList className="size-4" />{t("dashboard.logNow")}</Link>
@@ -427,6 +441,7 @@ function HandlerBatchCard({ item, taskSummary, taskSummaryError }: { item: Batch
 }
 
 function CreateBatchDialog({ variant = "header", className }: { variant?: "header" | "inline"; className?: string }) {
+  const { display: displayText } = useDisplayLocale();
   const { user } = useAuth();
   const { t } = useLocale();
   const [open, setOpen] = useState(false);
@@ -552,7 +567,7 @@ function CreateBatchDialog({ variant = "header", className }: { variant?: "heade
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="hatch-date" className="font-semibold">Hatch date</Label>
+              <Label htmlFor="hatch-date" className="font-semibold">{displayText("Hatch date")}</Label>
               <Input
                 id="hatch-date"
                 type="date"
@@ -564,11 +579,12 @@ function CreateBatchDialog({ variant = "header", className }: { variant?: "heade
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="farm-entry-date" className="font-semibold">Farm entry date</Label>
+              <Label htmlFor="farm-entry-date" className="font-semibold">{displayText("Farm entry date")}</Label>
               <Input
                 id="farm-entry-date"
                 type="date"
                 required
+                min={hatchDate || undefined}
                 max={todayIso()}
                 className="h-11 rounded-xl"
                 value={farmEntryDate}

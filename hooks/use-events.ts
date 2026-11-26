@@ -5,6 +5,7 @@ import { batchEventApi } from "@/lib/api";
 import { shouldUseOfflineSnapshot } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 import { useOfflineSync } from "@/lib/offline-sync-provider";
+import { newSecureUuid } from "@/lib/uuid";
 import { qk } from "@/lib/query-keys";
 import type { BatchEvent, BatchEventReport, CreateBatchEventRequest, EventType } from "@/lib/types";
 import { getBatchEventSnapshot, listOutbox, saveBatchEventSnapshot } from "@/lib/offline-db";
@@ -67,7 +68,8 @@ function mergeEvents(events: BatchEvent[], queued: BatchEvent[], limit: number) 
 
 export function useBatchEvents(batchId: number | string, limit = 30, enabled = true) {
   const { user } = useAuth();
-  return useQuery({
+  const { snapshot } = useOfflineSync();
+  const query = useQuery({
     networkMode: "always",
     queryKey: qk.batches.events(batchId, limit),
     queryFn: async () => {
@@ -76,22 +78,26 @@ export function useBatchEvents(batchId: number | string, limit = 30, enabled = t
         if (user?.farmId) {
           try { await saveBatchEventSnapshot(user.userId, user.farmId, Number(batchId), events); } catch { /* Keep online reads available if local storage is full. */ }
         }
-        if (user) {
-          try { return mergeEvents(events, await getQueuedEvents(Number(batchId), user), limit); } catch { /* The server history remains available if local storage cannot be read. */ }
-        }
         return events;
       } catch (error) {
         if (!shouldUseOfflineSnapshot(error) || !user?.farmId) throw error;
         try {
           const cached = await getBatchEventSnapshot(user.userId, user.farmId, Number(batchId));
           const queued = await getQueuedEvents(Number(batchId), user);
-          if (cached || queued.length > 0) return mergeEvents(cached ?? [], queued, limit);
+          if (cached || queued.length > 0) return cached ?? [];
         } catch { /* Preserve the API error if local storage is unavailable. */ }
         throw error;
       }
     },
     enabled: enabled && batchId != null && batchId !== "",
   });
+  // Queue status changes render immediately, including in other tabs. Only server
+  // rows enter the query/snapshot cache; an acknowledged local row cannot linger.
+  const queued = user ? snapshot.items
+    .filter((item) => item.userId === user.userId && item.farmId === user.farmId)
+    .map((item) => toQueuedEvent(item, Number(batchId), user))
+    .filter((event): event is BatchEvent => event !== null) : [];
+  return { ...query, data: query.data || queued.length > 0 ? mergeEvents(query.data ?? [], queued, limit) : undefined };
 }
 
 export function useBatchEventPage(batchId: number | string, params: Record<string, unknown>, enabled = true) {
@@ -108,7 +114,7 @@ export function useCreateEvent(batchId: number | string) {
   return useMutation({
     networkMode: "always",
     mutationFn: async (body: CreateBatchEventRequest) => {
-      const operationId = body.operationId ?? crypto.randomUUID();
+      const operationId = body.operationId ?? newSecureUuid();
       await enqueue({
         entityType: "BATCH_EVENT",
         batchId: Number(batchId),

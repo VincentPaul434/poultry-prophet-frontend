@@ -6,8 +6,9 @@ import ts from "typescript";
 async function loadLock(page: Page) {
   const source = readFileSync(join(process.cwd(), "lib/auth-lock.ts"), "utf8");
   const script = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  const uuidScript = ts.transpileModule(readFileSync(join(process.cwd(), "lib/uuid.ts"), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
   await page.goto("http://localhost:3000/auth-lock-test");
-  await page.addScriptTag({ content: `window.authLock = {}; (function(exports){${script}})(window.authLock);` });
+  await page.addScriptTag({ content: `window.authLock = {}; window.authUuid = {}; (function(exports){${uuidScript}})(window.authUuid); (function(exports,require){${script}})(window.authLock, () => window.authUuid);` });
 }
 
 test("an expired in-flight lease is never stolen and is released when its owner finishes", async ({ context }) => {

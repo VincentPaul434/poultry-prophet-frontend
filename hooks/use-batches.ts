@@ -7,14 +7,12 @@ import { shouldUseOfflineSnapshot } from "@/lib/api-client";
 import { qk } from "@/lib/query-keys";
 import type { ArchiveBatchRequest, Batch, CreateBatchRequest, DeleteBatchRequest } from "@/lib/types";
 import { useAuth } from "@/lib/auth-context";
-import type { StoredUser } from "@/lib/auth-storage";
 import {
   removeDeletedBatchSnapshots,
   getBatchOverviewSnapshot,
   getBatchSnapshot,
   getBatchSnapshots,
   getDashboardSnapshot,
-  getQueuedPopulationDelta,
   saveBatchOverviewSnapshot,
   saveBatchSnapshots,
   saveDashboardSnapshot,
@@ -23,19 +21,6 @@ import {
 type BatchListOptions = {
   enabled?: boolean;
 };
-
-async function withQueuedPopulation<T extends { id: number; currentPopulation: number }>(
-  batch: T,
-  user: Pick<StoredUser, "userId" | "farmId"> | null,
-) {
-  if (!user?.farmId) return batch;
-  try {
-    const delta = await getQueuedPopulationDelta(user.userId, user.farmId, batch.id);
-    return { ...batch, currentPopulation: batch.currentPopulation + delta };
-  } catch {
-    return batch;
-  }
-}
 
 export function useBatches({ enabled = true }: BatchListOptions = {}) {
   const { user } = useAuth();
@@ -54,7 +39,7 @@ export function useBatches({ enabled = true }: BatchListOptions = {}) {
         if (user?.farmId) {
           try {
             const cached = await getBatchSnapshots(user.userId, user.farmId);
-            if (cached.length > 0) return Promise.all(cached.map((batch) => withQueuedPopulation(batch, user)));
+            if (cached.length > 0) return cached;
           } catch { /* Preserve the API error if local storage is unavailable. */ }
         }
         throw error;
@@ -83,7 +68,7 @@ export function useBatch(batchId: number | string, enabled = true) {
         if (user?.farmId) {
           try {
             const cached = await getBatchSnapshot(user.userId, user.farmId, Number(batchId));
-            if (cached) return withQueuedPopulation(cached, user);
+            if (cached) return cached;
           } catch { /* Preserve the API error if local storage is unavailable. */ }
         }
         throw error;
@@ -195,10 +180,10 @@ export function useBatchOverview(batchId: number | string, enabled = true) {
           try {
             const cachedOverview = await getBatchOverviewSnapshot(user.userId, user.farmId, Number(batchId));
             if (cachedOverview) {
-              return { ...cachedOverview, batch: await withQueuedPopulation(cachedOverview.batch, user) };
+              return cachedOverview;
             }
             const batch = await getBatchSnapshot(user.userId, user.farmId, Number(batchId));
-            if (batch) return { batch: await withQueuedPopulation(batch, user), latestIndicator: null, recentRecords: [], activeAlerts: [] };
+            if (batch) return { batch, latestIndicator: null, recentRecords: [], activeAlerts: [] };
           } catch { /* Preserve the API error if local storage is unavailable. */ }
         }
         throw error;
@@ -248,15 +233,11 @@ export function useDashboardBatches() {
     if (queryClient.getQueryData(queryKey) !== undefined) return;
 
     let cancelled = false;
-    const userScope = { userId, farmId };
     void getDashboardSnapshot(userId, farmId)
       .then(async (cached) => {
         if (!cached || cancelled || queryClient.getQueryData(queryKey) !== undefined) return;
 
-        const items = await Promise.all(cached.map(async (item) => ({
-          ...item,
-          batch: await withQueuedPopulation(item.batch, userScope),
-        })));
+        const items = cached;
 
         // A fast live response wins if it arrived while IndexedDB was opening.
         if (!cancelled && queryClient.getQueryData(queryKey) === undefined) {
@@ -292,18 +273,13 @@ export function useDashboardBatches() {
         try {
           const cached = await getDashboardSnapshot(user.userId, user.farmId);
           if (cached) {
-            return Promise.all(cached.map(async (item) => ({
-              ...item,
-              batch: await withQueuedPopulation(item.batch, user),
-            })));
+            return cached;
           }
         } catch { /* Preserve the API error if local storage is unavailable. */ }
         throw error;
       }
     },
     refetchOnWindowFocus: true,
-    refetchInterval: 60_000,
-    refetchIntervalInBackground: false,
     staleTime: 30_000,
   });
 }

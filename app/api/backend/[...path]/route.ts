@@ -1,7 +1,6 @@
 import type { NextRequest } from "next/server";
 
-// Allow the readiness probe and upstream timeout to finish before the host
-// terminates the function, including on Vercel plans without Fluid Compute.
+// Keep the refresh readiness probe and upstream deadline inside the host limit.
 export const maxDuration = 60;
 
 type RouteContext = {
@@ -81,6 +80,7 @@ function cookieHeader(request: NextRequest, value: string, maxAge: number) {
 }
 
 async function proxy(request: NextRequest, { params }: RouteContext) {
+  const startedAt = Date.now();
   const requestId = crypto.randomUUID();
   const errorHeaders: Record<string, string> = { "x-request-id": requestId, "cache-control": "no-store" };
   const path = (await params).path;
@@ -143,7 +143,9 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
   // responses which also contain fresh credentials. Require an exact origin;
   // SameSite cookies alone do not distinguish sibling origins on the same site.
   const relativePath = target.pathname.slice(apiBasePath.length);
+  const category = relativePath.startsWith("auth/") ? "auth" : relativePath.startsWith("health") ? "health" : "api";
   const refresh = request.method === "POST" && relativePath === "auth/refresh";
+  const login = request.method === "POST" && relativePath === "auth/login";
   const logout = request.method === "POST" && relativePath === "auth/logout";
   const changesCredentials =
     (request.method === "POST" &&
@@ -175,15 +177,23 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
     if (logout && !credential) {
       return new Response(null, { status: 204, headers: { ...errorHeaders, "set-cookie": cookieHeader(request, "", 0) } });
     }
-    if (refresh) {
-      // Probe before sending a one-time credential. A sleeping or unavailable
-      // backend can then be retried without risking refresh-token reuse.
+    if (refresh || login) {
+      // Check readiness before forwarding credentials or consuming a one-time token.
       const readiness = new URL(`${apiBasePath}health/ready`, target.origin);
       try {
-        const response = await fetch(readiness, { cache: "no-store", signal: AbortSignal.timeout(READINESS_TIMEOUT_MS) });
+        const response = await fetch(readiness, {
+          cache: "no-store",
+          headers: { "x-request-id": requestId },
+          redirect: "manual",
+          signal: AbortSignal.timeout(READINESS_TIMEOUT_MS),
+        });
         if (!response.ok) throw new Error("Backend not ready");
       } catch {
-        return Response.json({ status: 503, error: "Service Unavailable", message: "The backend is not ready. Please try again." }, { status: 503, headers: { ...errorHeaders, [REFRESH_NOT_STARTED]: "1" } });
+        console.warn("backend_auth_not_ready", { requestId, method: request.method, category, status: 503, durationMs: Date.now() - startedAt });
+        return Response.json(
+          { status: 503, error: "Service Unavailable", message: "The server is temporarily unavailable. Please try again." },
+          { status: 503, headers: refresh ? { ...errorHeaders, [REFRESH_NOT_STARTED]: "1" } : errorHeaders },
+        );
       }
     }
     const body = refresh || logout
@@ -213,6 +223,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
 
     const responseHeaders = new Headers(upstream.headers);
     for (const header of HOP_BY_HOP_HEADERS) responseHeaders.delete(header);
+    // Only this proxy can assert that a refresh credential was not sent.
     responseHeaders.delete(REFRESH_NOT_STARTED);
     responseHeaders.delete("set-cookie");
     responseHeaders.set("cache-control", "no-store");
@@ -245,6 +256,7 @@ async function proxy(request: NextRequest, { params }: RouteContext) {
       headers: responseHeaders,
     });
   } catch {
+    console.warn("backend_proxy_failure", { requestId, method: request.method, category, status: timedOut ? 504 : 502, durationMs: Date.now() - startedAt, reason: timedOut ? "timeout" : "unavailable" });
     if (logout) errorHeaders["set-cookie"] = cookieHeader(request, "", 0);
     return Response.json(
       timedOut

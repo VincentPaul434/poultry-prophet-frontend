@@ -44,7 +44,10 @@ test('same-origin credential-changing requests keep the existing proxy response 
   t.after(() => { if (original === undefined) delete process.env.BACKEND_API_URL; else process.env.BACKEND_API_URL = original; });
   let calls = 0;
   t.mock.method(globalThis, 'fetch', async (url, options) => {
-    if (String(url).endsWith('/health/ready')) return Response.json({ status: 'UP' });
+    if (String(url).endsWith('/health/ready')) {
+      assert.ok(options.headers['x-request-id']);
+      return Response.json({ status: 'UP' });
+    }
     calls++;
     assert.ok(options.headers.get('x-request-id'));
     return Response.json({ ok: true, token: 'access', refreshToken: 'refresh', refreshTokenExpiresAt: '2099-01-01T00:00:00Z' });

@@ -9,7 +9,7 @@ export function useReleaseVersion(enabled = true) {
     queryKey: qk.version,
     queryFn: versionApi.get,
     enabled,
-    staleTime: Infinity,
+    staleTime: 30_000,
     retry: 1,
   });
 }

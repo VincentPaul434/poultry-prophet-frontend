@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { translateDisplayText } from "@/lib/tagalog-text";
 import { getMessage, type Language, type TranslationKey } from "@/lib/i18n";
 
 const LANGUAGE_KEY = "pp_language";
@@ -9,6 +10,7 @@ type LocaleContextValue = {
   language: Language;
   setLanguage: (language: Language) => void;
   t: (key: TranslationKey) => string;
+  display: (text: string) => string;
 };
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
@@ -34,6 +36,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
     language,
     setLanguage,
     t: (key) => getMessage(language, key),
+    display: (text) => translateDisplayText(language, text),
   }), [language, setLanguage]);
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;

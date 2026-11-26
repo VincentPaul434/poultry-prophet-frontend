@@ -1,3 +1,5 @@
+import { newSecureUuid } from "./uuid";
+
 // A committed lease is shared by all tabs, including those without Web Locks.
 // Never steal an expired lease: its owner may still have a cookie-changing
 // request in flight. An abandoned lease deliberately blocks future mutations.
@@ -66,8 +68,8 @@ function updateLease<T>(db: IDBDatabase, update: (lease: Lease | undefined, stor
 }
 
 export async function withIndexedDbAuthLock<T>(operation: () => Promise<T>): Promise<T> {
+  const owner = newSecureUuid();
   const db = await openDatabase();
-  const owner = crypto.randomUUID();
   const deadline = Date.now() + WAIT_MS;
   let fence: number | undefined;
   try {

@@ -23,7 +23,7 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     key: "preferences",
     href: "/settings/preferences",
     title: "Language and appearance",
-    description: "Choose English or Taglish and use Light or Dark mode.",
+    description: "Choose English or Tagalog and use Light or Dark mode.",
     icon: Languages,
     emoji: "🌐",
     managerOnly: false,

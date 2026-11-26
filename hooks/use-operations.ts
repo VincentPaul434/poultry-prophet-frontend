@@ -1,14 +1,52 @@
 "use client";
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { batchApi, financeApi, incubationApi, inputApi, inventoryApi, operationsAnalyticsApi, taskApi, vaccinationApi } from "@/lib/api";
+import { batchApi, financeApi, incubationApi, inputApi, inventoryApi, managerApi, operationsAnalyticsApi, taskApi, vaccinationApi } from "@/lib/api";
 import { ApiError } from "@/lib/api-client";
 import { useOfflineSync } from "@/lib/offline-sync-provider";
 import { shouldUseOfflineSnapshot } from "@/lib/api-client";
-import { getFarmProductSnapshots, getOfflineBootstrap, getQueuedInventoryDelta, listOutbox, saveFarmProductSnapshots } from "@/lib/offline-db";
+import { getFarmProductSnapshots, getOfflineBootstrap, listOutbox, saveFarmProductSnapshots } from "@/lib/offline-db";
 import { useAuth } from "@/lib/auth-context";
+import { getSessionScope, getStoredUser } from "@/lib/auth-storage";
+import { financeIntentTarget, prepareManagerIntent, readManagerIntent, resolveManagerIntent, type ManagerIntent, type ManagerIntentKind } from "@/lib/manager-intents";
+import { newSecureUuid } from "@/lib/uuid";
 import { qk } from "@/lib/query-keys";
 import type { AssignVaccinationProgramRequest, CancelTaskRequest, CompleteIncubationRequest, CreateBatchFromIncubationRequest, CreateFarmInputRequest, CreateFarmProductRequest, CreateFinancialTransactionRequest, CreateIncubationCycleRequest, CreateSexCompositionRequest, CreateTaskRequest, CreateVaccinationProgramRequest, FarmInputPageFilters, FinancePageFilters, HandlerTask, HandlerTaskQueueBucket, HandlerTaskQueueSummary, IncubationView, InventoryAdjustmentRequest, PageResponse, RecordVaccinationRequest, ReplaceVaccinationPlanRequest, SexComposition, StockInRequest, TaskPageFilters, TaskSummaryResponse, UpdateTaskStatusRequest } from "@/lib/types";
+
+async function sendManagerIntent<T, R>(user: { userId: number; farmId?: number | null } | null, kind: ManagerIntentKind, targetId: string, payload: T, send: (payload: T, operationId: string, sessionScope: string) => Promise<R>, suppliedOperationId?: string, contextId?: string): Promise<R> {
+  const sessionScope = getSessionScope();
+  const current = getStoredUser();
+  if (!user?.farmId || !sessionScope || current?.userId !== user.userId || current.farmId !== user.farmId) throw new Error("Your session changed. Please sign in again.");
+  const scope = { userId: user.userId, farmId: user.farmId, kind, targetId, ...(contextId ? { contextId } : {}) };
+  const intent = await prepareManagerIntent(scope, payload, suppliedOperationId);
+  if (getSessionScope() !== sessionScope) throw new Error("Your session changed. The original request is saved for review.");
+  const result = await send(intent.payload, intent.operationId, sessionScope);
+  await resolveManagerIntent(scope, intent.operationId);
+  return result;
+}
+
+/** The server fences a cancellation against in-flight writes before local removal. */
+export function useResolveManagerIntent() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (requested: ManagerIntent) => {
+      const session = getSessionScope();
+      const current = getStoredUser();
+      if (!user?.farmId || !session || current?.userId !== user.userId || current.farmId !== user.farmId
+          || requested.userId !== user.userId || requested.farmId !== user.farmId) throw new Error("Your session changed. Please sign in again.");
+      const scope = { userId: user.userId, farmId: user.farmId, kind: requested.kind, targetId: requested.targetId };
+      const saved = await readManagerIntent(scope);
+      if (!saved || saved.operationId !== requested.operationId) throw new Error("This saved request has changed. Refresh and review it again.");
+      if (getSessionScope() !== session) throw new Error("Your session changed. The original request is saved for review.");
+      const result = await managerApi.resolve({ kind: saved.kind, targetId: saved.targetId, operationId: saved.operationId, payload: saved.payload }, session);
+      if (result.status !== "APPLIED" && result.status !== "CANCELLED") throw new Error("The server could not confirm this request. It remains saved for review.");
+      await resolveManagerIntent(scope, saved.operationId);
+      return result;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.finance }); qc.invalidateQueries({ queryKey: qk.inventory }); qc.invalidateQueries({ queryKey: qk.batches.all }); qc.invalidateQueries({ queryKey: qk.operationsAnalytics() }); },
+  });
+}
 
 async function applyPendingTaskOperations(userId: number, farmId: number, tasks: HandlerTask[]) {
   const operations = await listOutbox(userId, farmId);
@@ -70,7 +108,7 @@ export function useCreateFarmInput() {
     networkMode: "always",
     mutationFn: async (body: CreateFarmInputRequest) => {
       if (!body.batchId) return inputApi.create(body);
-      const operationId = body.operationId ?? crypto.randomUUID();
+      const operationId = body.operationId ?? newSecureUuid();
       // Freeze the occurrence time before the first send; a lost response must
       // replay the same command instead of inventing a later timestamp.
       const payload = { ...body, operationId, recordedAt: body.recordedAt ?? new Date().toISOString() };
@@ -106,13 +144,17 @@ export function useCreateFarmInput() {
 }
 export function useFarmProducts(includeInactive = false, enabled = true) {
   const { user } = useAuth();
-  async function withQueuedStock(products: import("@/lib/types").FarmProduct[]) {
+  async function withStockStatus(products: import("@/lib/types").FarmProduct[], stockIsCached: boolean) {
     if (!user?.farmId) return products;
-    return Promise.all(products.map(async (product) => {
-      const delta = await getQueuedInventoryDelta(user.userId, user.farmId!, product.id);
-      const stockOnHand = Number(product.stockOnHand) + delta;
-      return { ...product, stockOnHand };
-    }));
+    // A queued use with a lost acknowledgement may already be included in
+    // this snapshot. Keep confirmed stock intact and label unresolved uses
+    // separately instead of displaying a potentially double-deducted balance.
+    let hasPendingInventoryUse = true;
+    try {
+      const operations = await listOutbox(user.userId, user.farmId);
+      hasPendingInventoryUse = operations.some((operation) => operation.entityType === "FARM_INPUT" || operation.entityType === "VACCINATION_PLAN");
+    } catch { /* If storage cannot be read, the pending state is unknown. */ }
+    return products.map((product) => ({ ...product, stockIsCached, hasPendingInventoryUse }));
   }
   return useQuery({
     networkMode: "always", queryKey: qk.inventoryProducts(includeInactive), queryFn: async () => {
@@ -121,13 +163,13 @@ export function useFarmProducts(includeInactive = false, enabled = true) {
       if (user?.farmId) {
         try { await saveFarmProductSnapshots(user.userId, user.farmId, products); } catch { /* Keep online reads available if local storage is full. */ }
       }
-      return products;
+      return withStockStatus(products, false);
     } catch (error) {
       if (!shouldUseOfflineSnapshot(error)) throw error;
       if (user?.farmId) {
         try {
           const cached = await getFarmProductSnapshots(user.userId, user.farmId);
-          if (cached.length > 0) return withQueuedStock(includeInactive ? cached : cached.filter((item) => item.active));
+          if (cached.length > 0) return withStockStatus(includeInactive ? cached : cached.filter((item) => item.active), true);
         } catch { /* Preserve the API error if local storage is unavailable. */ }
       }
       throw error;
@@ -142,9 +184,10 @@ export function useInventoryMovements(params: { productId?: number; batchId?: nu
     staleTime: 15_000,
   });
 }
-export function useCreateFarmProduct() { const qc = useQueryClient(); return useMutation({ mutationFn: (body: CreateFarmProductRequest) => inventoryApi.createProduct(body), onSuccess: () => qc.invalidateQueries({ queryKey: qk.inventory }) }); }
-export function useStockInProduct() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ productId, body }: { productId: number; body: StockInRequest }) => inventoryApi.stockIn(productId, body), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.inventory }); qc.invalidateQueries({ queryKey: qk.finance }); } }); }
-export function useAdjustInventory() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ productId, body }: { productId: number; body: InventoryAdjustmentRequest }) => inventoryApi.adjust(productId, body), onSuccess: () => qc.invalidateQueries({ queryKey: qk.inventory }) }); }
+export function useCreateFarmProduct() { const qc = useQueryClient(); const { user } = useAuth(); return useMutation({ mutationFn: (body: CreateFarmProductRequest) => sendManagerIntent(user, "PRODUCT_CREATE", "farm", body, (saved, id, session) => inventoryApi.createProduct(saved, id, session)), onSuccess: () => qc.invalidateQueries({ queryKey: qk.inventory }) }); }
+export function useSetReorderLevel() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ productId, reorderLevel }: { productId: number; reorderLevel: number | null }) => inventoryApi.setReorderLevel(productId, reorderLevel), onSuccess: () => qc.invalidateQueries({ queryKey: qk.inventory }) }); }
+export function useStockInProduct() { const qc = useQueryClient(); const { user } = useAuth(); return useMutation({ mutationFn: ({ productId, body }: { productId: number; body: StockInRequest }) => { const { operationId, ...payload } = body; return sendManagerIntent(user, "STOCK_IN", String(productId), payload, (saved, id, session) => inventoryApi.stockIn(productId, { ...saved, operationId: id }, session), operationId); }, onSuccess: () => { qc.invalidateQueries({ queryKey: qk.inventory }); qc.invalidateQueries({ queryKey: qk.finance }); } }); }
+export function useAdjustInventory() { const qc = useQueryClient(); const { user } = useAuth(); return useMutation({ mutationFn: ({ productId, body }: { productId: number; body: InventoryAdjustmentRequest }) => { const { operationId, ...payload } = body; return sendManagerIntent(user, "STOCK_ADJUSTMENT", String(productId), payload, (saved, id, session) => inventoryApi.adjust(productId, { ...saved, operationId: id }, session), operationId); }, onSuccess: () => qc.invalidateQueries({ queryKey: qk.inventory }) }); }
 export function usePendingInventoryReview(enabled = true) { return useQuery({ queryKey: qk.inventoryPending, queryFn: inventoryApi.pendingReview, enabled, staleTime: 15_000 }); }
 export function useRetryPendingInventory() { const qc = useQueryClient(); return useMutation({ mutationFn: (inputId: number) => inventoryApi.retryPending(inputId), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.inventory }); qc.invalidateQueries({ queryKey: qk.inventoryPending }); qc.invalidateQueries({ queryKey: qk.inputs }); } }); }
 const DEFAULT_TASK_PAGE: TaskPageFilters = {
@@ -429,8 +472,7 @@ export function useUpdateTaskStatus() {
   return useMutation({
     networkMode: "always",
     mutationFn: async ({ id, body, batchId }: { id: number; body: UpdateTaskStatusRequest; batchId?: number | null }) => {
-      const operationId = body.operationId ?? (typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      const operationId = body.operationId ?? newSecureUuid();
       const payload = { ...body, operationId, occurredAt: body.occurredAt ?? new Date().toISOString(), taskId: id };
       await enqueue({ entityType: "TASK_STATUS", batchId: batchId ?? 0, occurredAt: payload.occurredAt, payload });
       return { queued: true as const, operationId };
@@ -470,9 +512,7 @@ export function useRecordSexComposition() {
   return useMutation({
     networkMode: "always",
     mutationFn: async ({ batchId, body }: { batchId: number; body: CreateSexCompositionRequest }) => {
-      const operationId = body.operationId ?? (typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      const operationId = body.operationId ?? newSecureUuid();
       const payload = { ...body, operationId };
 
       const optimistic: SexComposition = {
@@ -530,6 +570,8 @@ export function useVaccinationPlan(batchId: number, enabled = true) {
     },
     enabled,
     staleTime: 15_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
   });
 }
 export function useCreateVaccinationProgram() {
@@ -541,7 +583,7 @@ export function useCreateVaccinationProgram() {
       const body = "body" in input ? input.body : input;
       const scheduleContext = "body" in input ? input : null;
       if (!scheduleContext) return vaccinationApi.createProgram(body);
-      const operationId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+      const operationId = newSecureUuid();
       await enqueue({
         entityType: "VACCINATION_SCHEDULE",
         batchId: scheduleContext.batchId,
@@ -559,7 +601,7 @@ export function useAssignVaccinationProgram() {
   return useMutation({
     networkMode: "always",
     mutationFn: async ({ batchId, body }: { batchId: number; body: AssignVaccinationProgramRequest }) => {
-      const operationId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+      const operationId = newSecureUuid();
       await enqueue({ entityType: "VACCINATION_SCHEDULE", batchId, occurredAt: new Date().toISOString(), payload: { action: "ASSIGN", programId: body.programId, operationId } });
       return { queued: true as const, operationId };
     },
@@ -577,7 +619,7 @@ export function useReplaceVaccinationProgram() {
   return useMutation({
     networkMode: "always",
     mutationFn: async ({ batchId, body }: { batchId: number; body: ReplaceVaccinationPlanRequest }) => {
-      const operationId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+      const operationId = newSecureUuid();
       await enqueue({ entityType: "VACCINATION_SCHEDULE", batchId, occurredAt: new Date().toISOString(), payload: { action: "REPLACE", programId: body.programId, operationId } });
       return { queued: true as const, operationId };
     },
@@ -595,8 +637,7 @@ export function useRecordVaccination() {
   return useMutation({
     networkMode: "always",
     mutationFn: async ({ plan, body }: { plan: import("@/lib/types").VaccinationPlanItem; body: RecordVaccinationRequest }) => {
-      const operationId = body.operationId ?? (typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      const operationId = body.operationId ?? newSecureUuid();
       const payload = { ...body, operationId, recordedAt: body.recordedAt ?? new Date().toISOString() };
       await enqueue({ entityType: "VACCINATION_PLAN", batchId: plan.batchId, occurredAt: payload.recordedAt, payload: { ...payload, planId: plan.id } });
       return { queued: true as const, operationId, recordedAt: payload.recordedAt };
@@ -628,7 +669,33 @@ export function useRecordVaccination() {
 export function useSkipVaccination() { const qc = useQueryClient(); return useMutation({ mutationFn: ({ id, reason }: { id: number; batchId: number; reason: string }) => vaccinationApi.skip(id, reason), onSuccess: (_data, variables) => { qc.invalidateQueries({ queryKey: qk.batches.vaccinationPlan(variables.batchId) }); qc.invalidateQueries({ queryKey: qk.batches.dashboard() }); qc.invalidateQueries({ queryKey: qk.tasks }); qc.invalidateQueries({ queryKey: qk.taskSummary({}) }); } }); }
 export function useFinanceTransactionPage(filters: FinancePageFilters, enabled = true) { return useQuery({ queryKey: qk.financePage(filters as unknown as Record<string, unknown>), queryFn: () => financeApi.page(filters), enabled, placeholderData: (previous) => previous }); }
 export function useFinanceTransactions(enabled = true) { return useFinanceTransactionPage({ page: 0, size: 20 }, enabled); }
-export function useCreateFinanceTransaction() { const qc = useQueryClient(); return useMutation({ mutationFn: (body: CreateFinancialTransactionRequest) => financeApi.create(body), onSuccess: () => { qc.invalidateQueries({ queryKey: qk.finance }); qc.invalidateQueries({ queryKey: qk.operationsAnalytics() }); } }); }
+export function useCorrectFinanceExpense() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({ mutationFn: ({ id, body, batchId }: { id: number; batchId?: number; body: { transactionDate: string; category: string; amount: number; reason: string; expectedUpdatedAt: string; operationId?: string } }) => {
+    const { operationId, ...payload } = body;
+    return sendManagerIntent(user, "FINANCE_CORRECTION", String(id), payload,
+      (saved, key, session) => financeApi.correct(id, { ...saved, operationId: key }, session), operationId, batchId == null ? undefined : String(batchId));
+  },
+    onSuccess: (item) => { qc.invalidateQueries({ queryKey: qk.finance }); qc.invalidateQueries({ queryKey: qk.operationsAnalytics() }); if (item.batchId != null) { qc.invalidateQueries({ queryKey: qk.batches.detail(item.batchId) }); qc.invalidateQueries({ queryKey: qk.batches.dashboard() }); qc.invalidateQueries({ queryKey: qk.batches.selectionReviewPreview(item.batchId) }); } } });
+}
+export function useCreateFinanceTransaction() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: (body: CreateFinancialTransactionRequest) => sendManagerIntent(user, "FINANCE_CREATE", financeIntentTarget(body), body, (saved, id, session) => financeApi.create(saved, id, session)),
+    onSuccess: (_data, body) => {
+      qc.invalidateQueries({ queryKey: qk.finance });
+      qc.invalidateQueries({ queryKey: qk.operationsAnalytics() });
+      if (body.batchId != null) {
+        // Reports and overview costs share this batch, including dated preview queries.
+        qc.invalidateQueries({ queryKey: qk.batches.detail(body.batchId) });
+        qc.invalidateQueries({ queryKey: qk.batches.dashboard() });
+        qc.invalidateQueries({ queryKey: qk.batches.selectionReviewPreview(body.batchId) });
+      }
+    },
+  });
+}
 export function useOperationsAnalytics(params: { scope?: "FARM" | "BATCH"; batchId?: number; start?: string; end?: string; origin?: "REAL" | "SYNTHETIC" | "ALL"; testRunId?: string } = {}, enabled = true) { return useQuery({ queryKey: qk.operationsAnalytics(params), queryFn: () => operationsAnalyticsApi.get(params), enabled, staleTime: 30_000 }); }
 export function useBatchComparison(params: { batchIds: number[]; windowDays: number; origin?: "REAL" | "SYNTHETIC" | "ALL" }, enabled = true) { return useQuery({ queryKey: qk.batchComparison(params), queryFn: () => operationsAnalyticsApi.compare(params), enabled: enabled && params.batchIds.length >= 2, staleTime: 30_000 }); }
 export function useFinanceAnalytics(batchId?: number, start?: string, end?: string, enabled = true, type?: import("@/lib/types").FinanceTransactionType, farmWide = false, category?: string, sourceType?: string, status?: "POSTED" | "VOIDED") { return useQuery({ queryKey: qk.financeAnalytics(batchId, start, end, type, farmWide, category, sourceType, status), queryFn: () => financeApi.analytics(batchId, start, end, type, farmWide, category, sourceType, status), enabled, staleTime: 30_000 }); }

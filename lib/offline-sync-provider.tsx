@@ -8,10 +8,11 @@ import { deliverSyncOperations } from "./sync-delivery";
 import { qk } from "./query-keys";
 import { useAuth } from "./auth-context";
 import { getSessionScope, getStoredUser, isAuthRequired } from "./auth-storage";
+import { newSecureUuid } from "./uuid";
+import { getDeviceId } from "./device-id";
 import {
   claimOutboxOperations,
   commitSyncedSelectionSession,
-  getDeviceId,
   getLastSuccessfulSync,
   saveBatchEventSnapshot,
   saveBatchOverviewSnapshot,
@@ -60,12 +61,6 @@ interface OfflineSyncContextValue {
 
 const OfflineSyncContext = createContext<OfflineSyncContextValue | null>(null);
 const LEASE_MS = 60_000;
-
-function uuid() {
-  return typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
 
 function backoff(attemptCount: number) {
   const base = Math.min(120_000, 2_000 * (2 ** Math.min(attemptCount, 6)));
@@ -124,7 +119,7 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
       const pending = items.filter((item) => pendingStatuses([item.status])).length;
       const issues = items.filter((item) => ["CONFLICT", "REJECTED", "AUTH_REQUIRED"].includes(item.status)).length;
       const syncing = items.filter((item) => item.status === "SYNCING").length;
-      const lastSuccessfulSync = await getLastSuccessfulSync();
+      const lastSuccessfulSync = await getLastSuccessfulSync(user.userId, user.farmId);
       if (scopeRef.current !== scope) return [];
       setSnapshot((current) => ({ ...current, items, pendingCount: pending, issueCount: issues, syncingCount: syncing, lastSuccessfulSync, storageAvailable: true }));
       return items;
@@ -198,7 +193,7 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
 
       let failureConnection: SyncConnection | null = null;
       while (scopeRef.current === scope && !isAuthRequired()) {
-        const owner = uuid();
+        const owner = newSecureUuid();
         const selected = await claimOutboxOperations(user.userId, user.farmId, owner, Date.now(), LEASE_MS);
         if (selected.length === 0) break;
         setSnapshot((current) => ({ ...current, connection: "SYNCING", syncingCount: selected.length }));
@@ -221,6 +216,7 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
           if (scopeRef.current !== scope) break;
           const response = { results: await deliverSyncOperations(body, request => syncApi.operations(request, sessionScope),
             () => scopeRef.current === scope && getSessionScope() === sessionScope && !isAuthRequired()) };
+          let acknowledged = false;
           for (const item of selected) {
             const result = response.results.find((candidate) => candidate.operationId === item.operationId);
             if (!result) {
@@ -237,6 +233,7 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
                 try { await commitSyncedSelectionSession(item, result.serverId, result.serverTime); } catch { /* A server acknowledgement must not be retried because local snapshots are full. */ }
               }
               if (!await updateClaimedOutboxOperation(item.operationId, owner, null)) continue;
+              acknowledged = true;
               queryClient.invalidateQueries({ queryKey: qk.batches.all });
               queryClient.invalidateQueries({ queryKey: qk.inputs });
               queryClient.invalidateQueries({ queryKey: qk.alertsFarmRoot });
@@ -281,7 +278,7 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
               await updateClaimedOutboxOperation(item.operationId, owner, { status: "RETRY_WAIT", attemptCount: item.attemptCount + 1, nextAttemptAt: new Date(Date.now() + backoff(item.attemptCount)).toISOString(), lastErrorCode: result.status, lastErrorMessage: result.message ?? "The server will be tried again.", leaseOwner: undefined, leaseUntil: undefined });
             }
           }
-          await setLastSuccessfulSync(new Date().toISOString());
+          if (acknowledged) await setLastSuccessfulSync(user.userId, user.farmId, new Date().toISOString());
           await refresh();
         } catch (error) {
           const isAuth = error instanceof ApiError && error.status === 401;
@@ -356,7 +353,10 @@ export function OfflineSyncProvider({ children }: { children: ReactNode }) {
 
   const enqueue = useCallback(async ({ entityType, batchId, payload, occurredAt }: EnqueueInput) => {
     if (!user?.farmId || !isAuthenticated) throw new Error("Sign in before saving a farm record.");
-    const operationId = typeof payload.operationId === "string" ? payload.operationId : uuid();
+    const operationId = typeof payload.operationId === "string" ? payload.operationId : newSecureUuid();
+    if (!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(operationId)) {
+      throw new Error("This record has an invalid operation ID and was not saved. Please try again.");
+    }
     await putOutboxOperation({
       operationId,
       schemaVersion: 1,

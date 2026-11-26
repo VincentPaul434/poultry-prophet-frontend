@@ -157,6 +157,7 @@ type ReviewFixtureOptions = {
   deathEvents?: Record<string, Record<string, unknown>[]>;
   deathEventsFail?: boolean;
   noReviews?: boolean;
+  newerDataAvailable?: boolean;
   failReviewCreateOnce?: boolean;
   failReviewFinalizeOnce?: boolean;
   reviewCreateDelayMs?: number;
@@ -178,7 +179,7 @@ async function mockReviewBackend(page: Page, profile: Profile, options: ReviewFi
   const visiblePayload = profile.role === "HANDLER" && !options.exposeFinanceToHandler ? { ...payload, finance: null } : payload;
   const snapshotPayload = options.snapshotPayload ?? payload;
   const visibleSnapshot = profile.role === "HANDLER" && !options.exposeFinanceToHandler ? { ...snapshotPayload, finance: null } : snapshotPayload;
-  const review = { ...finalizedReview(), payload: visibleSnapshot };
+  const review = { ...finalizedReview(), payload: visibleSnapshot, newerDataAvailable: options.newerDataAvailable ?? false };
   let reviews: Array<Omit<typeof review, "reviewedBy" | "reviewedAt"> & { reviewedBy: number | null; reviewedAt: string | null }> = options.noReviews ? [] : [review];
   let reviewCreateRequests = 0;
   let reviewFinalizeRequests = 0;
@@ -347,6 +348,83 @@ test.describe("Selection review decision flow", () => {
     test.skip(!testInfo.project.name.startsWith("mobile-chromium-"), "This suite verifies the mobile report flow.");
   });
 
+  test("opens current handler records even when a saved report still needs a tally", async ({ page }) => {
+    const live = reportPayload();
+    live.batch.currentPopulation = 100;
+    live.batch.currentPopulationDisplay = "100 / 150";
+    live.population.currentPopulation = 100;
+    live.population.totalDeaths = 50;
+    const saved = reportPayload();
+    saved.batch.currentPopulation = 117;
+    saved.batch.currentPopulationDisplay = "117 / 150";
+    saved.population.currentPopulation = 117;
+    const api = await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload: live, snapshotPayload: saved });
+    await page.goto("/batches/2/selection");
+    await expect(page.getByText("LIVE REPORT", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Report summary")).toContainText("100 / 150");
+    await expect(page.getByLabel("Report summary")).not.toContainText("117 / 150");
+    await expect(page.getByRole("status").filter({ hasText: "Needs tally" })).toBeVisible();
+    await page.getByRole("button", { name: "Record tally", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Selection tally" })).toContainText("Based on Report v3");
+    expect(api.reviewActions()).toEqual([]);
+    expect(api.reviews()[0].payload.batch.currentPopulationDisplay).toBe("117 / 150");
+  });
+
+  test("clearly dates an explicitly selected snapshot and returns to current records", async ({ page }) => {
+    const live = reportPayload();
+    live.batch.currentPopulationDisplay = "100 / 150";
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload: live, snapshotPayload: reportPayload(), newerDataAvailable: true });
+    await page.goto("/batches/2/selection?reviewId=44");
+    const status = page.getByRole("status", { name: "Saved report status" });
+    await expect(status).toContainText("Saved report v3");
+    await expect(status).toContainText("Jan 15, 2026");
+    await expect(status).toContainText("Newer records are available");
+    await expect(page.getByLabel("Report summary")).toContainText("150 / 150");
+    await status.getByRole("button", { name: "View latest records", exact: true }).click();
+    await expect(page.getByText("LIVE REPORT", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Report summary")).toContainText("100 / 150");
+  });
+
+  test("refreshes all current report sections after another handler records new data", async ({ page }) => {
+    const live = reportPayload();
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload: live, noReviews: true, plan: [vaccine(1, "SCHEDULED")] });
+    await page.goto("/batches/2/selection");
+    await expect(page.getByLabel("Report summary")).toContainText("150 / 150");
+    await page.route("**/api/backend/batches/2/selection-review/preview", route => route.fulfill({ json: { ...live, batch: { ...live.batch, currentPopulationDisplay: "100 / 150" }, population: { ...live.population, currentPopulation: 100, totalDeaths: 50 }, healthEvents: [{ sourceEventId: 99, eventDate: "2026-01-15", eventType: "HEALTH_DEATH", title: "New handler observation", affectedCount: 50, details: "Signs noticed: Weakness", severity: null }], productUse: [{ sourceId: 88, recordedAt: "2026-01-15T08:00:00Z", productType: "VITAMIN", brandName: "New vitamin record", productName: "New vitamin record", quantity: 5, unit: "sachet", unitCost: 7, calculatedCost: 35, costStatus: "COMPLETE", purpose: null, notes: null, recordedBy: 2 }], finance: { ...live.finance, currencyTotals: [{ ...live.finance!.currencyTotals![0], totalRecordedBatchCost: 13000 }] } } }));
+    await page.route("**/api/backend/batches/2/vaccination-plan", route => route.fulfill({ json: [vaccine(1, "COMPLETED")] }));
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect(page.getByLabel("Report summary")).toContainText("100 / 150");
+    await expect(page.getByLabel("Report summary")).toContainText("1 / 1");
+    await expect(page.getByLabel("Report summary")).toContainText("33.3%");
+    await expect(page.getByLabel("Report summary")).toContainText("₱13,000");
+    await page.getByRole("tab", { name: "Health & vaccination" }).click();
+    await expect(page.getByText("New handler observation", { exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "Costs & products" }).click();
+    await expect(page.getByRole("list", { name: "Products used", exact: true }).getByText("New vitamin record", { exact: true })).toBeVisible();
+  });
+
+  test("does not substitute live or unrelated saved data when a requested report is missing", async ({ page }) => {
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 });
+    await page.goto("/batches/2/selection?reviewId=999");
+    await expect(page.getByRole("alert", { name: "Saved report unavailable" })).toContainText("Saved report not found");
+    await expect(page.getByLabel("Report summary")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Complete review", exact: true })).toHaveCount(0);
+    await page.getByRole("alert", { name: "Saved report unavailable" }).getByRole("button", { name: "View latest records", exact: true }).click();
+    await expect(page.getByText("LIVE REPORT", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Report summary")).toContainText("150 / 150");
+  });
+
+  test("updates current records automatically without reopening the manager report", async ({ page }) => {
+    await page.clock.install();
+    const live = reportPayload();
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload: live, noReviews: true });
+    await page.goto("/batches/2/selection");
+    await expect(page.getByLabel("Report summary")).toContainText("150 / 150");
+    await page.route("**/api/backend/batches/2/selection-review/preview", route => route.fulfill({ json: { ...live, batch: { ...live.batch, currentPopulationDisplay: "100 / 150" }, population: { ...live.population, currentPopulation: 100 } } }));
+    await page.clock.fastForward(61_000);
+    await expect(page.getByLabel("Report summary")).toContainText("100 / 150");
+  });
+
   test("checks demo-stock impact at the saved report cutoff and again for live records", async ({ page }) => {
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 });
     const requests: URLSearchParams[] = [];
@@ -355,7 +433,7 @@ test.describe("Selection review decision flow", () => {
       requests.push(params);
       return route.fulfill({ json: { mayIncludeDemoStock: !params.has("cutoff") } });
     });
-    await page.goto("/batches/2/selection");
+    await page.goto("/batches/2/selection?reviewId=44");
     await expect.poll(() => requests.some((params) => params.get("cutoff") === "2026-01-15T09:00:00Z")).toBe(true);
     expect(requests.every((params) => params.get("batchId") === "2")).toBe(true);
     await expect(page.getByText("Demo stock may affect this cost.")).toHaveCount(0);
@@ -406,7 +484,7 @@ test.describe("Selection review decision flow", () => {
     await page.getByRole("button", { name: "Review decision", exact: true }).click();
     await expect(sections.getByRole("tab", { name: "Review & versions" })).toHaveAttribute("aria-selected", "true");
     await expect(sections.getByRole("tab", { name: "Review & versions" })).toBeFocused();
-    await page.getByLabel("Notes", { exact: true }).fill("Check again after observation.");
+    await page.getByLabel("Notes (optional)", { exact: true }).fill("Check again after observation.");
     await sections.getByRole("tab", { name: "Health & vaccination" }).click();
     await expect(page.getByRole("heading", { name: "Vaccination record" })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Health history/ })).toBeVisible();
@@ -415,7 +493,7 @@ test.describe("Selection review decision flow", () => {
     await expect(page.getByRole("heading", { name: /Products used/ })).toBeVisible();
     await expect(page.getByText("No product records", { exact: true })).toBeVisible();
     await sections.getByRole("tab", { name: "Review & versions" }).click();
-    await expect(page.getByRole("textbox", { name: "Notes", exact: true })).toHaveValue("Check again after observation.");
+    await expect(page.getByRole("textbox", { name: "Notes (optional)", exact: true })).toHaveValue("Check again after observation.");
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 
@@ -438,6 +516,146 @@ test.describe("Selection review decision flow", () => {
     await expect(page.getByText("Supporting details", { exact: true })).toHaveCount(0);
     await expect(page.getByText("MANAGER REVIEWED", { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+  test("manager can open the event recorder for an active batch", async ({ page }) => {
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 });
+    await page.goto("/batches/2/data-entry?from=batch");
+    await page.getByRole("button", { name: "Record event", exact: true }).click({ timeout: 5000 });
+    await expect(page.getByTestId("record-event-section")).toBeVisible();
+  });
+
+  test("older unlinked vaccine schedules prompt review before recording", async ({ page }) => {
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { plan: [vaccine(1, "SCHEDULED"), vaccine(2, "COMPLETED")] });
+    await page.addInitScript(() => { Object.defineProperty(navigator.serviceWorker, "register", { value: async () => Object.assign(new EventTarget(), { active: null, installing: null, waiting: null }) }); });
+    await page.route("**/api/backend/batches/2/overview", route => route.fulfill({ json: { batch, latestIndicator: null, recentRecords: [], activeAlerts: [] } }));
+    await page.route("**/api/backend/inputs?*", route => route.fulfill({ json: [{ id: 88, productType: "VACCINE", brandName: "Old vaccine", farmProductId: null, inventoryStatus: "UNTRACKED", quantity: null, recordedAt: "2026-01-01T10:00:00Z" }] }));
+    await page.goto("/batches/2");
+    await expect(page.getByText("Some scheduled vaccines need a product link before they can be recorded.")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("Earlier unlinked vaccination records remain unchanged and may have no stock cost.")).toBeVisible();
+    await page.getByText("Review older untracked vaccine records").click();
+    await expect(page.getByRole("group").filter({ hasText: "Review older untracked vaccine records" }).getByText("Old vaccine", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Change schedule" }).click();
+    await expect(page.getByRole("dialog").getByLabel("Vaccine name", { exact: true }).first()).toHaveValue("");
+  });
+
+  test("manager corrects a manual batch expense without adding a duplicate", async ({ page }) => {
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 });
+    await page.addInitScript(() => { Object.defineProperty(navigator.serviceWorker, "register", { value: async () => Object.assign(new EventTarget(), { active: null, installing: null, waiting: null }) }); });
+    await page.route("**/api/backend/batches/2/overview", route => route.fulfill({ json: { batch, latestIndicator: null, recentRecords: [], activeAlerts: [] } }));
+    await page.route("**/api/backend/financial-transactions/page?*", route => route.fulfill({ json: { items: [{ id: 4, batchId: 2, category: "Transport", amount: "100", currency: "PHP", transactionDate: "2026-11-01", sourceType: "MANUAL", status: "POSTED", updatedAt: "2026-11-01T00:00:00Z" }], page: 0, size: 10, totalItems: 1, totalPages: 1 } }));
+    const attempts: Array<Record<string, unknown>> = [];
+    await page.route("**/api/backend/financial-transactions/4/corrections", route => { attempts.push(route.request().postDataJSON()); return attempts.length === 1 ? route.fulfill({ status: 503, json: { message: "Lost response" } }) : route.fulfill({ json: { id: 5, batchId: 2 } }); });
+    await page.goto("/batches/2");
+    await page.getByRole("button", { name: "Edit expense Transport" }).click();
+    const dialog = page.getByRole("dialog", { name: "Edit batch expense" });
+    await dialog.getByLabel("Amount (PHP)").fill("120");
+    await dialog.getByLabel("Reason for correction").fill("Wrong amount");
+    await dialog.getByRole("button", { name: "Save correction" }).click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    await dialog.getByRole("button", { name: "Save correction" }).click();
+    await expect.poll(() => attempts.length).toBe(2);
+    expect(attempts[1]).toMatchObject({ category: "Transport", amount: 120, reason: "Wrong amount", expectedUpdatedAt: "2026-11-01T00:00:00Z" });
+    expect(attempts[0].operationId).toBeTruthy();
+    expect(attempts[1].operationId).toBe(attempts[0].operationId);
+  });
+
+  test("manager can add a batch expense from batch overview", async ({ page }) => {
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 });
+    let saved: Record<string, unknown> | undefined;
+    await page.addInitScript(() => { Object.defineProperty(navigator.serviceWorker, "register", { value: async () => Object.assign(new EventTarget(), { active: null, installing: null, waiting: null }) }); });
+    await page.route("**/api/backend/batches/2/overview", route => route.fulfill({ json: { batch, latestIndicator: null, recentRecords: [], activeAlerts: [] } }));
+    await page.route("**/api/backend/financial-transactions/page?*", route => route.fulfill({ json: { items: [], page: 0, size: 10, totalItems: 0, totalPages: 0 } }));
+    await page.route("**/api/backend/financial-transactions", route => { if (route.request().method() === "POST") { saved = route.request().postDataJSON(); return route.fulfill({ json: { id: 3, ...saved } }); } return route.fulfill({ json: [] }); });
+    await page.goto("/batches/2");
+    await page.getByRole("button", { name: "Add expense", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Add batch expense" });
+    await dialog.getByLabel("Category").fill("Transport");
+    await dialog.getByLabel("Amount (PHP)").fill("100");
+    await dialog.getByRole("button", { name: "Save expense" }).click();
+    await expect.poll(() => saved).toMatchObject({ batchId: 2, type: "EXPENSE", category: "Transport", amount: 100 });
+  });
+
+  test("language choice switches and persists on this device", async ({ page }) => {
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { noReviews: true });
+    await page.goto("/settings/preferences");
+    await page.getByRole("button", { name: "Tagalog", exact: true }).click();
+    await expect(page.getByText("Wika", { exact: true })).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "fil");
+    await page.goto("/batches/2/selection");
+    await expect(page.getByRole("heading", { name: "Pasya sa pagsusuri" })).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Pasya sa pagsusuri" })).toBeVisible();
+    await page.goto("/settings/preferences");
+    await page.getByRole("button", { name: "English", exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+    await expect(page.getByText("Language", { exact: true })).toBeVisible();
+  });
+
+  test("shows Tagalog review labels on a mobile screen", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("pp_language", "taglish"));
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { noReviews: true });
+    await page.goto("/batches/2/selection");
+    await expect(page.getByRole("heading", { name: "Pasya sa pagsusuri" })).toBeVisible();
+    await page.getByRole("button", { name: "Pasya sa pagsusuri", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Tapusin ang pagsusuri", exact: true })).toBeVisible();
+    await expect(page.getByLabel("Pasya pagkatapos suriin")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "fil");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  });
+
+  test("keeps Android review controls readable and inside the page at larger text sizes", async ({ page }, testInfo) => {
+    const consoleErrors: string[] = [];
+    page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
+    // Offline behavior has its own tests. This layout fixture blocks workers;
+    // return an idle registration instead of Playwright's undefined result.
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator.serviceWorker, "register", {
+        value: async () => Object.assign(new EventTarget(), {
+          active: null,
+          installing: null,
+          waiting: null,
+          scope: `${location.origin}/`,
+        }),
+      });
+    });
+    const payload = reportPayload();
+    payload.batch.batchName = "October hatch — long batch name for mobile review";
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload, noReviews: true });
+    await page.route("**/api/backend/version", route => route.fulfill({ json: { version: "0.1.0-validation", environment: "local", compatibleFrontendVersion: "0.1.0-validation", offlineCapabilities: { protocolVersions: [2], commandReceipts: true, schemaReady: true, receiptEntityTypes: ["BATCH_EVENT"] } } }));
+    await page.route("**/api/backend/inventory/demo-cost-impact?*", route => route.fulfill({ json: { mayIncludeDemoStock: false } }));
+    await page.goto("/batches/2/selection");
+    await expect(page.getByRole("heading", { name: payload.batch.batchName })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Refresh", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Refresh records", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Updates every minute", { exact: true })).not.toBeVisible();
+    await page.getByRole("button", { name: "Review decision", exact: true }).click();
+    const notes = page.getByRole("textbox", { name: "Notes (optional)", exact: true });
+    await notes.fill("Keep this decision while refreshing.");
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect(notes).toHaveValue("Keep this decision while refreshing.");
+    for (const size of ["16px", "20px"]) {
+      await page.evaluate((fontSize) => { document.documentElement.style.fontSize = fontSize; }, size);
+      for (const control of [page.getByLabel("Decision after review"), page.getByLabel("Next review date (optional)"), notes, page.getByRole("button", { name: "Complete review", exact: true })]) {
+        await control.scrollIntoViewIfNeeded();
+        const box = await control.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.height).toBeGreaterThanOrEqual(48);
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+      }
+      const notesBox = await notes.boundingBox();
+      const actionBox = await page.getByRole("button", { name: "Complete review", exact: true }).boundingBox();
+      expect(actionBox!.y).toBeGreaterThanOrEqual(notesBox!.y + notesBox!.height);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    }
+    await page.evaluate(() => { document.documentElement.style.fontSize = "16px"; });
+    await page.getByRole("heading", { name: payload.batch.batchName }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("android-review-summary.jpg"), scale: "css" });
+    await page.locator("#review-decision").scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("android-review-decision.jpg"), scale: "css" });
+    await testInfo.attach("browser-console", { body: JSON.stringify(consoleErrors), contentType: "application/json" });
+    expect(consoleErrors).toEqual([]);
   });
 
   test("does not show batch expenses to handlers", async ({ page }) => {
@@ -704,7 +922,8 @@ test.describe("Selection review decision flow", () => {
     await page.goto("/batches/2/selection");
     await expect(page.getByLabel("Report summary")).toContainText("Rate unavailable");
     await expect(page.getByLabel("Report summary")).not.toContainText("100.7%");
-    await expect(page.getByText(/Transfers.*affect/i).first()).toBeVisible();
+    await page.getByRole("button", { name: /Recorded deaths/ }).click();
+    await expect(page.getByRole("dialog").getByText(/Transfers.*affect/i).first()).toBeVisible();
   });
 
   test("qualifies an absence of death records instead of asserting that no birds died", async ({ page }) => {
@@ -712,7 +931,8 @@ test.describe("Selection review decision flow", () => {
     await page.goto("/batches/2/selection");
     await expect(page.getByLabel("Report summary")).toContainText("Recorded deaths");
     await expect(page.getByLabel("Report summary")).toContainText("0 / 150 starting birds");
-    await expect(page.getByText(/Recorded health and accidental deaths/i)).toBeVisible();
+    await page.getByRole("button", { name: /Recorded deaths/ }).click();
+    await expect(page.getByRole("dialog").getByText(/Recorded health and accidental deaths/i)).toBeVisible();
   });
 
   test("stacks vaccination and health history on mobile and omits the duplicate population section", async ({ page }) => {
@@ -729,6 +949,7 @@ test.describe("Selection review decision flow", () => {
     expect(healthBox).not.toBeNull();
     expect(healthBox!.y).toBeGreaterThanOrEqual(vaccineBox!.y + vaccineBox!.height);
     await expect(page.getByRole("heading", { name: "Mortality and population" })).toHaveCount(0);
+    await page.getByRole("tab", { name: "Overview" }).click();
     await expect(page.getByLabel("Report summary")).toContainText("Recorded deaths");
     await expect(page.getByText("Jump to section", { exact: true })).toHaveCount(0);
   });
@@ -847,9 +1068,9 @@ test.describe("Selection review decision flow", () => {
     const expenses = page.locator("#report-expenses");
     await expect(expenses).toContainText("₱12,450");
     await expect(page.locator("#report-products")).toContainText("Starter feed");
-    const productsTable = page.getByRole("region", { name: "Products used table" }).getByRole("table");
-    await expect(productsTable.getByRole("columnheader", { name: "Total cost" })).toBeVisible();
-    const feedRow = productsTable.getByRole("row", { name: /Starter feed/ });
+    const products = page.getByRole("list", { name: "Products used", exact: true });
+    await expect(products.getByText("Total cost", { exact: true })).toBeVisible();
+    const feedRow = products.getByRole("listitem").filter({ hasText: "Starter feed" });
     await expect(feedRow).toContainText("2 kg");
     await expect(feedRow).toContainText("₱50.00");
     await expect(feedRow).toContainText("₱100.00");
@@ -881,12 +1102,12 @@ test.describe("Selection review decision flow", () => {
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload });
     await page.goto("/batches/2/selection");
     await page.getByRole("tab", { name: "Costs & products" }).click();
-    const table = page.getByRole("region", { name: "Products used table" }).getByRole("table");
-    const partial = table.getByRole("row", { name: /Booster feed/ });
+    const products = page.getByRole("list", { name: "Products used", exact: true });
+    const partial = products.getByRole("listitem").filter({ hasText: "Booster feed" });
     await expect(partial).toContainText("20 pack");
     await expect(partial).toContainText("₱1,400.00");
     await expect(partial.getByText("Partial", { exact: true })).toHaveCount(2);
-    const unknown = table.getByRole("row", { name: /Unknown feed/ });
+    const unknown = products.getByRole("listitem").filter({ hasText: "Unknown feed" });
     await expect(unknown).toContainText("Not measured");
     await expect(unknown).toContainText("Unavailable");
   });
@@ -897,10 +1118,10 @@ test.describe("Selection review decision flow", () => {
     await mockReviewBackend(page, { userId: 2, email: "handler@example.test", fullName: "Fixture Handler", role: "HANDLER", farmId: 1 }, { payload, exposeFinanceToHandler: true });
     await page.goto("/batches/2/selection");
     await page.getByRole("tab", { name: "Products used" }).click();
-    const table = page.getByRole("region", { name: "Products used table" }).getByRole("table");
-    await expect(table.getByRole("row", { name: /Starter feed/ })).toContainText("2 kg");
-    await expect(table.getByRole("columnheader", { name: /cost/i })).toHaveCount(0);
-    await expect(table).not.toContainText("₱");
+    const products = page.getByRole("list", { name: "Products used", exact: true });
+    await expect(products.getByRole("listitem").filter({ hasText: "Starter feed" })).toContainText("2 kg");
+    await expect(products.getByText(/cost/i)).toHaveCount(0);
+    await expect(products).not.toContainText("₱");
   });
 
   for (const knownCost of [1820, 0]) {
@@ -1116,6 +1337,8 @@ test("desktop keeps saved versions beside the review and snapshot", async ({ pag
   expect(controlBox && snapshotBox && versionBox).toBeTruthy();
   expect(versionBox!.x).toBeGreaterThanOrEqual(controlBox!.x + controlBox!.width);
   expect(Math.abs(versionBox!.y - controlBox!.y)).toBeLessThan(2);
+  expect(versionBox!.height).toBeGreaterThan(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   const list = page.getByLabel("Saved report versions");
   await expect(list.getByRole("button")).toHaveCount(8);
   await list.getByRole("button").last().scrollIntoViewIfNeeded();
@@ -1230,7 +1453,7 @@ test.describe("Recorded death summary", () => {
     snapshot.healthEvents.push({ sourceEventId: 5, eventDate: "2026-01-10", eventType: "HEALTH_DEATH", title: "Historical death note", severity: null, affectedCount: 2, details: "Recorded historical observation", tags: null, recordedBy: 1 } as never);
     const api = await mockReviewBackend(page, manager, { payload: live, snapshotPayload: snapshot });
     await page.goto("/batches/2/selection?reviewId=44");
-    await expect(page.getByText("Saved review snapshot.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status", { name: "Saved report status" })).toBeVisible();
     await page.getByLabel("Report summary").getByRole("button", { name: /recorded deaths/i }).click();
     const dialog = page.getByRole("dialog", { name: /death/i });
     await expect(dialog).toBeVisible();

@@ -89,6 +89,47 @@ test('an ambiguous refresh failure does not reuse a possibly rotated cookie', as
   } finally { axios.post = originalPost; }
 });
 
+test('a confirmed not-started refresh can be retried after the backend becomes ready', async () => {
+  data.clear();
+  storage.saveSession(user(1, 1, 'original'));
+  const originalPost = axios.post;
+  let calls = 0;
+  axios.post = async () => {
+    calls++;
+    if (calls === 1) throw new axios.AxiosError('Backend unavailable', 'ERR_BAD_RESPONSE', {}, undefined,
+      { status: 503, data: {}, headers: { 'x-pp-refresh-not-started': '1' }, config: {} });
+    return { data: user(1, 1, 'renewed') };
+  };
+  try {
+    assert.equal(await refreshAccessToken(), null);
+    assert.equal(storage.isRefreshUncertain(), false);
+    assert.equal(storage.isAuthRequired(), false);
+    assert.equal(await refreshAccessToken(), 'renewed');
+    assert.equal(calls, 2);
+  } finally { axios.post = originalPost; }
+});
+
+test('a late not-started response cannot clear a newer session uncertainty marker', async () => {
+  data.clear();
+  storage.saveSession(user(1, 1, 'original'));
+  const originalPost = axios.post;
+  let rejectRefresh;
+  let started;
+  const sent = new Promise(resolve => { started = resolve; });
+  axios.post = async () => { started(); return new Promise((_resolve, reject) => { rejectRefresh = reject; }); };
+  try {
+    const pending = refreshAccessToken();
+    await sent;
+    storage.saveSession(user(2, 2, 'new-session'));
+    storage.markRefreshUncertain();
+    rejectRefresh(new axios.AxiosError('Backend unavailable', 'ERR_BAD_RESPONSE', {}, undefined,
+      { status: 503, data: {}, headers: { 'x-pp-refresh-not-started': '1' }, config: {} }));
+    assert.equal(await pending, null);
+    assert.equal(storage.isRefreshUncertain(), true);
+    assert.equal(storage.getStoredUser().userId, 2);
+  } finally { axios.post = originalPost; }
+});
+
 test('rotation intent is recorded before the request and cleared after success', async () => {
   data.clear();
   storage.saveSession(user(1, 1, 'original'));
@@ -118,6 +159,39 @@ test('refresh fails closed when IndexedDB coordination is unavailable', async ()
 function unauthorized(config) {
   return new axios.AxiosError('Unauthorized', 'ERR_BAD_REQUEST', config, undefined, { status: 401, data: {}, headers: {}, config });
 }
+
+test('an orphaned uncertain refresh requires sign-in without replaying the cookie', async () => {
+  data.clear();
+  storage.saveSession(user(1, 1, 'original'));
+  const scope = storage.getSessionScope();
+  storage.markRefreshUncertain();
+  const originalLock = authLock.withIndexedDbAuthLock;
+  const originalPost = axios.post;
+  let refreshCalls = 0;
+  authLock.withIndexedDbAuthLock = async () => { throw new authLock.AuthLockError('abandoned'); };
+  axios.post = async () => { refreshCalls++; };
+  apiClient.defaults.adapter = async config => { throw unauthorized(config); };
+  try {
+    const error = await apiClient.post('/sync/v2/operations', {}).catch(failure => failure);
+    assert.equal(error.status, 401);
+    assert.equal(storage.isAuthRequired(), true);
+    assert.equal(storage.getSessionScope(), scope);
+    assert.ok(storage.getStoredUser());
+    assert.equal(refreshCalls, 0);
+  } finally { authLock.withIndexedDbAuthLock = originalLock; axios.post = originalPost; }
+});
+
+test('an abandoned lock without uncertain refresh does not discard a valid session', async () => {
+  data.clear();
+  storage.saveSession(user(1, 1, 'original'));
+  const originalLock = authLock.withIndexedDbAuthLock;
+  authLock.withIndexedDbAuthLock = async () => { throw new authLock.AuthLockError('abandoned'); };
+  try {
+    assert.equal(await refreshAccessToken(), null);
+    assert.equal(storage.isAuthRequired(), false);
+    assert.equal(storage.getToken(), 'original');
+  } finally { authLock.withIndexedDbAuthLock = originalLock; }
+});
 
 test('an old request is never retried using a different user or farm', async () => {
   for (const next of [user(2, 1, 'next'), user(1, 2, 'next'), user(1, 1, 'next')]) {

@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, CloudOff, Loader2, LockKeyhole, RefreshCw, Wifi } from "lucide-react";
@@ -31,6 +33,7 @@ const recordLabels: Record<string, string> = {
  * handlers only see the one action they can understand.
  */
 export function SyncStatusIndicator({ compact = false, iconOnly = false }: { compact?: boolean; iconOnly?: boolean }) {
+  const { display: displayText } = useDisplayLocale();
   const { snapshot, syncNow } = useOfflineSync();
   const { user } = useAuth();
   const router = useRouter();
@@ -175,7 +178,7 @@ export function SyncStatusIndicator({ compact = false, iconOnly = false }: { com
           <ul className="flex flex-col gap-3">
             {issues.map((item) => (
               <li key={item.operationId} className="rounded-md border p-3">
-                <p className="font-medium">{recordLabels[item.entityType] ?? "Record"} · Batch {item.batchId}</p>
+                <p className="font-medium">{recordLabels[item.entityType] ?? "Record"} {displayText("· Batch")}{" "}{item.batchId}</p>
                 <p className="mt-1 text-muted-foreground">{item.lastErrorMessage || (taglish ? "Kailangan ng review bago maipadala." : "This record needs review before it can be sent.")}</p>
                 {canCorrectRejectedDeathObservation(item) && (editingId === item.operationId ? <div className="mt-3 space-y-3">
                   <p className="text-sm">{taglish ? "Piliin ang naobserbahan. Mananatili ang bilang, petsa, at anumang note sa record." : "Choose what was observed. The count, date, and any existing notes will be kept."}</p>
@@ -186,7 +189,7 @@ export function SyncStatusIndicator({ compact = false, iconOnly = false }: { com
                   ] as const).map(([value, text]) => <label key={value} className="flex min-h-11 items-center gap-2 rounded-lg border px-3"><input type="radio" name={`death-observation-${item.operationId}`} value={value} checked={observation === value} onChange={() => { setObservation(value); setRecoveryError(""); }} className="size-4 accent-primary" />{text}</label>)}</fieldset>
                   {observation === "SIGNS" && <label className="block space-y-1 text-sm font-semibold"><span>{taglish ? "Ilarawan ang sintomas" : "Describe the signs"}</span><Textarea aria-required="true" value={signs} onChange={(event) => setSigns(event.target.value)} rows={2} /></label>}
                   {recoveryError && <p role="alert" className="text-sm text-destructive">{recoveryError}</p>}
-                  <div className="flex flex-wrap gap-2"><Button type="button" className="min-h-11" disabled={savingRecovery} onClick={() => void saveObservation(item)}>{savingRecovery ? (taglish ? "Sine-save…" : "Saving…") : (taglish ? "I-save at ipadala" : "Save and send")}</Button><Button type="button" variant="outline" className="min-h-11" disabled={savingRecovery} onClick={() => { setEditingId(null); setRecoveryError(""); }}>{taglish ? "Kanselahin" : "Cancel"}</Button></div>
+                  <div className="flex flex-wrap gap-2"><Button type="button" className="min-h-11" disabled={savingRecovery} onClick={() => void saveObservation(item)}>{savingRecovery ? (taglish ? "Sine-save…" : displayText("Saving…")) : (taglish ? "I-save at ipadala" : "Save and send")}</Button><Button type="button" variant="outline" className="min-h-11" disabled={savingRecovery} onClick={() => { setEditingId(null); setRecoveryError(""); }}>{taglish ? "Kanselahin" : "Cancel"}</Button></div>
                 </div> : <Button type="button" variant="outline" className="mt-3 min-h-11" onClick={() => { setEditingId(item.operationId); setObservation(""); setSigns(""); setRecoveryError(""); }}>{taglish ? "Idagdag ang obserbasyon" : "Add observation"}</Button>)}
               </li>
             ))}

@@ -390,6 +390,9 @@ export interface FarmProduct {
   allowFractionalQuantity: boolean;
   active: boolean;
   demoStockHistory?: boolean;
+  /** Client-only indicators: confirmed stock may not reflect local pending use. */
+  stockIsCached?: boolean;
+  hasPendingInventoryUse?: boolean;
 }
 export interface CreateFarmProductRequest {
   productType: InventoryProductType;
@@ -557,6 +560,8 @@ export interface FinancialTransaction {
   enteredBy: number;
   voidReason: string | null;
   createdAt: string;
+  updatedAt?: string;
+  correctionOfId?: number | null;
 }
 export interface FinancePageFilters {
   page: number;

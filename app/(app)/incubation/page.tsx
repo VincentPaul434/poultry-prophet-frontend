@@ -1,5 +1,7 @@
 "use client";
 
+import { useLocale as useDisplayLocale } from "@/components/locale-provider";
+
 import { Suspense, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -46,10 +48,12 @@ function updateUrl(router: ReturnType<typeof useRouter>, pathname: string, curre
 }
 
 export default function IncubationPage() {
-  return <Suspense fallback={<div className="mx-auto w-full max-w-5xl p-6 text-sm text-muted-foreground">Loading incubation…</div>}><IncubationPageContent /></Suspense>;
+  const { display: displayText } = useDisplayLocale();
+  return <Suspense fallback={<div className="mx-auto w-full max-w-5xl p-6 text-sm text-muted-foreground">{displayText("Loading incubation…")}</div>}><IncubationPageContent /></Suspense>;
 }
 
 function IncubationPageContent() {
+  const { display: displayText } = useDisplayLocale();
   const { isManager } = useAuth();
   const { t } = useLocale();
   const router = useRouter();
@@ -145,7 +149,7 @@ function IncubationPageContent() {
 
       {isManager && summary && summary.dueForReview > 0 && <div className="flex items-center gap-2 rounded-xl border border-warning-border bg-warning-muted/60 px-3 py-2 text-sm font-semibold text-warning-ink"><AlertTriangle className="size-4 shrink-0" aria-hidden="true" />{summary.dueForReview} {t("incubation.dueReview")}</div>}
 
-      {linkedCycleId !== null && linkedCycle.isError && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">Could not open this incubation load. It may no longer be available. <button type="button" className="font-semibold underline" onClick={() => linkedCycle.refetch()}>Try again</button></p>}
+      {linkedCycleId !== null && linkedCycle.isError && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{displayText("Could not open this incubation load. It may no longer be available.")}{" "}<button type="button" className="font-semibold underline" onClick={() => linkedCycle.refetch()}>{displayText("Try again")}</button></p>}
 
       {pageQuery.isLoading && <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] gap-3">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-44 rounded-2xl" />)}</div>}
       {pageQuery.isError && <Card className="border-destructive/30 bg-destructive/5 shadow-none"><CardContent className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm text-destructive"><span>{pageQuery.error instanceof ApiError ? pageQuery.error.message : "Could not load incubation records."}</span><Button type="button" variant="outline" size="sm" onClick={() => pageQuery.refetch()} disabled={pageQuery.isFetching}>{pageQuery.isFetching && <Loader2 className="size-3 animate-spin" />}{t("common.retry")}</Button></CardContent></Card>}
