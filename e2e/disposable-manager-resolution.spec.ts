@@ -68,4 +68,7 @@ for (const initial of ["rejected", "committed"] as const) test(`manager stops an
   const response = await request.get(`${backend}/financial-transactions/page?page=0&size=10&batchId=${batch.id}&type=EXPENSE&status=POSTED`, { headers: { Authorization: `Bearer ${token}` } });
   const rows = (await response.json()).items.filter((row: { category: string }) => row.category === "Resolution transport");
   expect(rows).toHaveLength(initial === "committed" ? 1 : 0);
+  // Let any in-flight routed refresh finish before the browser context disposes
+  // its fetch responses; the assertions above still exercise the real backend.
+  await context.unrouteAll({ behavior: "wait" });
 });

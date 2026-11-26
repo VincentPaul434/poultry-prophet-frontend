@@ -5,17 +5,19 @@ import { useLocale as useDisplayLocale } from "@/components/locale-provider";
 import { use, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronRight, Clock3, Download, Loader2, Save, Syringe, TriangleAlert } from "lucide-react";
+import { Check, ChevronRight, Clock3, Download, Loader2, PackageOpen, Save, Syringe, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { RouteGuard } from "@/components/route-guard";
 import { useAuth } from "@/lib/auth-context";
 import { PageBackLink } from "@/components/page-back-link";
 import { SelectionOutcomePanel } from "@/components/selection-session-dialog";
+import { TableEmptyState } from "@/components/table-empty-state";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/native-select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -76,6 +78,8 @@ function SelectionReviewView({ batchId }: { batchId: string }) {
   const [confirmReviewOpen, setConfirmReviewOpen] = useState(false);
   const [ignoreRequestedReview, setIgnoreRequestedReview] = useState(false);
   const [startNewReview, setStartNewReview] = useState(false);
+  const [activeSection, setActiveSection] = useState("overview");
+  const reviewTabRef = useRef<HTMLButtonElement>(null);
   const requestedReviewId = Number(searchParams.get("reviewId"));
   const preview = useSelectionReviewPreview(batchId);
   const reviews = useSelectionReviews(batchId);
@@ -200,6 +204,11 @@ function SelectionReviewView({ batchId }: { batchId: string }) {
     writePendingCompletion(batchId, null);
   }
 
+  function openReviewSection() {
+    setActiveSection("review");
+    reviewTabRef.current?.focus();
+  }
+
   function beginEditingManagerDecision() {
     if (!managerDecisionEdited && selected == null && selectedReview) {
       setReviewStatus(selectedReview.reviewStatus === "NOT_REVIEWED" ? "FOR_IN_PERSON_ASSESSMENT" : selectedReview.reviewStatus);
@@ -216,21 +225,19 @@ function SelectionReviewView({ batchId }: { batchId: string }) {
       : "LIVE REPORT";
   const loadingRequestedReview = requestedReviewId > 0 && !ignoreRequestedReview && reviews.isLoading;
   const showCompleteReview = isManager && !requestedReviewUnresolved && !loadingRequestedReview && selectedReview?.status !== "FINALIZED" && !pendingTallyReview;
-  const completeReviewAction = showCompleteReview ? <div className="mt-5 space-y-3 border-t pt-5"><Dialog open={confirmReviewOpen} onOpenChange={setConfirmReviewOpen}><DialogTrigger render={<Button id="complete-review" type="button" className="h-auto min-h-12 w-full scroll-mt-24 whitespace-normal rounded-xl px-4 py-3 text-base active:scale-[0.98] motion-reduce:transform-none" disabled={create.isPending || finalize.isPending || !payload || (!selectedReview && (reviews.isLoading || reviews.isError || tallySessions.isLoading || tallySessions.isError)) || activeReviewStatus === "NOT_REVIEWED" || (activeReviewStatus === "CONTINUE_OBSERVATION" && !activeNextReviewDate)} />}>{create.isPending || finalize.isPending ? <><Loader2 className="size-4 animate-spin" /> {displayText("Completing review…")}</> : displayText("Complete review")}</DialogTrigger><DialogContent><DialogHeader><DialogTitle>{displayText("Complete review?")}</DialogTitle><DialogDescription>{selectedReview ? displayText("This saved report will be finalized.") : displayText("A snapshot of this report will be saved.")} {displayText("The batch will remain active.")}</DialogDescription></DialogHeader><div className="rounded-lg bg-muted/50 px-4 py-3 text-sm"><p className="font-semibold">{displayText(reviewLabels[activeReviewStatus])}</p>{activeReviewStatus === "FOR_IN_PERSON_ASSESSMENT" && <p className="mt-1 text-muted-foreground">{displayText("You can record the selection tally after completing the review.")}</p>}{activeNextReviewDate && <p className="mt-1 text-muted-foreground">{displayText("Follow-up review:")}{" "}{formatDate(activeNextReviewDate)}</p>}</div><DialogFooter><DialogClose render={<Button type="button" variant="outline" className="min-h-11" />}>{displayText("Cancel")}</DialogClose><Button type="button" className="min-h-11" onClick={() => { setConfirmReviewOpen(false); void finalizeSnapshot(); }}>{displayText("Complete review")}</Button></DialogFooter></DialogContent></Dialog>{!selectedReview && (reviews.isError || tallySessions.isError) && <p role="alert" className="text-sm text-destructive">{displayText("Could not check saved reviews and tallies.")}{" "}<button type="button" className="font-semibold underline" onClick={() => { void reviews.refetch(); void tallySessions.refetch(); }}>{displayText("Try again")}</button></p>}</div> : null;
+  const completeReviewAction = showCompleteReview ? <div className="order-4 mt-5 space-y-3 border-t pt-5"><Dialog open={confirmReviewOpen} onOpenChange={setConfirmReviewOpen}><DialogTrigger render={<Button id="complete-review" type="button" className="h-auto min-h-12 w-full scroll-mt-24 whitespace-normal rounded-xl px-4 py-3 text-base active:scale-[0.98] motion-reduce:transform-none" disabled={create.isPending || finalize.isPending || !payload || (!selectedReview && (reviews.isLoading || reviews.isError || tallySessions.isLoading || tallySessions.isError)) || activeReviewStatus === "NOT_REVIEWED" || (activeReviewStatus === "CONTINUE_OBSERVATION" && !activeNextReviewDate)} />}>{create.isPending || finalize.isPending ? <><Loader2 className="size-4 animate-spin" /> {displayText("Completing review…")}</> : displayText("Complete review")}</DialogTrigger><DialogContent><DialogHeader><DialogTitle>{displayText("Complete review?")}</DialogTitle><DialogDescription>{selectedReview ? displayText("This saved report will be finalized.") : displayText("A snapshot of this report will be saved.")} {displayText("The batch will remain active.")}</DialogDescription></DialogHeader><div className="rounded-lg bg-muted/50 px-4 py-3 text-sm"><p className="font-semibold">{displayText(reviewLabels[activeReviewStatus])}</p>{activeReviewStatus === "FOR_IN_PERSON_ASSESSMENT" && <p className="mt-1 text-muted-foreground">{displayText("You can record the selection tally after completing the review.")}</p>}{activeNextReviewDate && <p className="mt-1 text-muted-foreground">{displayText("Follow-up review:")}{" "}{formatDate(activeNextReviewDate)}</p>}</div><DialogFooter><DialogClose render={<Button type="button" variant="outline" className="min-h-11" />}>{displayText("Cancel")}</DialogClose><Button type="button" className="min-h-11" onClick={() => { setConfirmReviewOpen(false); void finalizeSnapshot(); }}>{displayText("Complete review")}</Button></DialogFooter></DialogContent></Dialog>{!selectedReview && (reviews.isError || tallySessions.isError) && <p role="alert" className="text-sm text-destructive">{displayText("Could not check saved reviews and tallies.")}{" "}<button type="button" className="font-semibold underline" onClick={() => { void reviews.refetch(); void tallySessions.refetch(); }}>{displayText("Try again")}</button></p>}</div> : null;
 
   return (
     <div className="@container/review mx-auto w-full min-w-0 max-w-6xl space-y-5 pb-6 [overflow-wrap:anywhere]">
-      <ReportIdentityHeader batchId={batchId} batchName={payload?.batch.batchName} stageName={payload?.batch.stageName} ageDays={payload?.batch.ageDays} status={reportStatus} />
+      <ReportIdentityHeader batchId={batchId} batchName={payload?.batch.batchName} stageName={payload?.batch.stageName} ageDays={payload?.batch.ageDays} isSavedSnapshot={selectedReview != null} status={reportStatus} />
 
       {isManager && (loadingRequestedReview ? <Button type="button" variant="outline" disabled className="min-h-11 w-full sm:w-auto">{displayText("Loading review…")}</Button> : selectedReview?.status === "FINALIZED" || pendingTallyReview ? (() => {
         const tallyReview = selectedReview?.status === "FINALIZED" ? selectedReview : pendingTallyReview!;
-        return <div className="space-y-2"><SelectionOutcomePanel key={tallyReview.id} batchId={batchId} batchName={tallyReview.batchName} currentPopulation={preview.data && !preview.data.population.reconciliationRequired ? preview.data.population.currentPopulation : null} populationUnavailableMessage={preview.isLoading ? "Checking current population…" : preview.isError ? "Current population could not be loaded. Try again before recording an outcome." : undefined} review={tallyReview} isManager={isManager} /><Button type="button" variant="ghost" className="min-h-11 px-0 text-primary underline-offset-2 hover:underline" onClick={beginNewReview}>{selectedReview ? "Review latest records" : "Start new review"}</Button></div>;
+        return <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4 sm:p-5"><SelectionOutcomePanel key={tallyReview.id} batchId={batchId} batchName={tallyReview.batchName} currentPopulation={preview.data && !preview.data.population.reconciliationRequired ? preview.data.population.currentPopulation : null} populationUnavailableMessage={preview.isLoading ? "Checking current population…" : preview.isError ? "Current population could not be loaded. Try again before recording an outcome." : undefined} review={tallyReview} isManager={isManager} /></div>;
       })() : null)}
-      {requestedReviewUnresolved && !reviews.isLoading && <section role="alert" aria-label={displayText("Saved report unavailable")} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"><p>{reviews.isError ? "Could not load the saved report." : "Saved report not found."}</p><Button type="button" variant="outline" className="min-h-11" onClick={beginNewReview}>{displayText("View latest records")}</Button></section>}
+      {requestedReviewUnresolved && !reviews.isLoading && <section role="alert" aria-label={displayText("Saved report unavailable")} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"><p>{displayText(reviews.isError ? "Could not load the saved report." : "Saved report not found.")}</p><Button type="button" variant="outline" className="min-h-11" onClick={beginNewReview}>{displayText("View latest records")}</Button></section>}
       {selectedReview && <section role="status" aria-label={displayText("Saved report status")} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning-border bg-warning-muted px-4 py-3 text-sm text-warning-ink"><div><p className="font-semibold">{displayText("Saved report v")}{selectedReview.versionNumber} {displayText("· through")}{" "}{formatDate(selectedReview.asOfDate)}</p><p className="mt-1">{selectedReview.newerDataAvailable ? displayText("Newer records are available. ") : ""}{displayText("Population, deaths, health and costs show this saved version.")}</p></div><Button type="button" variant="outline" className="min-h-11" onClick={beginNewReview}>{displayText("View latest records")}</Button></section>}
       {reviewError && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">{reviewError}</p>}
-
-      {payload && <ReportMetricStrip payload={payload} isManager={isManager} vaccinationPlan={vaccinationPlan.data ?? []} vaccinationLoading={vaccinationPlan.isLoading} vaccinationError={vaccinationPlan.isError} isSavedSnapshot={selectedReview != null} />}
 
       {isManager && payload?.finance && demoCostImpact.isLoading && <p role="status" className="text-xs text-muted-foreground">{displayText("Checking demo stock impact…")}</p>}
       {isManager && payload?.finance && (demoCostImpact.isError || (demoCostImpact.data && typeof demoCostImpact.data.mayIncludeDemoStock !== "boolean")) && <p role="status" className="rounded-xl border border-warning-border bg-warning-muted/50 px-4 py-3 text-sm text-warning-ink">{displayText("Demo stock impact could not be checked. Verify product costs before using this report.")}</p>}
@@ -239,39 +246,56 @@ function SelectionReviewView({ batchId }: { batchId: string }) {
       {preview.isLoading && <div className="h-56 animate-pulse rounded-2xl bg-muted" />}
       {preview.isError && <p className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{preview.error instanceof ApiError ? preview.error.message : "Failed to load the report preview."}</p>}
 
-      <div className="grid min-w-0 items-start gap-5">
-        {payload && <ReportContent payload={payload} isManager={isManager} vaccinationPlan={vaccinationPlan.data ?? []} vaccinationLoading={vaccinationPlan.isLoading} vaccinationError={vaccinationPlan.isError} isSavedSnapshot={selectedReview != null} />}
-        <div className="grid min-w-0 items-start gap-5 @min-[760px]/review:grid-cols-2">
+      <Tabs value={activeSection} onValueChange={setActiveSection} className="min-w-0 gap-0">
+        <div className="overflow-x-auto overflow-y-hidden border-b">
+          <TabsList variant="line" aria-label={displayText("Batch review sections")} className="!h-auto min-w-max justify-start gap-1 p-0">
+            <TabsTrigger value="overview" className="min-h-12 flex-none px-4 after:bottom-0 after:border-b-2 after:border-primary after:bg-transparent data-active:text-primary">{displayText("Overview")}</TabsTrigger>
+            <TabsTrigger value="health" className="min-h-12 flex-none px-4 after:bottom-0 after:border-b-2 after:border-primary after:bg-transparent data-active:text-primary">{displayText("Health & vaccination")}</TabsTrigger>
+            <TabsTrigger value="costs" className="min-h-12 flex-none px-4 after:bottom-0 after:border-b-2 after:border-primary after:bg-transparent data-active:text-primary">{displayText(isManager ? "Costs & products" : "Products used")}</TabsTrigger>
+            <TabsTrigger ref={reviewTabRef} value="review" className="min-h-12 flex-none px-4 after:bottom-0 after:border-b-2 after:border-primary after:bg-transparent data-active:text-primary">{displayText("Review & versions")}</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="overview"><div className="space-y-4 pt-5">
+          {payload && <ReportMetricStrip payload={payload} isManager={isManager} vaccinationPlan={vaccinationPlan.data ?? []} vaccinationLoading={vaccinationPlan.isLoading} vaccinationError={vaccinationPlan.isError} isSavedSnapshot={selectedReview != null} />}
+          {isManager && selectedReview && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 sm:p-5"><div><h2 className="font-semibold">{selectedReview.newerDataAvailable ? "What needs attention" : "Latest records"}</h2><p className="mt-1 text-sm text-muted-foreground">{selectedReview.newerDataAvailable ? "Newer records are available." : "Review the latest batch records when you are ready."}</p></div><Button type="button" variant="outline" className="min-h-11" onClick={beginNewReview}>{displayText("Review latest records")}</Button></section>}
+          {showCompleteReview && <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 sm:p-5"><div><h2 className="font-semibold">{displayText("Review decision")}</h2><p className="mt-1 text-sm text-muted-foreground">{displayText("Review the evidence, then record your decision.")}</p></div><Button type="button" className="min-h-11" onClick={openReviewSection}>{displayText("Review decision")}</Button></section>}
+          <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-4 sm:p-5"><div><h2 className="font-semibold">{displayText("Review details")}</h2><p className="mt-1 text-sm text-muted-foreground">{selectedReview ? `Saved report v${selectedReview.versionNumber} · ${formatDate(selectedReview.generatedAt)}` : "Live report · Full batch history"}</p></div><Button type="button" variant="ghost" className="min-h-11 text-primary" onClick={openReviewSection}>{displayText("View review & versions")} <ChevronRight className="size-4" /></Button></section>
+        </div></TabsContent>
+        <TabsContent value="health"><div className="pt-5">{payload && <ReportContent section="health" payload={payload} isManager={isManager} vaccinationPlan={vaccinationPlan.data ?? []} vaccinationLoading={vaccinationPlan.isLoading} vaccinationError={vaccinationPlan.isError} isSavedSnapshot={selectedReview != null} />}</div></TabsContent>
+        <TabsContent value="costs"><div className="pt-5">{payload && <ReportContent section="costs" payload={payload} isManager={isManager} vaccinationPlan={vaccinationPlan.data ?? []} vaccinationLoading={vaccinationPlan.isLoading} vaccinationError={vaccinationPlan.isError} isSavedSnapshot={selectedReview != null} />}</div></TabsContent>
+        <TabsContent value="review"><div className="grid gap-5 pt-5 lg:grid-cols-2">
           <div className="grid min-w-0 content-start gap-5">
             <ReportControlsPanel isManager={isManager} purpose={activePurpose} snapshotNote={activeSnapshotNote} onPurposeChange={(value) => { setIgnoreRequestedReview(true); setStartNewReview(true); setSelected(null); setPurpose(value); }} onSnapshotNoteChange={(value) => { setIgnoreRequestedReview(true); setStartNewReview(true); setSelected(null); setSnapshotNote(value); }} onSave={generateSnapshot} saveDisabled={create.isPending || finalize.isPending || !payload} savePending={create.isPending} />
-            {isManager && payload && (!selectedReview || selectedReview.status === "DRAFT") && <ManagerReviewPanel action={completeReviewAction} reviewStatus={activeReviewStatus} nextReviewDate={activeNextReviewDate} notes={activeNotes} pending={create.isPending || finalize.isPending} onReviewStatusChange={(value) => { beginEditingManagerDecision(); setReviewStatus(value); }} onNextReviewDateChange={(value) => { beginEditingManagerDecision(); setNextReviewDate(value); }} onNotesChange={(value) => { beginEditingManagerDecision(); setNotes(value); }} />}
+            {isManager && payload && (!selectedReview || selectedReview.status === "DRAFT") && <ManagerReviewPanel reviewStatus={activeReviewStatus} nextReviewDate={activeNextReviewDate} notes={activeNotes} pending={create.isPending || finalize.isPending} onReviewStatusChange={(value) => { beginEditingManagerDecision(); setReviewStatus(value); }} onNextReviewDateChange={(value) => { beginEditingManagerDecision(); setNextReviewDate(value); }} onNotesChange={(value) => { beginEditingManagerDecision(); setNotes(value); }} />}
+            {completeReviewAction}
             {isManager && selectedReview && <SnapshotStatusPanel selected={selectedReview} onDownload={downloadPdf} />}
+            {isManager && selectedReview && <Button type="button" variant="outline" className="order-6 min-h-11 justify-self-start" onClick={beginNewReview}>{displayText("Review latest records")}</Button>}
           </div>
           <div className="min-w-0"><SavedVersionList reviews={reviews.data ?? []} isLoading={reviews.isLoading} selectedId={selectedReview?.id} onSelect={selectSavedReport} /></div>
-        </div>
-      </div>
-      <details className="group rounded-xl border px-4">
-        <summary className="flex min-h-12 cursor-pointer items-center justify-between gap-3 text-sm font-medium text-muted-foreground"><span>{displayText("About this report")}</span><ChevronRight className="size-4 shrink-0 group-open:rotate-90" aria-hidden="true" /></summary>
-        <div className="space-y-2 pb-4 text-sm leading-6 text-muted-foreground">
-          <p>{displayText("Full recorded batch history from hatch to today.")}</p>
-          <p>{displayText("Health records describe the batch, not each bird. A saved report keeps its original evidence; vaccination is labelled when it shows the current schedule.")}</p>
-        </div>
-      </details>
+        </div></TabsContent>
+      </Tabs>
     </div>
   );
 }
 
-function ReportIdentityHeader({ batchId, batchName, stageName, ageDays, status }: { batchId: string; batchName?: string; stageName?: string; ageDays?: number; status: string }) {
-  return <header className="min-w-0 space-y-3">
-    <PageBackLink destination="batch" batchId={batchId} className="mb-0 min-h-12 text-sm" />
-    <div className="min-w-0 space-y-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="min-w-0 break-words text-2xl font-bold tracking-tight sm:text-3xl">{batchName ?? "Batch review report"}</h1>
-        <Badge className="max-w-full whitespace-normal text-xs" variant={status === "MANAGER REVIEWED" ? "default" : "secondary"}>{status}</Badge>
+function ReportIdentityHeader({ batchId, batchName, stageName, ageDays, isSavedSnapshot, status }: { batchId: string; batchName?: string; stageName?: string; ageDays?: number; isSavedSnapshot: boolean; status: string }) {
+  const { display: displayText } = useDisplayLocale();
+  return (
+    <header className="min-w-0 space-y-3">
+      <PageBackLink destination="batch" batchId={batchId} className="mb-1" />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="min-w-0 break-words text-2xl font-bold tracking-tight sm:text-3xl">{displayText("Batch review")}</h1>
+            <Badge className="max-w-full whitespace-normal" variant={status === "MANAGER REVIEWED" ? "default" : "secondary"}>{displayText(status)}</Badge>
+          </div>
+          <h2 className="mt-1 break-words text-sm font-medium text-foreground/80">{batchName ?? displayText("Batch")}</h2>
+          {(stageName || typeof ageDays === "number") && <p className="text-sm text-muted-foreground">{stageName?.replaceAll("-", " ")}{typeof ageDays === "number" ? ` · Day ${ageDays}` : ""}</p>}
+          <p className="mt-1 text-sm text-muted-foreground">{displayText(isSavedSnapshot ? "Saved review snapshot." : "Full recorded batch history from hatch to today.")}</p>
+        </div>
       </div>
-      {stageName && <p className="text-sm text-muted-foreground"><span className="capitalize">{stageName.replaceAll("-", " ")}</span>{typeof ageDays === "number" ? ` · Day ${ageDays}` : ""}</p>}
-    </div>
-  </header>;
+    </header>
+  );
 }
 
 function ReportMetricStrip({ payload, isManager, vaccinationPlan, vaccinationLoading, vaccinationError, isSavedSnapshot }: { payload: SelectionReviewPayload; isManager: boolean; vaccinationPlan: VaccinationPlanItem[]; vaccinationLoading: boolean; vaccinationError: boolean; isSavedSnapshot: boolean }) {
@@ -283,7 +307,7 @@ function ReportMetricStrip({ payload, isManager, vaccinationPlan, vaccinationLoa
   const vaccinationDetail = vaccinationError ? "Could not load schedule" : isSavedSnapshot ? "Current schedule" : "Scheduled doses";
   const cost = reportCostMetric(payload);
   const materialLimitations = (payload.dataAvailability ?? []).filter((item) => item.status === "PARTIAL" && item.section !== "Population reconciliation" && (isManager || item.section !== "Batch finance"));
-  return <div id="report-summary" className="scroll-mt-20 space-y-2"><section aria-label={displayText("Report summary")} className="overflow-hidden rounded-2xl border bg-card"><div className="grid grid-cols-2 gap-px bg-border @min-[680px]/review:grid-cols-4"><Metric label={displayText("Population")} value={p.reconciliationRequired ? `— / ${p.initialPopulation}` : payload.batch.currentPopulationDisplay} detail={p.reconciliationRequired ? displayText("Records need review") : displayText("Current / starting")} /><DeathMetric payload={payload} rate={rate} isSavedSnapshot={isSavedSnapshot} /><Metric label={isSavedSnapshot ? displayText("Vaccination · live") : displayText("Vaccination")} value={vaccinationValue} detail={vaccinationDetail} /><Metric label={displayText("Batch cost")} value={isManager ? cost.value : "—"} detail={isManager ? cost.detail : displayText("Manager only")} title={isManager ? cost.title : undefined} valueClassName={isManager && cost.warning ? "text-warning-ink" : undefined} /></div></section>{p.reconciliationRequired && <PopulationReconciliationWarning message={p.reconciliationMessage} />}{materialLimitations.length > 0 && <section aria-label={displayText("Report limitations")} className="rounded-xl border border-warning-border bg-warning-muted px-4 py-3 text-sm text-warning-ink"><p className="font-semibold">{displayText("Information to review")}</p>{materialLimitations.map((item) => <p className="mt-1" key={item.section}>{item.message || `${item.section}: some information is unavailable.`}</p>)}</section>}</div>;
+  return <div id="report-summary" className="scroll-mt-20 space-y-2"><section aria-label={displayText("Report summary")} className="overflow-hidden rounded-2xl border bg-card"><h2 className="px-4 pt-4 text-base font-semibold sm:px-5">{displayText("Batch at a glance")}</h2><div className="grid grid-cols-2 divide-x divide-y sm:grid-cols-4 sm:divide-y-0"><Metric label={displayText("Population")} value={p.reconciliationRequired ? `— / ${p.initialPopulation}` : payload.batch.currentPopulationDisplay} detail={displayText(p.reconciliationRequired ? "Records need review" : "Current / starting birds")} /><DeathMetric payload={payload} rate={rate} isSavedSnapshot={isSavedSnapshot} /><Metric label={displayText(isSavedSnapshot ? "Vaccination · live" : "Vaccination")} value={displayText(vaccinationValue)} detail={displayText(vaccinationDetail)} /><Metric label={displayText("Batch cost")} value={isManager && cost.value !== "—" ? cost.value : "N/A"} detail={isManager ? cost.detail : displayText("Manager only")} title={isManager ? cost.title : undefined} valueClassName={isManager && cost.warning ? "text-warning-ink" : undefined} /></div></section><p className="px-1 text-xs leading-5 text-muted-foreground">{displayText("Recorded health and accidental deaths through")} {formatDate(payload.asOfDate)} {displayText("as a share of starting birds. Other losses are excluded; transfers can affect this comparison.")}</p>{p.reconciliationRequired && <PopulationReconciliationWarning message={p.reconciliationMessage} />}{materialLimitations.length > 0 && <section aria-label={displayText("Report limitations")} className="rounded-xl border border-warning-border bg-warning-muted px-4 py-3 text-sm text-warning-ink"><p className="font-semibold">{displayText("Information to review")}</p>{materialLimitations.map((item) => <p className="mt-1" key={item.section}>{item.message || `${item.section}: some information is unavailable.`}</p>)}</section>}</div>;
 }
 
 function DeathMetric({ payload, rate, isSavedSnapshot }: { payload: SelectionReviewPayload; rate: string; isSavedSnapshot: boolean }) {
@@ -358,16 +382,16 @@ function ReportControlsPanel({ isManager, purpose, snapshotNote, onPurposeChange
   </details>;
 }
 
-function ReportContent({ payload, isManager, vaccinationPlan, vaccinationLoading, vaccinationError, isSavedSnapshot }: { payload: SelectionReviewPayload; isManager: boolean; vaccinationPlan: VaccinationPlanItem[]; vaccinationLoading: boolean; vaccinationError: boolean; isSavedSnapshot: boolean }) {
+function ReportContent({ section, payload, isManager, vaccinationPlan, vaccinationLoading, vaccinationError, isSavedSnapshot }: { section: "health" | "costs"; payload: SelectionReviewPayload; isManager: boolean; vaccinationPlan: VaccinationPlanItem[]; vaccinationLoading: boolean; vaccinationError: boolean; isSavedSnapshot: boolean }) {
   const { display: displayText } = useDisplayLocale();
   const products = groupProducts(payload.productUse);
-  return <div className="@container min-w-0"><div className="grid min-w-0 items-start gap-4 @min-[720px]:grid-cols-2 @min-[1000px]:grid-cols-6">
-    <ReportSection id="report-vaccination" title={displayText("Vaccination record")} className={isManager ? "@min-[1000px]:col-span-3" : "@min-[720px]:col-span-2 @min-[1000px]:col-span-6"}><VaccinationChecklist plan={vaccinationPlan} recordedVaccines={payload.productUse.filter((item) => item.productType === "VACCINE")} loading={vaccinationLoading} error={vaccinationError} isSavedSnapshot={isSavedSnapshot} /></ReportSection>
-    {isManager && <ReportSection id="report-expenses" title={displayText("Batch expenses")} className="@min-[1000px]:col-span-3"><div className="@container">{payload.finance ? <FinanceReport finance={payload.finance} hasProductUsage={payload.productUse.length > 0} missingProductCosts={missingProductCostCount(payload)} /> : <Empty text="No batch finance data available." />}</div></ReportSection>}
-    <ReportSection id="report-products" title={`Products used (${payload.productUse.length})`} className="@min-[1000px]:col-span-4"><ProductUseList products={products} isManager={isManager} /></ReportSection>
-    <ReportSection id="report-health" title={`Health history (${payload.healthEvents.length})`} className="@min-[1000px]:col-span-2"><HealthHistory events={payload.healthEvents} /></ReportSection>
-    {payload.incubation && <ReportSection title={displayText("Incubation")} collapsible className="@min-[1000px]:col-span-3"><div className="grid grid-cols-2 divide-x divide-y rounded-xl border sm:grid-cols-4 sm:divide-y-0"><ReportFact label={displayText("Cycle")} value={payload.incubation.cycleName} detail={payload.incubation.incubatorCode} /><ReportFact label={displayText("Eggs")} value={String(payload.incubation.eggsLoaded)} detail={formatDate(payload.incubation.loadedDate)} /><ReportFact label={displayText("Hatched")} value={payload.incubation.hatchedCount == null ? "—" : String(payload.incubation.hatchedCount)} detail={payload.incubation.hatchRate == null ? "Rate unavailable" : `${payload.incubation.hatchRate}%`} /><ReportFact label={displayText("Unhatched")} value={`${payload.incubation.unhatchedCount ?? "—"}`} detail="Recorded" /></div></ReportSection>}
-  </div></div>;
+  return <main className="@container min-w-0"><div className="grid items-start gap-3 @min-[560px]:grid-cols-2 @min-[900px]:grid-cols-6">
+    {section === "health" && <><ReportSection id="report-vaccination" title={displayText("Vaccination record")} className="@min-[900px]:col-span-3"><VaccinationChecklist plan={vaccinationPlan} recordedVaccines={payload.productUse.filter((item) => item.productType === "VACCINE")} loading={vaccinationLoading} error={vaccinationError} isSavedSnapshot={isSavedSnapshot} /></ReportSection>
+    <ReportSection id="report-health" title={`${displayText("Health history")} (${payload.healthEvents.length})`} className="@min-[900px]:col-span-3"><HealthHistory events={payload.healthEvents} /></ReportSection>
+    {payload.incubation && <ReportSection title={displayText("Incubation")} collapsible className="@min-[560px]:col-span-2 @min-[900px]:col-span-6"><div className="grid grid-cols-2 divide-x divide-y rounded-xl border sm:grid-cols-4 sm:divide-y-0"><ReportFact label="Cycle" value={payload.incubation.cycleName} detail={payload.incubation.incubatorCode} /><ReportFact label="Eggs" value={String(payload.incubation.eggsLoaded)} detail={formatDate(payload.incubation.loadedDate)} /><ReportFact label="Hatched" value={payload.incubation.hatchedCount == null ? "—" : String(payload.incubation.hatchedCount)} detail={payload.incubation.hatchRate == null ? "Rate unavailable" : `${payload.incubation.hatchRate}%`} /><ReportFact label="Unhatched" value={`${payload.incubation.unhatchedCount ?? "—"}`} detail="Recorded" /></div></ReportSection>}</>}
+    {section === "costs" && <>{isManager && <ReportSection id="report-expenses" title={displayText("Batch expenses")} className="@min-[560px]:col-span-2 @min-[900px]:col-span-6"><div className="@container">{payload.finance ? <FinanceReport finance={payload.finance} hasProductUsage={payload.productUse.length > 0} missingProductCosts={missingProductCostCount(payload)} /> : <Empty text="No batch finance data available." />}</div></ReportSection>}
+    <ReportSection id="report-products" title={`${displayText("Products used")} (${payload.productUse.length})`} className="@min-[560px]:col-span-2 @min-[900px]:col-span-6"><ProductUseList products={products} isManager={isManager} /></ReportSection></>}
+  </div></main>;
 }
 
 function HealthHistory({ events }: { events: SelectionReviewPayload["healthEvents"] }) {
@@ -398,7 +422,7 @@ function FinanceReport({ finance, hasProductUsage, missingProductCosts }: { fina
 
 function ProductUseList({ products, isManager }: { products: ReturnType<typeof groupProducts>; isManager: boolean }) {
   const { display: displayText } = useDisplayLocale();
-  if (products.length === 0) return <Empty text="No product-use record." />;
+  if (products.length === 0) return <TableEmptyState icon={<PackageOpen className="size-5" />} title={displayText("No product records")} description={displayText("There are no product-use records in this report.")} />;
   const money = (amount: number) => `₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return <div className="@container/products min-w-0">
     <ul aria-label={displayText("Products used")} className="space-y-3 @min-[600px]/products:hidden">
@@ -543,7 +567,7 @@ function groupProducts(items: SelectionReviewProductUse[]) {
   return [...groups.values()].sort((a, b) => b.count - a.count);
 }
 
-function Empty({ text }: { text: string }) { return <p className="py-1 text-sm leading-6 text-muted-foreground">{text}</p>; }
+function Empty({ text }: { text: string }) { const { display } = useDisplayLocale(); return <p className="py-1 text-sm leading-6 text-muted-foreground">{display(text)}</p>; }
 
 function PopulationReconciliationWarning({ message, className }: { message: string | null; className?: string }) {
   return <div role="alert" className={cn("flex items-start gap-2 rounded-xl border border-warning-border bg-warning-muted px-3 py-2.5 text-sm text-warning-ink", className)}><TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" /><p>{message ?? "Population records do not reconcile. Review the population event history."}</p></div>;

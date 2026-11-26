@@ -26,7 +26,7 @@ import { useLocale } from "@/components/locale-provider";
 import { VaccinationManagerAction } from "@/components/vaccination-plan-card";
 import { HandlerTaskDetailDialog } from "@/components/tasks/handler-task-ui";
 import { CloseTaskDialog } from "@/components/tasks/close-task-dialog";
-import { PageHeader } from "@/components/page-header";
+import { PageContainer, PageHeader } from "@/components/page-header";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const PAGE_SIZE = 20;
@@ -103,32 +103,33 @@ function TasksPageContent() {
   const [priority, setPriority] = useState<TaskPriority>("NORMAL");
   const [formError, setFormError] = useState("");
   const [assignmentOpen, setAssignmentOpen] = useState(false);
-  const mobileTaskLoadMoreRef = useRef<HTMLDivElement>(null);
+  const taskLoadMoreRef = useRef<HTMLDivElement>(null);
 
   const filters = useMemo<TaskPageFilters>(() => ({ page: 0, size: isManager ? managerFilters.size : HANDLER_PAGE_SIZE, view: isManager ? managerFilters.view : "OPEN", dueBucket: isManager ? managerFilters.dueBucket : "ALL", kind: isManager ? managerFilters.kind : undefined, batchId: managerFilters.batchId, farmWide: managerFilters.farmWide, assignedHandlerId: managerFilters.assignedHandlerId, priority: managerFilters.priority, search: managerFilters.search }), [isManager, managerFilters]);
-  const managerPageQuery = useTaskPage(managerFilters, isManager && !isMobile);
-  const mobileManagerPageQuery = useTaskPageInfinite({ ...managerFilters, page: 0, size: PAGE_SIZE }, isManager && isMobile);
-  const { fetchNextPage: fetchMobileNextPage } = mobileManagerPageQuery;
+  const desktopPageQuery = useTaskPage(managerFilters, isManager && !isMobile);
+  const managerPageQuery = useTaskPageInfinite({ ...managerFilters, page: 0, size: PAGE_SIZE }, isManager && isMobile);
+  const { fetchNextPage } = managerPageQuery;
   const handlerQueueQuery = useTaskQueue(handlerQueueBucket, !isManager);
   const handlerPages = useMemo(() => handlerQueueQuery.data?.pages ?? [], [handlerQueueQuery.data?.pages]);
   const handlerPage = handlerPages.at(-1);
-  const mobileManagerPages = useMemo(() => mobileManagerPageQuery.data?.pages ?? [], [mobileManagerPageQuery.data?.pages]);
-  const mobileManagerLastPage = mobileManagerPages.at(-1);
-  const mobileManagerPage = useMemo(
-    () => mobileManagerLastPage
-      ? { ...mobileManagerLastPage, items: mobileManagerPages.flatMap((item) => item.items), hasPrevious: false }
+  const managerPages = useMemo(() => managerPageQuery.data?.pages ?? [], [managerPageQuery.data?.pages]);
+  const managerLastPage = managerPages.at(-1);
+  const managerPage = useMemo(
+    () => managerLastPage
+      ? { ...managerLastPage, items: managerPages.flatMap((item) => item.items), hasPrevious: false }
       : undefined,
-    [mobileManagerLastPage, mobileManagerPages],
+    [managerLastPage, managerPages],
   );
   const page = useMemo(
-    () => isManager ? (isMobile ? mobileManagerPage : managerPageQuery.data) : handlerPage ? { ...handlerPage, items: handlerPages.flatMap((item) => item.items) } : undefined,
-    [handlerPage, handlerPages, isManager, isMobile, managerPageQuery.data, mobileManagerPage],
+    () => isManager ? (isMobile ? managerPage : desktopPageQuery.data) : handlerPage ? { ...handlerPage, items: handlerPages.flatMap((item) => item.items) } : undefined,
+    [desktopPageQuery.data, handlerPage, handlerPages, isManager, isMobile, managerPage],
   );
-  const isLoading = isManager ? (isMobile ? mobileManagerPageQuery.isLoading : managerPageQuery.isLoading) : handlerQueueQuery.isLoading;
-  const isFetching = isManager ? (isMobile ? mobileManagerPageQuery.isFetching : managerPageQuery.isFetching) : handlerQueueQuery.isFetching;
-  const error = isManager ? (isMobile ? mobileManagerPageQuery.error : managerPageQuery.error) : handlerQueueQuery.error;
-  const mobileHasNextPage = mobileManagerPageQuery.hasNextPage;
-  const mobileIsFetchingNextPage = mobileManagerPageQuery.isFetchingNextPage;
+  const isLoading = isManager ? (isMobile ? managerPageQuery.isLoading : desktopPageQuery.isLoading) : handlerQueueQuery.isLoading;
+  const isFetching = isManager ? (isMobile ? managerPageQuery.isFetching : desktopPageQuery.isFetching) : handlerQueueQuery.isFetching;
+  const error = isManager ? (isMobile ? (managerPageQuery.data ? null : managerPageQuery.error) : desktopPageQuery.error) : handlerQueueQuery.error;
+  const hasNextPage = managerPageQuery.hasNextPage;
+  const isFetchingNextPage = managerPageQuery.isFetchingNextPage;
+  const fetchNextPageError = managerPageQuery.isFetchNextPageError;
   const summaryFilters = useMemo(() => ({
     batchId: isManager ? managerFilters.batchId : undefined,
     farmWide: isManager ? managerFilters.farmWide : undefined,
@@ -161,13 +162,13 @@ function TasksPageContent() {
   }, [changeFilters, isManager, searchInput]);
 
   useEffect(() => {
-    if (!isManager || !isMobile || !mobileTaskLoadMoreRef.current || !mobileHasNextPage) return;
+    if (!isManager || !isMobile || !taskLoadMoreRef.current || !hasNextPage || fetchNextPageError) return;
     const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting && !mobileIsFetchingNextPage) void fetchMobileNextPage();
+      if (entry.isIntersecting && !isFetchingNextPage) void fetchNextPage();
     }, { rootMargin: "480px" });
-    observer.observe(mobileTaskLoadMoreRef.current);
+    observer.observe(taskLoadMoreRef.current);
     return () => observer.disconnect();
-  }, [fetchMobileNextPage, isManager, isMobile, mobileHasNextPage, mobileIsFetchingNextPage]);
+  }, [fetchNextPage, isManager, isMobile, fetchNextPageError, hasNextPage, isFetchingNextPage]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -204,7 +205,6 @@ function TasksPageContent() {
     setSelectedTask(null);
   }
 
-  const activeFilterCount = [filters.view !== "OPEN", filters.dueBucket !== "ALL", filters.batchId != null || filters.farmWide, filters.assignedHandlerId != null, !!filters.priority, !!filters.kind, !!filters.search].filter(Boolean).length;
   const visibleItems = useMemo(() => page?.items ?? [], [page]);
   const requestedTaskId = Number(searchParams.get("taskId"));
   const requestedTask = Number.isSafeInteger(requestedTaskId) && requestedTaskId > 0
@@ -240,20 +240,11 @@ function TasksPageContent() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[96rem] space-y-4">
+    <PageContainer className={isManager ? "space-y-5 sm:space-y-10" : "max-w-[96rem] space-y-4"}>
       {isManager ? <>
-      <PageHeader icon={ClipboardList} title={t("tasks.title")} description={displayText("Assign, monitor, and complete farm work.")} />
+      <PageHeader variant="ledger" title={t("tasks.title")} description={displayText("Assign, monitor, and complete farm work.")} action={<Button type="button" className="h-11 w-full rounded-xl sm:w-auto" onClick={() => setAssignmentOpen(true)}><Plus aria-hidden="true" />{t("tasks.assign")}</Button>} />
       <TaskSummaryBar summary={summary} filters={filters} onFilter={changeFilters} />
-      <div className="task-workspace grid gap-4">
-        <div className="task-assignment-trigger">
-          <Button type="button" className="w-full" onClick={() => setAssignmentOpen(true)}><Plus aria-hidden="true" />{t("tasks.assign")}</Button>
-        </div>
-        <Card className="task-assignment-panel h-fit shadow-none">
-          <CardHeader className="p-4 pb-2"><CardTitle className="text-base">{t("tasks.assign")}</CardTitle><CardDescription>{displayText("Choose one handler or make the task visible to all handlers.")}</CardDescription></CardHeader>
-          <CardContent className="p-4 pt-2"><TaskAssignmentForm idPrefix="panel" handlers={handlers} batches={batches} assignmentMode={assignmentMode} onAssignmentModeChange={setAssignmentMode} title={title} onTitleChange={setTitle} instructions={instructions} onInstructionsChange={setInstructions} handler={handler} onHandlerChange={setHandler} batch={batch} onBatchChange={setBatch} due={due} onDueChange={setDue} priority={priority} onPriorityChange={setPriority} formError={formError} pending={create.isPending} onSubmit={submit} /></CardContent>
-        </Card>
-      <TaskRecordsCard summary={summary} filters={filters} searchInput={searchInput} onSearchInputChange={setSearchInput} activeFilterCount={activeFilterCount} batches={batches} handlers={handlers} page={page} isLoading={isLoading} isFetching={isFetching} error={error} batchNames={batchNames} handlerNames={handlerNames} onFilter={changeFilters} onClearFilters={() => { setSearchInput(""); changeFilters({ view: "OPEN", dueBucket: "ALL", kind: undefined, batchId: undefined, farmWide: undefined, assignedHandlerId: undefined, priority: undefined, search: undefined }); }} onOpen={setSelectedTask} mobileLoadMoreRef={isManager && isMobile ? mobileTaskLoadMoreRef : undefined} mobileHasNextPage={isManager && isMobile ? mobileHasNextPage : false} mobileIsFetchingNextPage={isManager && isMobile ? mobileIsFetchingNextPage : false} />
-      </div>
+      <TaskRecordsCard summary={summary} filters={filters} searchInput={searchInput} onSearchInputChange={setSearchInput} batches={batches} handlers={handlers} page={page} isLoading={isLoading} isFetching={isFetching} error={error} batchNames={batchNames} handlerNames={handlerNames} onFilter={changeFilters} onClearFilters={() => { setSearchInput(""); changeFilters({ view: "OPEN", dueBucket: "ALL", kind: undefined, batchId: undefined, farmWide: undefined, assignedHandlerId: undefined, priority: undefined, search: undefined }); }} onOpen={setSelectedTask} loadMoreRef={isMobile ? taskLoadMoreRef : undefined} hasNextPage={isMobile && hasNextPage} isFetchingNextPage={isMobile && isFetchingNextPage} fetchNextPageError={isMobile && fetchNextPageError} onLoadMore={() => { void fetchNextPage(); }} />
       <Sheet open={assignmentOpen} onOpenChange={setAssignmentOpen}>
         <SheetContent side="right" className="w-full max-w-md overflow-y-auto">
           <SheetHeader><SheetTitle>{t("tasks.assign")}</SheetTitle><SheetDescription>{displayText("Choose one handler or make the task visible to all handlers.")}</SheetDescription></SheetHeader>
@@ -280,7 +271,7 @@ function TasksPageContent() {
         ? <TaskDetailDialog task={activeTask} open={activeTask != null} isManager handlerNames={handlerNames} history={taskHistory} pending={update.isPending} onOpenChange={closeTaskDetails} onDone={markDone} onCloseTask={requestClose} />
         : <HandlerTaskDetailDialog task={activeTask} open={activeTask != null} batchName={activeTask?.batchId == null ? "Farm-wide" : batchNames.get(activeTask?.batchId ?? -1) ?? `Batch ${activeTask?.batchId}`} pending={update.isPending} onOpenChange={closeTaskDetails} onDone={markDone} />}
       <CloseTaskDialog key={`${closeTarget?.id ?? "none"}-${closeTarget?.sourceType === "VACCINATION_PLAN" ? "vaccination" : "task"}`} task={closeTarget} open={closeTarget != null} pending={close.isPending} vaccinationOrphan={closeTarget?.sourceType === "VACCINATION_PLAN"} onOpenChange={(open) => { if (!open) setCloseTarget(null); }} onSubmit={submitClose} />
-    </div>
+    </PageContainer>
   );
 }
 
@@ -348,7 +339,6 @@ function TaskRecordsCard({
   filters,
   searchInput,
   onSearchInputChange,
-  activeFilterCount,
   batches,
   handlers,
   page,
@@ -360,15 +350,16 @@ function TaskRecordsCard({
   onFilter,
   onClearFilters,
   onOpen,
-  mobileLoadMoreRef,
-  mobileHasNextPage,
-  mobileIsFetchingNextPage,
+  loadMoreRef,
+  hasNextPage,
+  isFetchingNextPage,
+  fetchNextPageError,
+  onLoadMore,
 }: {
   summary?: TaskSummaryResponse;
   filters: TaskPageFilters;
   searchInput: string;
   onSearchInputChange: (value: string) => void;
-  activeFilterCount: number;
   batches?: BatchOption[];
   handlers?: HandlerOption[];
   page?: PageResponse<HandlerTask>;
@@ -380,14 +371,16 @@ function TaskRecordsCard({
   onFilter: (patch: Partial<TaskPageFilters>) => void;
   onClearFilters: () => void;
   onOpen: (task: HandlerTask) => void;
-  mobileLoadMoreRef?: RefObject<HTMLDivElement | null>;
-  mobileHasNextPage: boolean;
-  mobileIsFetchingNextPage: boolean;
+  loadMoreRef?: RefObject<HTMLDivElement | null>;
+  hasNextPage: boolean;
+  isFetchingNextPage: boolean;
+  fetchNextPageError: boolean;
+  onLoadMore: () => void;
 }) {
   const { display: displayText } = useDisplayLocale();
   const { t } = useLocale();
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const advancedFilterCount = [filters.dueBucket !== "ALL", filters.batchId != null || filters.farmWide, filters.assignedHandlerId != null, !!filters.priority, !!filters.kind, !!filters.search].filter(Boolean).length;
+  const advancedFilterCount = [filters.view !== "OPEN", filters.dueBucket !== "ALL", filters.batchId != null || filters.farmWide, filters.assignedHandlerId != null, !!filters.priority, !!filters.kind, !!filters.search].filter(Boolean).length;
   const total = page?.totalItems ?? 0;
   const pageSize = filters.size || PAGE_SIZE;
   const start = total === 0 ? 0 : (page?.page ?? filters.page) * pageSize + 1;
@@ -408,14 +401,13 @@ function TaskRecordsCard({
   return <Card className="flex min-h-0 min-w-0 flex-col overflow-hidden shadow-none">
     <CardHeader className="space-y-3 p-4 pb-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle className="text-base">{t("tasks.allTasks")}</CardTitle><CardDescription>{displayText("Use the filters to find a task, then open it for the full record.")}</CardDescription></div><Badge variant="outline">{summary?.open ?? 0} {t("tasks.open")}</Badge></div>
       <div className="flex flex-col gap-2 sm:flex-row"><div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" /><Input aria-label={t("tasks.searchPlaceholder")} value={searchInput} onChange={(event) => onSearchInputChange(event.target.value)} placeholder={t("tasks.searchPlaceholder")} className="pl-9" /></div><Button type="button" variant="outline" className="shrink-0" aria-expanded={filtersOpen} onClick={() => setFiltersOpen(true)}><SlidersHorizontal className="size-4" />{t("tasks.filters")}{advancedFilterCount > 0 ? ` (${advancedFilterCount})` : ""}</Button></div>
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={displayText("Task status filters")}><FilterPill active={filters.view === "OPEN" && filters.dueBucket === "ALL"} onClick={() => onFilter({ view: "OPEN", dueBucket: "ALL" })}>{displayText("Open")}</FilterPill><FilterPill active={filters.view === "COMPLETED"} onClick={() => onFilter({ view: "COMPLETED", dueBucket: "ALL" })}>{displayText("Completed")}</FilterPill><FilterPill active={filters.view === "CANCELLED"} onClick={() => onFilter({ view: "CANCELLED", dueBucket: "ALL" })}>{t("tasks.closedStatus")} {summary?.cancelled != null ? `(${summary.cancelled})` : ""}</FilterPill><FilterPill active={filters.view === "ALL"} onClick={() => onFilter({ view: "ALL", dueBucket: "ALL" })}>{displayText("All")}</FilterPill><span className="ml-auto text-xs text-muted-foreground">{activeFilterCount > 0 ? `${activeFilterCount} active` : "All visible tasks"}</span></div>
-      {advancedFilterCount > 0 && <div className="flex flex-wrap items-center gap-1.5" aria-label={t("tasks.activeFilters")}><span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground"><Filter className="size-3.5" aria-hidden="true" />{t("tasks.activeFilters")}</span>{filters.search && <ActiveTaskFilter label={`Search: ${filters.search}`} onClear={clearSearch} />}{filters.dueBucket !== "ALL" && <ActiveTaskFilter label={filters.dueBucket.replace("_", " ")} onClear={() => onFilter({ dueBucket: "ALL" })} />}{filters.priority && <ActiveTaskFilter label={filters.priority} onClear={() => onFilter({ priority: undefined })} />}{filters.kind && <ActiveTaskFilter label={filters.kind === "VACCINATION" ? t("tasks.vaccination") : t("tasks.work")} onClear={() => onFilter({ kind: undefined })} />}{(filters.batchId != null || filters.farmWide) && <ActiveTaskFilter label={filters.farmWide ? t("tasks.farmWide") : batchNames.get(filters.batchId ?? -1) ?? t("common.batch")} onClear={() => onFilter({ batchId: undefined, farmWide: undefined })} />}{filters.assignedHandlerId != null && <ActiveTaskFilter label={handlerNames.get(filters.assignedHandlerId) ?? t("tasks.anyHandler")} onClear={() => onFilter({ assignedHandlerId: undefined })} />}<Button variant="ghost" type="button" className="min-h-8 px-2 text-xs font-semibold text-primary underline-offset-4 hover:underline" onClick={onClearFilters}>{t("tasks.clearFilters")}</Button></div>}
+      {advancedFilterCount > 0 && <div className="flex flex-wrap items-center gap-1.5" aria-label={t("tasks.activeFilters")}><span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground"><Filter className="size-3.5" aria-hidden="true" />{t("tasks.activeFilters")}</span>{filters.view !== "OPEN" && <ActiveTaskFilter label={`Status: ${filters.view === "CANCELLED" ? "Closed" : filters.view === "ALL" ? "All" : "Completed"}`} onClear={() => onFilter({ view: "OPEN" })} />}{filters.search && <ActiveTaskFilter label={`Search: ${filters.search}`} onClear={clearSearch} />}{filters.dueBucket !== "ALL" && <ActiveTaskFilter label={filters.dueBucket.replace("_", " ")} onClear={() => onFilter({ dueBucket: "ALL" })} />}{filters.priority && <ActiveTaskFilter label={filters.priority} onClear={() => onFilter({ priority: undefined })} />}{filters.kind && <ActiveTaskFilter label={filters.kind === "VACCINATION" ? t("tasks.vaccination") : t("tasks.work")} onClear={() => onFilter({ kind: undefined })} />}{(filters.batchId != null || filters.farmWide) && <ActiveTaskFilter label={filters.farmWide ? t("tasks.farmWide") : batchNames.get(filters.batchId ?? -1) ?? t("common.batch")} onClear={() => onFilter({ batchId: undefined, farmWide: undefined })} />}{filters.assignedHandlerId != null && <ActiveTaskFilter label={handlerNames.get(filters.assignedHandlerId) ?? t("tasks.anyHandler")} onClear={() => onFilter({ assignedHandlerId: undefined })} />}<Button variant="ghost" type="button" className="min-h-8 px-2 text-xs font-semibold text-primary underline-offset-4 hover:underline" onClick={onClearFilters}>{t("tasks.clearFilters")}</Button></div>}
     </CardHeader>
     <CardContent className="flex min-h-0 flex-1 flex-col p-4 pt-0">
-      <div data-testid="manager-task-records" className="min-h-[18rem] min-w-0 flex-1 md:max-h-[min(62dvh,44rem)] md:overflow-y-auto md:overscroll-contain md:pr-1">{isLoading && <TaskSkeleton />}{errorMessage && !isLoading && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{errorMessage}</p>}{!isLoading && !errorMessage && page?.items.length === 0 && <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground"><p>{t("tasks.noMatches")}</p><Button type="button" variant="link" className="mt-1" onClick={onClearFilters}>{t("tasks.clearFilters")}</Button></div>}{!isLoading && !errorMessage && page?.items.length ? <ManagerTaskRecords items={page.items} batchNames={batchNames} handlerNames={handlerNames} onOpen={onOpen} /> : null}{mobileHasNextPage && mobileLoadMoreRef && <div ref={mobileLoadMoreRef} className="h-3" aria-hidden="true">{mobileIsFetchingNextPage && <span className="sr-only">{displayText("Loading more tasks")}</span>}</div>}</div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-xs text-muted-foreground"><div className="flex items-center gap-2"><span>{start}–{end} {displayText("of")}{" "}{total} {displayText("task")}{total === 1 ? "" : "s"}</span>{isFetching && !isLoading ? <span>{displayText("· Updating…")}</span> : null}</div><div className="flex flex-wrap items-center justify-end gap-2"><label className="hidden items-center gap-1.5 sm:flex">{t("tasks.rows")}<NativeSelect aria-label={t("tasks.rows")} className="h-9 min-w-16 text-xs" value={String(pageSize)} onChange={(event) => onFilter({ size: Number(event.target.value), page: 0 })}>{PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}</NativeSelect></label><Button type="button" variant="outline" size="sm" disabled={!page?.hasPrevious || isFetching} onClick={() => onFilter({ page: Math.max(0, filters.page - 1) })}><ChevronLeft className="size-4" /><span className="hidden sm:inline">{displayText("Previous")}</span></Button><span>{displayText("Page")}{" "}{(page?.page ?? filters.page) + 1} {displayText("of")}{" "}{Math.max(1, page?.totalPages ?? 1)}</span><Button type="button" variant="outline" size="sm" disabled={!page?.hasNext || isFetching} onClick={() => onFilter({ page: filters.page + 1 })}><span className="hidden sm:inline">{displayText("Next")}</span><ChevronRight className="size-4" /></Button></div></div>
+      <div data-testid="manager-task-records" className="min-h-[18rem] min-w-0 flex-1 md:max-h-[min(62dvh,44rem)] md:overflow-y-auto md:overscroll-contain md:pr-1">{isLoading && <TaskSkeleton />}{errorMessage && !isLoading && <p role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">{errorMessage}</p>}{!isLoading && !errorMessage && page?.items.length === 0 && <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground"><p>{t("tasks.noMatches")}</p><Button type="button" variant="link" className="mt-1" onClick={onClearFilters}>{t("tasks.clearFilters")}</Button></div>}{!isLoading && !errorMessage && page?.items.length ? <ManagerTaskRecords items={page.items} batchNames={batchNames} handlerNames={handlerNames} onOpen={onOpen} /> : null}{hasNextPage && loadMoreRef && <div ref={loadMoreRef} className="py-3 text-center text-sm text-muted-foreground md:hidden" role="status">{fetchNextPageError ? <><p>Could not load more tasks.</p><Button type="button" variant="link" onClick={onLoadMore}>Try again</Button></> : isFetchingNextPage ? "Loading more tasks…" : <Button type="button" variant="link" onClick={onLoadMore}>Load more tasks</Button>}</div>}</div>
+      <div className="mt-3 hidden flex-wrap items-center justify-between gap-3 border-t pt-3 text-xs text-muted-foreground md:flex"><div className="flex items-center gap-2"><span>{start}–{end} of {total} task{total === 1 ? "" : "s"}</span>{isFetching && !isLoading ? <span>· Updating…</span> : null}</div><div className="flex flex-wrap items-center justify-end gap-2"><label className="hidden items-center gap-1.5 sm:flex">{t("tasks.rows")}<NativeSelect aria-label={t("tasks.rows")} className="h-9 min-w-16 text-xs" value={String(pageSize)} onChange={(event) => onFilter({ size: Number(event.target.value), page: 0 })}>{PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}</NativeSelect></label><Button type="button" variant="outline" size="sm" disabled={!page?.hasPrevious || isFetching} onClick={() => onFilter({ page: Math.max(0, filters.page - 1) })}><ChevronLeft className="size-4" /><span className="hidden sm:inline">Previous</span></Button><span>Page {(page?.page ?? filters.page) + 1} of {Math.max(1, page?.totalPages ?? 1)}</span><Button type="button" variant="outline" size="sm" disabled={!page?.hasNext || isFetching} onClick={() => onFilter({ page: filters.page + 1 })}><span className="hidden sm:inline">Next</span><ChevronRight className="size-4" /></Button></div></div>
     </CardContent>
-    <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}><SheetContent side="right" className="w-full max-w-md overflow-y-auto"><SheetHeader><SheetTitle>{t("tasks.filterTitle")}</SheetTitle><SheetDescription>{t("tasks.filterDescription")}</SheetDescription></SheetHeader><div className="space-y-4 px-4"><TaskFilterField label={t("tasks.due")}><NativeSelect value={filters.dueBucket} onChange={(event) => onFilter({ dueBucket: event.target.value as TaskDueBucket })}><option value="ALL">{t("tasks.anyDue")}</option><option value="LATE">{t("tasks.late")}</option><option value="TODAY">{t("tasks.today")}</option><option value="UPCOMING">{t("tasks.next")}</option><option value="NO_DUE">{t("tasks.noDue")}</option></NativeSelect></TaskFilterField><TaskFilterField label={t("tasks.priority")}><NativeSelect value={filters.priority ?? ""} onChange={(event) => onFilter({ priority: (event.target.value || undefined) as TaskPriority | undefined })}><option value="">{t("tasks.allPriorities")}</option>{(["URGENT", "HIGH", "NORMAL", "LOW"] as TaskPriority[]).map((value) => <option key={value} value={value}>{value[0] + value.slice(1).toLowerCase()}</option>)}</NativeSelect></TaskFilterField><TaskFilterField label={t("common.type")}><NativeSelect value={filters.kind ?? ""} onChange={(event) => onFilter({ kind: (event.target.value || undefined) as TaskKind | undefined })}><option value="">{t("tasks.allTypes")}</option><option value="WORK">{t("tasks.work")}</option><option value="VACCINATION">{t("tasks.vaccination")}</option></NativeSelect></TaskFilterField><TaskFilterField label={t("common.batch")}><NativeSelect value={filters.farmWide ? "farm" : filters.batchId?.toString() ?? ""} onChange={(event) => setBatch(event.target.value)}><option value="">{t("tasks.allBatches")}</option><option value="farm">{t("tasks.farmWide")}</option>{batches?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></TaskFilterField><TaskFilterField label={t("tasks.who")}><NativeSelect value={filters.assignedHandlerId?.toString() ?? ""} onChange={(event) => onFilter({ assignedHandlerId: event.target.value ? Number(event.target.value) : undefined })}><option value="">{t("tasks.allHandlers")}</option>{handlers?.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</NativeSelect></TaskFilterField></div><SheetFooter><Button type="button" variant="outline" onClick={onClearFilters}>{t("tasks.clearFilters")}</Button><Button type="button" onClick={() => setFiltersOpen(false)}>{t("common.close")}</Button></SheetFooter></SheetContent></Sheet>
+    <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}><SheetContent side="right" className="w-full max-w-md overflow-y-auto"><SheetHeader><SheetTitle>{t("tasks.filterTitle")}</SheetTitle><SheetDescription>{t("tasks.filterDescription")}</SheetDescription></SheetHeader><div className="space-y-4 px-4"><TaskFilterField label="Status"><NativeSelect className="w-full" aria-label="Status" value={filters.view} onChange={(event) => onFilter({ view: event.target.value as TaskView, dueBucket: "ALL" })}><option value="OPEN">Open</option><option value="COMPLETED">Completed</option><option value="CANCELLED">{t("tasks.closedStatus")}</option><option value="ALL">All</option></NativeSelect></TaskFilterField><TaskFilterField label={t("tasks.due")}><NativeSelect value={filters.dueBucket} onChange={(event) => onFilter({ dueBucket: event.target.value as TaskDueBucket })}><option value="ALL">{t("tasks.anyDue")}</option><option value="LATE">{t("tasks.late")}</option><option value="TODAY">{t("tasks.today")}</option><option value="UPCOMING">{t("tasks.next")}</option><option value="NO_DUE">{t("tasks.noDue")}</option></NativeSelect></TaskFilterField><TaskFilterField label={t("tasks.priority")}><NativeSelect value={filters.priority ?? ""} onChange={(event) => onFilter({ priority: (event.target.value || undefined) as TaskPriority | undefined })}><option value="">{t("tasks.allPriorities")}</option>{(["URGENT", "HIGH", "NORMAL", "LOW"] as TaskPriority[]).map((value) => <option key={value} value={value}>{value[0] + value.slice(1).toLowerCase()}</option>)}</NativeSelect></TaskFilterField><TaskFilterField label={t("common.type")}><NativeSelect value={filters.kind ?? ""} onChange={(event) => onFilter({ kind: (event.target.value || undefined) as TaskKind | undefined })}><option value="">{t("tasks.allTypes")}</option><option value="WORK">{t("tasks.work")}</option><option value="VACCINATION">{t("tasks.vaccination")}</option></NativeSelect></TaskFilterField><TaskFilterField label={t("common.batch")}><NativeSelect value={filters.farmWide ? "farm" : filters.batchId?.toString() ?? ""} onChange={(event) => setBatch(event.target.value)}><option value="">{t("tasks.allBatches")}</option><option value="farm">{t("tasks.farmWide")}</option>{batches?.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</NativeSelect></TaskFilterField><TaskFilterField label={t("tasks.who")}><NativeSelect value={filters.assignedHandlerId?.toString() ?? ""} onChange={(event) => onFilter({ assignedHandlerId: event.target.value ? Number(event.target.value) : undefined })}><option value="">{t("tasks.allHandlers")}</option>{handlers?.map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</NativeSelect></TaskFilterField></div><SheetFooter><Button type="button" variant="outline" onClick={onClearFilters}>{t("tasks.clearFilters")}</Button><Button type="button" onClick={() => setFiltersOpen(false)}>{t("common.close")}</Button></SheetFooter></SheetContent></Sheet>
   </Card>;
 }
 
@@ -437,7 +429,7 @@ function ManagerTaskRecords({ items, batchNames, handlerNames, onOpen }: { items
         <TableBody>{items.map((task) => { const batchName = task.batchId == null ? "Farm-wide" : batchNames.get(task.batchId) ?? `Batch ${task.batchId}`; const assignedTo = task.sourceType === "SELECTION_REVIEW_FOLLOWUP" ? "Manager and handlers" : task.assignmentScope === "HANDLER" ? handlerNames.get(task.assignedHandlerId ?? -1) ?? `Handler #${task.assignedHandlerId}` : "All handlers"; return <TableRow key={task.id} className={task.overdue && task.status !== "COMPLETED" ? "bg-warning-muted/20" : undefined}><TableCell className="whitespace-normal"><Button variant="ghost" type="button" className="block max-w-full text-left outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onOpen(task)}><span className="block line-clamp-2 font-semibold">{task.title}</span><span className="mt-1 block truncate text-xs text-muted-foreground">#{task.id}{task.sourceType === "VACCINATION_PLAN" ? " · Vaccination" : task.sourceType === "SELECTION_REVIEW_FOLLOWUP" ? " · Review follow-up" : task.sourceType ? ` · ${task.sourceType}` : ""}</span></Button></TableCell><TableCell className="whitespace-normal"><span className="block truncate font-medium">{batchName}</span><span className="mt-1 block truncate text-xs text-muted-foreground xl:hidden">{assignedTo}</span></TableCell><TableCell className="hidden whitespace-normal xl:table-cell"><span className="block truncate">{assignedTo}</span></TableCell><TableCell className="whitespace-normal"><span className={task.overdue && task.status !== "COMPLETED" ? "font-semibold text-warning-ink" : ""}>{formatManagerDue(task)}</span></TableCell><TableCell className="hidden xl:table-cell"><Badge variant={task.priority === "URGENT" || task.priority === "HIGH" ? "secondary" : "secondary"}>{task.priority}</Badge></TableCell><TableCell><TaskStatusBadge task={task} /></TableCell><TableCell className="text-right"><Button type="button" variant="ghost" size="icon-sm" aria-label={`View task ${task.title}`} onClick={() => onOpen(task)}><Eye className="size-4" /></Button></TableCell></TableRow>; })}</TableBody>
       </Table></div>
     </div>
-    <div data-testid="manager-task-mobile-list" className="space-y-2 md:hidden">{items.map((task) => { const batchName = task.batchId == null ? "Farm-wide" : batchNames.get(task.batchId) ?? `Batch ${task.batchId}`; const assignedTo = task.sourceType === "SELECTION_REVIEW_FOLLOWUP" ? "Manager and handlers" : task.assignmentScope === "HANDLER" ? handlerNames.get(task.assignedHandlerId ?? -1) ?? `Handler #${task.assignedHandlerId}` : "All handlers"; return <Button variant="ghost" key={task.id} type="button" className={`block min-h-24 w-full rounded-xl border p-3 text-left outline-none transition-colors hover:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary ${task.overdue && task.status !== "COMPLETED" ? "border-warning-border bg-warning-muted/20" : "bg-card"}`} onClick={() => onOpen(task)}><div className="flex items-start justify-between gap-3"><span className="min-w-0 flex-1"><span className="block line-clamp-2 font-semibold">{task.title}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{batchName} · {assignedTo}</span></span><TaskStatusBadge task={task} /></div><div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>{formatManagerDue(task)}</span><span>{task.priority}</span><span>#{task.id}</span><ChevronRight className="ml-auto size-4" aria-hidden="true" /></div></Button>; })}</div>
+    <div data-testid="manager-task-mobile-list" className="space-y-2 md:hidden">{items.map((task) => { const batchName = task.batchId == null ? "Farm-wide" : batchNames.get(task.batchId) ?? `Batch ${task.batchId}`; const assignedTo = task.sourceType === "SELECTION_REVIEW_FOLLOWUP" ? "Manager and handlers" : task.assignmentScope === "HANDLER" ? handlerNames.get(task.assignedHandlerId ?? -1) ?? `Handler #${task.assignedHandlerId}` : "All handlers"; return <Button variant="ghost" key={task.id} type="button" className={`block h-auto min-h-24 w-full rounded-xl border border-border p-3 text-left outline-none transition-colors hover:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary ${task.overdue && task.status !== "COMPLETED" ? "border-warning-border bg-warning-muted/20" : "bg-card"}`} onClick={() => onOpen(task)}><div className="flex items-start justify-between gap-3"><span className="min-w-0 flex-1"><span className="block line-clamp-2 font-semibold">{task.title}</span><span className="mt-1 block truncate text-xs text-muted-foreground">{batchName} · {assignedTo}</span></span><TaskStatusBadge task={task} /></div><div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground"><span>{formatManagerDue(task)}</span><span>{task.priority}</span><span>#{task.id}</span><ChevronRight className="ml-auto size-4" aria-hidden="true" /></div></Button>; })}</div>
   </>;
 }
 
@@ -587,11 +579,7 @@ function TaskSummaryBar({ summary, filters, onFilter }: { summary?: TaskSummaryR
   const items: { label: string; value: number; view: TaskView; dueBucket: TaskDueBucket }[] = [
     { label: "Late", value: summary?.late ?? 0, view: "OPEN", dueBucket: "LATE" }, { label: "Today", value: summary?.today ?? 0, view: "OPEN", dueBucket: "TODAY" }, { label: "Upcoming", value: summary?.upcoming ?? 0, view: "OPEN", dueBucket: "UPCOMING" }, { label: "No due date", value: summary?.noDueDate ?? 0, view: "OPEN", dueBucket: "NO_DUE" }, { label: "Completed", value: summary?.completed ?? 0, view: "COMPLETED", dueBucket: "ALL" },
   ];
-  return <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">{items.map((item) => { const active = filters.view === item.view && filters.dueBucket === item.dueBucket; return <Button variant="ghost" key={item.label} type="button" aria-pressed={active} onClick={() => onFilter(active ? { view: "ALL", dueBucket: "ALL" } : { view: item.view, dueBucket: item.dueBucket })} className={`min-h-20 rounded-xl border p-3 text-left transition-colors hover:border-primary/50 ${active ? "border-primary bg-primary/5" : "bg-card"}`}><p className="text-xs font-medium text-muted-foreground">{item.label}</p><p className="mt-1 text-xl font-bold tabular-nums">{item.value}</p></Button>; })}</div>;
-}
-
-function FilterPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
-  return <Button variant="ghost" type="button" aria-pressed={active} onClick={onClick} className={`min-h-10 shrink-0 rounded-lg border px-3 text-sm font-semibold transition-colors ${active ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}>{children}</Button>;
+  return <div aria-label="Task summaries" className="flex snap-x snap-proximity gap-2 overflow-x-auto overscroll-x-contain pb-1 sm:grid sm:grid-cols-5 sm:overflow-visible sm:pb-0">{items.map((item) => { const active = filters.view === item.view && filters.dueBucket === item.dueBucket; return <Button variant="outline" key={item.label} type="button" aria-pressed={active} onClick={() => onFilter(active ? { view: "ALL", dueBucket: "ALL" } : { view: item.view, dueBucket: item.dueBucket })} className={`h-auto min-h-20 w-36 min-w-0 shrink-0 snap-start flex-col items-start justify-center gap-1 rounded-xl p-3 text-left whitespace-normal shadow-none sm:w-auto ${active ? "border-primary bg-primary/5" : "border-border bg-card hover:border-primary/50"}`}><span className="text-xs font-medium text-muted-foreground">{item.label}</span><span className="text-xl font-bold tabular-nums">{item.value}</span></Button>; })}</div>;
 }
 
 function TaskDetailDialog({ task, open, isManager, handlerNames, history, pending, onOpenChange, onDone, onCloseTask }: { task: HandlerTask | null; open: boolean; isManager: boolean; handlerNames: Map<number, string>; history?: TaskStatusHistory[]; pending: boolean; onOpenChange: (open: boolean) => void; onDone: (task: HandlerTask) => void; onCloseTask: (task: HandlerTask) => void }) {

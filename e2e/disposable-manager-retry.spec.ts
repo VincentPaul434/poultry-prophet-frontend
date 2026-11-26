@@ -55,7 +55,7 @@ test("manager retries product, expense and stock requests after lost server ackn
   });
 
   await page.goto("/inputs");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Add product", exact: true }).click();
   const createProduct = page.getByRole("dialog", { name: "Add farm product" });
   await createProduct.getByLabel("Product / brand").fill(productName);
   await createProduct.getByLabel("Type", { exact: true }).selectOption("VACCINE");

@@ -243,7 +243,7 @@ test("a lost stock addition is recoverable after reload without a new operation"
 test("manager can create a whole-unit product and cannot start with fractional stock", async ({ page, baseURL }) => {
   const calls = await setup(page, new URL(baseURL!).origin);
   await page.goto("/inputs");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Add product", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Add farm product" });
   await dialog.getByLabel("Product / brand").fill("Whole vials");
   await dialog.getByLabel("Inventory unit").fill("vial");
@@ -261,7 +261,7 @@ test("manager can create a whole-unit product and cannot start with fractional s
 test("a lost product creation response can be safely retried after reload", async ({ page, baseURL }) => {
   const calls = await setup(page, new URL(baseURL!).origin, false, true);
   await page.goto("/inputs");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Add product", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Add farm product" });
   await dialog.getByLabel("Product / brand").fill("Retry product");
   await dialog.getByLabel("Starting stock (optional)", { exact: true }).fill("2");

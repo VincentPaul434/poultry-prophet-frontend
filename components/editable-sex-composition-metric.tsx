@@ -31,7 +31,7 @@ function CountInput({ id, label, value, onChange }: { id: string; label: string;
 
 export function EditableSexCompositionMetric({ batch, fallback, readOnly = false }: { batch: Batch; fallback?: SexCompositionFallback | null; readOnly?: boolean }) {
   const { t } = useLocale();
-  const { data: current, isLoading, refetch: refetchCurrent } = useSexComposition(batch.id);
+  const { data: current, isLoading, isError, refetch: refetchCurrent } = useSexComposition(batch.id);
   const save = useRecordSexComposition();
   const { snapshot: syncSnapshot } = useOfflineSync();
   const displayed = current ?? fallback ?? null;
@@ -66,7 +66,8 @@ export function EditableSexCompositionMetric({ batch, fallback, readOnly = false
 
   const maleValue = displayed ? displayed.projectedMaleCount ?? displayed.maleCount : null;
   const femaleValue = displayed ? displayed.projectedFemaleCount ?? displayed.femaleCount : null;
-  const metricValue = displayed && maleValue != null && femaleValue != null ? `${maleValue} / ${femaleValue}` : "—";
+  const metricValue = displayed && maleValue != null && femaleValue != null ? `${maleValue} / ${femaleValue}` : t("sexComposition.notRecorded");
+  const unavailable = !displayed && (isLoading || isError);
   const pendingLabel = displayed?.pendingSync ? t("sexComposition.pendingSync") : undefined;
   const accessibleLabel = displayed
     ? `${t("sexComposition.edit")}: ${maleValue ?? "—"} ${t("sexComposition.male").toLowerCase()}, ${femaleValue ?? "—"} ${t("sexComposition.female").toLowerCase()}`
@@ -132,12 +133,12 @@ export function EditableSexCompositionMetric({ batch, fallback, readOnly = false
 
   const metric = <div className={cn("h-full w-full min-w-0 bg-card px-3 py-3.5 text-left sm:px-4", !readOnly && "transition-colors hover:bg-muted/40")}>
     <div className="flex items-center justify-between gap-2"><p className="truncate text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{t("sexComposition.maleFemale")}</p>{!readOnly && (displayed ? <Pencil className="size-3.5 shrink-0 text-primary" aria-hidden="true" /> : <Plus className="size-3.5 shrink-0 text-primary" aria-hidden="true" />)}</div>
-    <p className="mt-1 truncate text-xl font-bold tracking-tight tabular-nums sm:text-2xl">{isLoading && !displayed ? "…" : metricValue}</p>
+    <p className={cn("mt-1 truncate font-bold tracking-tight tabular-nums", !displayed ? "text-sm" : "text-xl sm:text-2xl")} role={isLoading && !displayed ? "status" : undefined}>{isLoading && !displayed ? t("sexComposition.loading") : isError && !displayed ? t("sexComposition.unavailable") : metricValue}</p>
     {pendingLabel && <span className="mt-1 block size-1.5 rounded-full bg-warning" title={pendingLabel} aria-label={pendingLabel} />}
   </div>;
 
   return <>
-    {readOnly ? metric : <Button type="button" variant="ghost" className="h-full w-full min-w-0 rounded-none border-0 p-0 text-left" aria-label={accessibleLabel} onClick={startEdit}>{metric}</Button>}
+    {readOnly ? metric : <Button type="button" variant="ghost" className="h-full w-full min-w-0 rounded-none border-0 p-0 text-left" aria-label={unavailable ? `${t("sexComposition.maleFemale")}: ${isLoading ? t("sexComposition.loading") : t("sexComposition.unavailable")}` : accessibleLabel} disabled={unavailable} onClick={startEdit}>{metric}</Button>}
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="grid max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-lg grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0">
         <DialogHeader className="border-b px-4 py-4 pr-12 sm:px-5"><DialogTitle>{displayed ? t("sexComposition.editTitle") : t("sexComposition.recordTitle")}</DialogTitle><DialogDescription>{t("sexComposition.description")}</DialogDescription></DialogHeader>

@@ -37,6 +37,11 @@ server-only and must be configured in the deployment environment.
 `NEXT_PUBLIC_API_BASE_URL` remains supported as a compatibility fallback for
 existing deployments and should be replaced with `BACKEND_API_URL`.
 
+Session restoration uses a persistent HttpOnly refresh cookie and checks the backend's
+`/api/health/ready` endpoint before sending it. A failed readiness check can be retried
+without consuming the refresh token. If a refresh was sent but its outcome is unknown,
+the app does not replay the token; a new sign-in may be required to protect the session.
+
 Offline daily-measurement replay is disabled by default. Set
 `NEXT_PUBLIC_OFFLINE_DAILY_RECORDS=true` only after deploying the matching backend and
 applying the reviewed V27 receipt migration to the intended database. Older backends reject

@@ -497,7 +497,7 @@ export function useUpdateTaskStatus() {
     },
   });
 }
-export function useSexComposition(batchId: number, enabled = true) { return useQuery({ queryKey: qk.batches.sexComposition(batchId), queryFn: () => batchApi.sexComposition(batchId), enabled }); }
+export function useSexComposition(batchId: number, enabled = true) { return useQuery({ queryKey: qk.batches.sexComposition(batchId), queryFn: () => batchApi.sexComposition(batchId), enabled, staleTime: 30_000 }); }
 export function useSexCompositionContext(batchId: number, observedOn?: string, enabled = true) {
   return useQuery({
     queryKey: qk.batches.sexCompositionContext(batchId, observedOn),

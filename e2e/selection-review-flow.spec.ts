@@ -338,6 +338,7 @@ async function finalizeDeliveredSelection(page: Page) {
 }
 
 async function confirmCompleteReview(page: Page) {
+  await page.getByRole("tab", { name: "Review & versions" }).click();
   await page.locator("#complete-review").click();
   await page.getByRole("dialog", { name: "Complete review?" }).getByRole("button", { name: "Complete review", exact: true }).click();
 }
@@ -394,10 +395,12 @@ test.describe("Selection review decision flow", () => {
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(page.getByLabel("Report summary")).toContainText("100 / 150");
     await expect(page.getByLabel("Report summary")).toContainText("1 / 1");
-    await expect(page.getByText("New handler observation", { exact: true })).toBeVisible();
-    await expect(page.getByRole("list", { name: "Products used", exact: true }).getByText("New vitamin record", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Report summary")).toContainText("33.3%");
     await expect(page.getByLabel("Report summary")).toContainText("₱13,000");
+    await page.getByRole("tab", { name: "Health & vaccination" }).click();
+    await expect(page.getByText("New handler observation", { exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "Costs & products" }).click();
+    await expect(page.getByRole("list", { name: "Products used", exact: true }).getByText("New vitamin record", { exact: true })).toBeVisible();
   });
 
   test("does not substitute live or unrelated saved data when a requested report is missing", async ({ page }) => {
@@ -466,10 +469,32 @@ test.describe("Selection review decision flow", () => {
 
     await page.goto("/batches/2/selection");
 
-    await page.getByText("About this report", { exact: true }).click();
     await expect(page.getByText("Full recorded batch history from hatch to today.")).toBeVisible();
     await expect(page.getByLabel("Report start")).toHaveCount(0);
     await expect(page.getByLabel("Report as of")).toHaveCount(0);
+  });
+
+  test("keeps evidence, review decisions, and saved versions in accessible sections", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 721 });
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { noReviews: true });
+    await page.goto("/batches/2/selection");
+    const sections = page.getByRole("tablist", { name: "Batch review sections" });
+    await expect(sections.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByLabel("Report summary")).toBeVisible();
+    await page.getByRole("button", { name: "Review decision", exact: true }).click();
+    await expect(sections.getByRole("tab", { name: "Review & versions" })).toHaveAttribute("aria-selected", "true");
+    await expect(sections.getByRole("tab", { name: "Review & versions" })).toBeFocused();
+    await page.getByLabel("Notes (optional)", { exact: true }).fill("Check again after observation.");
+    await sections.getByRole("tab", { name: "Health & vaccination" }).click();
+    await expect(page.getByRole("heading", { name: "Vaccination record" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Health history/ })).toBeVisible();
+    await sections.getByRole("tab", { name: "Costs & products" }).click();
+    await expect(page.getByRole("heading", { name: "Batch expenses" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Products used/ })).toBeVisible();
+    await expect(page.getByText("No product records", { exact: true })).toBeVisible();
+    await sections.getByRole("tab", { name: "Review & versions" }).click();
+    await expect(page.getByRole("textbox", { name: "Notes (optional)", exact: true })).toHaveValue("Check again after observation.");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 
   test("keeps report sections readable on a narrow screen", async ({ page }) => {
@@ -477,10 +502,13 @@ test.describe("Selection review decision flow", () => {
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 });
     await page.goto("/batches/2/selection?reviewId=44");
 
-    await expect(page.getByRole("heading", { name: batch.name })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Batch review" })).toBeVisible();
     await expect(page.getByText("Jump to section", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Report summary")).toBeVisible();
+    await page.getByRole("tab", { name: "Health & vaccination" }).click();
     await expect(page.locator("#report-vaccination")).toBeVisible();
     await expect(page.locator("#report-health")).toBeVisible();
+    await page.getByRole("tab", { name: "Costs & products" }).click();
     await expect(page.locator("#report-expenses")).toBeVisible();
     await expect(page.locator("#report-mortality")).toHaveCount(0);
     await expect(page.getByText("Previous selection outcome", { exact: true })).toHaveCount(0);
@@ -569,6 +597,7 @@ test.describe("Selection review decision flow", () => {
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { noReviews: true });
     await page.goto("/batches/2/selection");
     await expect(page.getByRole("heading", { name: "Pasya sa pagsusuri" })).toBeVisible();
+    await page.getByRole("button", { name: "Pasya sa pagsusuri", exact: true }).click();
     await expect(page.getByRole("button", { name: "Tapusin ang pagsusuri", exact: true })).toBeVisible();
     await expect(page.getByLabel("Pasya pagkatapos suriin")).toBeVisible();
     await expect(page.locator("html")).toHaveAttribute("lang", "fil");
@@ -600,6 +629,7 @@ test.describe("Selection review decision flow", () => {
     await expect(page.getByRole("button", { name: "Refresh", exact: true })).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Refresh records", exact: true })).toHaveCount(0);
     await expect(page.getByText("Updates every minute", { exact: true })).not.toBeVisible();
+    await page.getByRole("button", { name: "Review decision", exact: true }).click();
     const notes = page.getByRole("textbox", { name: "Notes (optional)", exact: true });
     await notes.fill("Keep this decision while refreshing.");
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
@@ -639,7 +669,7 @@ test.describe("Selection review decision flow", () => {
     const api = await mockReviewBackend(page, { userId: 2, email: "handler@example.test", fullName: "Fixture Handler", role: "HANDLER", farmId: 1 });
 
     await page.goto("/batches/2/selection?reviewId=44");
-    await expect(page.getByRole("heading", { name: batch.name })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Batch review" })).toBeVisible();
     const summary = page.getByLabel("Report summary");
     await expect(summary).toContainText("Batch cost");
     await expect(summary).toContainText("Manager only");
@@ -658,6 +688,7 @@ test.describe("Selection review decision flow", () => {
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { plan: [vaccine(1, "COMPLETED"), vaccine(2, "SKIPPED"), vaccine(3, "CANCELLED")] });
     await page.goto("/batches/2/selection");
     await expect(page.getByLabel("Report summary")).toContainText("1 / 3");
+    await page.getByRole("tab", { name: "Health & vaccination" }).click();
     await page.getByRole("button", { name: /Vaccination list/ }).click();
     await expect(page.getByText("Dose 2", { exact: true })).toBeVisible();
     await expect(page.getByText("Skipped", { exact: true })).toBeVisible();
@@ -675,6 +706,7 @@ test.describe("Selection review decision flow", () => {
     ];
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { plan });
     await page.goto("/batches/2/selection");
+    await page.getByRole("tab", { name: "Health & vaccination" }).click();
     const report = page.locator("#report-vaccination");
     await expect(report.getByText("Dose 1", { exact: true })).toBeHidden();
     const heightBefore = (await report.boundingBox())!.height;
@@ -699,8 +731,9 @@ test.describe("Selection review decision flow", () => {
   test("does not report an unavailable vaccination schedule as an empty one", async ({ page }) => {
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { planFails: true });
     await page.goto("/batches/2/selection");
-    await expect(page.getByText("Vaccination schedule unavailable")).toBeVisible();
     await expect(page.getByLabel("Report summary")).toContainText("Unavailable");
+    await page.getByRole("tab", { name: "Health & vaccination" }).click();
+    await expect(page.getByText("Vaccination schedule unavailable")).toBeVisible();
     await expect(page.getByText("No vaccination schedule or record for this batch.")).toHaveCount(0);
   });
 
@@ -709,6 +742,7 @@ test.describe("Selection review decision flow", () => {
     payload.productUse.push({ sourceId: 55, recordedAt: "2026-01-10T08:00:00Z", productType: "VACCINE", brandName: "Snapshot vaccine", productName: "Snapshot vaccine", quantity: 1, unit: "dose", unitCost: null, calculatedCost: null, costStatus: null, purpose: null, notes: null, recordedBy: 1 } as never);
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload, plan: [vaccine(1, "COMPLETED")] });
     await page.goto("/batches/2/selection?reviewId=44");
+    await page.getByRole("tab", { name: "Health & vaccination" }).click();
     await expect(page.getByText("Current vaccination schedule")).toBeVisible();
     await page.getByRole("button", { name: /Vaccination list/ }).click();
     await expect(page.getByText("Dose 1", { exact: true })).toBeVisible();
@@ -727,6 +761,7 @@ test.describe("Selection review decision flow", () => {
     await expect(summary).toContainText("Recorded deaths");
     await expect(summary).toContainText("10%");
     await expect(summary).toContainText("15 / 150 starting birds");
+    await page.getByRole("tab", { name: "Health & vaccination" }).click();
     await expect(page.getByText(/No health events recorded/i)).toBeVisible();
   });
 
@@ -750,14 +785,17 @@ test.describe("Selection review decision flow", () => {
     await expect(page.getByText("Supporting details", { exact: true })).toHaveCount(0);
   });
 
-  test("filters event records from the ring chart and clears the selection", async ({ page }) => {
+  test("filters event records by type and clears the selection", async ({ page }) => {
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 });
     const events = [{ id: 1, eventType: "HEALTH_DEATH", title: "Health death record", eventDate: "2026-11-08", affectedCount: 10 }, { id: 2, eventType: "MISSING", title: "Missing record", eventDate: "2026-11-08", affectedCount: 2 }];
     await page.route("**/api/backend/batches/2/events/report?*", route => route.fulfill({ json: { totalRecords: 2, categoryDistribution: { HEALTH_DEATH: 1, MISSING: 1 }, overTime: [] } }));
     await page.route("**/api/backend/batches/2/events/page?*", route => { const type = new URL(route.request().url()).searchParams.get("type"); const items = events.filter(e => !type || e.eventType === type); return route.fulfill({ json: { items, page: 0, totalItems: items.length, totalPages: 1, hasPrevious: false, hasNext: false } }); });
     await page.goto("/batches/2/data-entry?view=report");
-    await page.getByRole("button", { name: "Health Death: 1 events, 50%", exact: true }).press("Enter");
-    await expect(page.getByLabel("Filter event type")).toHaveValue("HEALTH_DEATH");
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
+    await page.getByLabel("Filter event type").selectOption("HEALTH_DEATH");
+    await expect(page).toHaveURL(/type=HEALTH_DEATH/);
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Filters (1)" })).toBeVisible();
     const table = page.getByRole("region", { name: "Event records table" });
     await expect(table).toContainText("Health death record");
     await expect(table).not.toContainText("Missing record");
@@ -785,10 +823,28 @@ test.describe("Selection review decision flow", () => {
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 });
     await page.goto("/batches/2/data-entry?from=batch&view=history");
     await expect(page.getByRole("heading", { name: "Event Log" })).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText("No events match these filters.")).toBeVisible();
+    await expect(page.getByText("No events in this period")).toBeVisible();
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
     await expect(page.getByLabel("Filter event period")).toHaveValue("30d");
-    await page.getByRole("button", { name: "Report", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Events by type" })).toBeVisible();
+    await page.getByLabel("Filter event period").selectOption("custom");
+    await expect(page.getByLabel("Event report start date")).toBeVisible();
+    await page.getByLabel("Filter concern level").selectOption("HIGH");
+    await expect(page).toHaveURL(/concern=HIGH/);
+    await page.getByLabel("Population only").click();
+    await expect(page).toHaveURL(/populationOnly=true/);
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(page.getByText("No matching events")).toBeVisible();
+    await page.getByRole("button", { name: "Clear search and filters" }).click();
+    await expect(page.getByText("No events in this period")).toBeVisible();
+    await page.getByRole("button", { name: "Filters", exact: true }).click();
+    await page.getByLabel("Filter concern level").selectOption("HIGH");
+    await expect(page).toHaveURL(/concern=HIGH/);
+    await page.getByRole("button", { name: "Reset filters" }).click();
+    await expect(page.getByLabel("Filter event period")).toHaveValue("30d");
+    await expect(page.getByLabel("Filter concern level")).toHaveValue("ALL");
+    await expect(page.getByLabel("Population only")).not.toBeChecked();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Event records" })).toBeVisible();
   });
 
   test("shows event records in a mobile table and opens their details", async ({ page }) => {
@@ -816,6 +872,14 @@ test.describe("Selection review decision flow", () => {
     await expect(dialog).toContainText("Last seen near the coop.");
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
+  });
+
+  test("offers a way back from an empty event records page", async ({ page }) => {
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 });
+    await page.goto("/batches/2/data-entry?from=batch&view=history&page=2");
+    await expect(page.getByText("No events on this page")).toBeVisible();
+    await page.getByRole("button", { name: "Go to first page" }).click();
+    await expect(page.getByText("No events in this period")).toBeVisible();
   });
 
   test("opens the handler history without the recording form", async ({ page }) => {
@@ -874,6 +938,7 @@ test.describe("Selection review decision flow", () => {
   test("stacks vaccination and health history on mobile and omits the duplicate population section", async ({ page }) => {
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 });
     await page.goto("/batches/2/selection");
+    await page.getByRole("tab", { name: "Health & vaccination" }).click();
     const vaccination = page.locator("#report-vaccination");
     const health = page.locator("#report-health");
     await expect(vaccination).toBeVisible();
@@ -884,6 +949,7 @@ test.describe("Selection review decision flow", () => {
     expect(healthBox).not.toBeNull();
     expect(healthBox!.y).toBeGreaterThanOrEqual(vaccineBox!.y + vaccineBox!.height);
     await expect(page.getByRole("heading", { name: "Mortality and population" })).toHaveCount(0);
+    await page.getByRole("tab", { name: "Overview" }).click();
     await expect(page.getByLabel("Report summary")).toContainText("Recorded deaths");
     await expect(page.getByText("Jump to section", { exact: true })).toHaveCount(0);
   });
@@ -896,8 +962,45 @@ test.describe("Selection review decision flow", () => {
     await page.goto("/batches/2/selection");
     await expect(page.getByLabel("Report summary")).toContainText("Mixed");
     await expect(page.getByLabel("Report summary")).toContainText("Partial cost");
+    await page.getByRole("tab", { name: "Costs & products" }).click();
     await expect(page.getByRole("region", { name: "PHP finance" })).toBeVisible();
     await expect(page.getByRole("region", { name: "USD finance" })).toBeVisible();
+  });
+
+  test("loads sex composition alongside the overview and distinguishes missing expenses", async ({ page }) => {
+    const payload = reportPayload();
+    Object.assign(payload.finance.currencyTotals[0], { recordedExpense: 0, totalRecordedBatchCost: 0, recordsMayBeIncomplete: false });
+    Object.assign(payload.finance, { recordedExpense: 0, totalRecordedBatchCost: 0, recordsMayBeIncomplete: false });
+    await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload });
+
+    let releaseOverview!: () => void;
+    let releaseComposition!: () => void;
+    const overviewGate = new Promise<void>((resolve) => { releaseOverview = resolve; });
+    const compositionGate = new Promise<void>((resolve) => { releaseComposition = resolve; });
+    await page.route("**/api/backend/batches/2/overview", async (route) => {
+      await overviewGate;
+      await route.fulfill({ json: { batch, latestIndicator: null, recentRecords: [], activeAlerts: [] } });
+    });
+    await page.route("**/api/backend/batches/2/sex-composition", async (route) => {
+      await compositionGate;
+      await route.fulfill({ json: { observedOn: "2026-11-18", populationAsOfObservation: 150, maleCount: 6, femaleCount: 25, unclassifiedCount: 119, projectionStatus: "VALID" } });
+    });
+    const compositionRequested = page.waitForRequest("**/api/backend/batches/2/sex-composition");
+    try {
+      await page.goto("/batches/2");
+      await compositionRequested;
+      releaseOverview();
+      const summary = page.getByRole("heading", { name: "Batch summary" }).locator("..");
+      await expect(summary.getByRole("button", { name: "Male / female: Loading…" })).toBeDisabled();
+      const expenses = summary.getByText("Batch expenses", { exact: true }).locator("..");
+      await expect(expenses).toContainText("N/A");
+      await expect(expenses).toContainText("No record");
+      releaseComposition();
+      await expect(summary.getByRole("button", { name: /Edit sex composition: 6 male, 25 female/i })).toBeVisible();
+    } finally {
+      releaseOverview();
+      releaseComposition();
+    }
   });
 
   for (const partial of [false, true]) {
@@ -937,6 +1040,7 @@ test.describe("Selection review decision flow", () => {
     await page.goto("/batches/2/selection");
     await expect(page.getByLabel("Report summary")).toContainText("₱1,890");
     await expect(page.getByLabel("Report summary")).toContainText("Partial cost");
+    await page.getByRole("tab", { name: "Costs & products" }).click();
     await expect(page.locator("#report-expenses")).toContainText("5 product-use records need cost details. Total is partial.");
     await expect(page.locator("#report-expenses").getByRole("link", { name: "View products" })).toHaveAttribute("href", "#report-products");
   });
@@ -950,6 +1054,7 @@ test.describe("Selection review decision flow", () => {
     await page.goto("/batches/2/selection?reviewId=44");
     await expect(page.getByLabel("Report summary")).toContainText("₱1,890");
     await expect(page.getByLabel("Report summary")).toContainText("Partial cost");
+    await page.getByRole("tab", { name: "Costs & products" }).click();
     await expect(page.locator("#report-expenses")).toContainText(/product.use record.*need.*cost details/i);
   });
 
@@ -959,6 +1064,7 @@ test.describe("Selection review decision flow", () => {
     Object.assign(payload.finance.currencyTotals[0], { saleIncome: 3200, saleTransactionCount: 1, recordedIncome: 9000, recordedContribution: -3450 });
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload });
     await page.goto("/batches/2/selection");
+    await page.getByRole("tab", { name: "Costs & products" }).click();
     const expenses = page.locator("#report-expenses");
     await expect(expenses).toContainText("₱12,450");
     await expect(page.locator("#report-products")).toContainText("Starter feed");
@@ -995,6 +1101,7 @@ test.describe("Selection review decision flow", () => {
     ] as unknown as typeof payload.productUse;
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload });
     await page.goto("/batches/2/selection");
+    await page.getByRole("tab", { name: "Costs & products" }).click();
     const products = page.getByRole("list", { name: "Products used", exact: true });
     const partial = products.getByRole("listitem").filter({ hasText: "Booster feed" });
     await expect(partial).toContainText("20 pack");
@@ -1010,6 +1117,7 @@ test.describe("Selection review decision flow", () => {
     payload.productUse = [{ sourceId: 1, recordedAt: "2026-01-10T00:00:00Z", productType: "FEED", brandName: "Starter feed", productName: null, quantity: 2, unit: "kg", unitCost: 50, calculatedCost: 100, costStatus: "VALUED", purpose: null, notes: null, recordedBy: 1 }] as unknown as typeof payload.productUse;
     await mockReviewBackend(page, { userId: 2, email: "handler@example.test", fullName: "Fixture Handler", role: "HANDLER", farmId: 1 }, { payload, exposeFinanceToHandler: true });
     await page.goto("/batches/2/selection");
+    await page.getByRole("tab", { name: "Products used" }).click();
     const products = page.getByRole("list", { name: "Products used", exact: true });
     await expect(products.getByRole("listitem").filter({ hasText: "Starter feed" })).toContainText("2 kg");
     await expect(products.getByText(/cost/i)).toHaveCount(0);
@@ -1025,9 +1133,10 @@ test.describe("Selection review decision flow", () => {
       await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload });
       await page.goto("/batches/2/selection");
       const cost = page.getByLabel("Report summary").getByText("Batch cost", { exact: true }).locator("..");
-      await expect(cost).toContainText(knownCost > 0 ? "₱1,820*" : "—");
+      await expect(cost).toContainText(knownCost > 0 ? "₱1,820*" : "N/A");
       await expect(cost).toContainText("Partial cost");
       if (knownCost === 0) await expect(cost).not.toContainText("₱0");
+      await page.getByRole("tab", { name: "Costs & products" }).click();
       await expect(page.getByText("1 product-use record needs cost details. Total is partial.", { exact: false })).toBeVisible();
     });
   }
@@ -1038,6 +1147,7 @@ test.describe("Selection review decision flow", () => {
     await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload });
     await page.goto("/batches/2/selection?reviewId=44");
     await expect(page.getByLabel("Report summary")).toContainText("Currency unavailable");
+    await page.getByRole("tab", { name: "Costs & products" }).click();
     await expect(page.getByText(/Historical finance totals are unavailable/)).toBeVisible();
     await expect(page.getByText("No batch expenses recorded.")).toHaveCount(0);
   });
@@ -1045,7 +1155,7 @@ test.describe("Selection review decision flow", () => {
   test("does not show expense details to a handler even if a legacy payload contains finance", async ({ page }) => {
     await mockReviewBackend(page, { userId: 2, email: "handler@example.test", fullName: "Fixture Handler", role: "HANDLER", farmId: 1 }, { exposeFinanceToHandler: true });
     await page.goto("/batches/2/selection");
-    await expect(page.getByRole("heading", { name: batch.name })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Batch review" })).toBeVisible();
     await expect(page.getByLabel("Report summary")).toContainText("Manager only");
     await expect(page.getByText("₱12,450", { exact: false })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Batch expenses" })).toHaveCount(0);
@@ -1111,6 +1221,7 @@ test.describe("Selection review decision flow", () => {
   test("asks for confirmation before saving a review and leaves it unchanged when cancelled", async ({ page }) => {
     const api = await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { noReviews: true });
     await page.goto("/batches/2/selection");
+    await page.getByRole("tab", { name: "Review & versions" }).click();
     await page.getByRole("button", { name: "Complete review", exact: true }).click();
     const confirmation = page.getByRole("dialog", { name: "Complete review?" });
     await expect(confirmation).toBeVisible();
@@ -1124,6 +1235,7 @@ test.describe("Selection review decision flow", () => {
   test("confirms the manager's selected review decision", async ({ page }) => {
     const api = await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { noReviews: true });
     await page.goto("/batches/2/selection");
+    await page.getByRole("tab", { name: "Review & versions" }).click();
     await page.getByLabel("Decision after review").selectOption("REVIEW_COMPLETED");
     await page.getByRole("button", { name: "Complete review", exact: true }).click();
     const confirmation = page.getByRole("dialog", { name: "Complete review?" });
@@ -1186,34 +1298,27 @@ test.describe("Selection review decision flow", () => {
   });
 });
 
-test("desktop places expenses beside vaccination and a wider product table beside health", async ({ page }, testInfo) => {
+test("desktop groups health and cost evidence into separate sections", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium", "Desktop Chromium coverage.");
   await page.setViewportSize({ width: 1440, height: 900 });
   const payload = reportPayload();
   payload.productUse = [{ sourceId: 1, recordedAt: "2026-01-10T00:00:00Z", productType: "FEED", brandName: "Starter feed", productName: null, quantity: 2, unit: "kg", unitCost: 50, calculatedCost: 100, costStatus: "VALUED", purpose: null, notes: null, recordedBy: 1 }] as unknown as typeof payload.productUse;
   await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 }, { payload });
   await page.goto("/batches/2/selection");
+  await page.getByRole("tab", { name: "Health & vaccination" }).click();
   const vaccination = page.locator("#report-vaccination");
   const health = page.locator("#report-health");
   await expect(vaccination).toBeVisible();
   await expect(health).toBeVisible();
   const vaccineBox = await vaccination.boundingBox();
   const healthBox = await health.boundingBox();
-  const expenseBox = await page.locator("#report-expenses").boundingBox();
-  const productBox = await page.locator("#report-products").boundingBox();
-  const reviewBox = await page.locator("#report-review").boundingBox();
   expect(vaccineBox).not.toBeNull();
   expect(healthBox).not.toBeNull();
-  expect(expenseBox).not.toBeNull();
-  expect(reviewBox).not.toBeNull();
-  expect(Math.abs(expenseBox!.y - vaccineBox!.y)).toBeLessThan(2);
-  expect(expenseBox!.x).toBeGreaterThanOrEqual(vaccineBox!.x + vaccineBox!.width);
-  expect(productBox).not.toBeNull();
-  expect(productBox!.y).toBeGreaterThanOrEqual(Math.max(vaccineBox!.y + vaccineBox!.height, expenseBox!.y + expenseBox!.height));
-  expect(Math.abs(productBox!.y - healthBox!.y)).toBeLessThan(2);
-  expect(healthBox!.x).toBeGreaterThanOrEqual(productBox!.x + productBox!.width);
-  expect(productBox!.width).toBeGreaterThan(healthBox!.width);
-  expect(reviewBox!.y).toBeGreaterThanOrEqual(expenseBox!.y + expenseBox!.height);
+  expect(Math.abs(vaccineBox!.y - healthBox!.y)).toBeLessThan(2);
+  expect(healthBox!.x).toBeGreaterThanOrEqual(vaccineBox!.x + vaccineBox!.width);
+  await page.getByRole("tab", { name: "Costs & products" }).click();
+  await expect(page.locator("#report-expenses")).toBeVisible();
+  await expect(page.locator("#report-products")).toBeVisible();
 });
 
 test("desktop keeps saved versions beside the review and snapshot", async ({ page }, testInfo) => {
@@ -1223,6 +1328,7 @@ test("desktop keeps saved versions beside the review and snapshot", async ({ pag
   const review = finalizedReview();
   await page.route("**/api/backend/batches/2/selection-reviews", (route) => route.fulfill({ json: Array.from({ length: 8 }, (_, index) => ({ ...review, id: review.id + index, versionNumber: 8 - index })) }));
   await page.goto("/batches/2/selection?reviewId=44");
+  await page.getByRole("tab", { name: "Review & versions" }).click();
   const controls = page.locator("#report-review");
   const snapshot = page.locator("section").filter({ hasText: "Manager-reviewed snapshot" });
   const versions = page.locator("#report-versions");
@@ -1244,13 +1350,14 @@ test("desktop shows all four finance figures in the expense panel", async ({ pag
   await page.setViewportSize({ width: 1440, height: 900 });
   await mockReviewBackend(page, { userId: 1, email: "manager@example.test", fullName: "Fixture Manager", role: "MANAGER", farmId: 1 });
   await page.goto("/batches/2/selection");
+  await page.getByRole("tab", { name: "Costs & products" }).click();
   const finance = page.getByRole("region", { name: "PHP finance" });
   const facts = ["Cash expense", "Products used", "Batch cost", "Sale proceeds"].map((label) => finance.getByText(label, { exact: true }).locator(".."));
   const boxes = await Promise.all(facts.map((fact) => fact.boundingBox()));
   expect(boxes.every(Boolean)).toBe(true);
   expect(boxes[1]!.y).toBeCloseTo(boxes[0]!.y, 0);
   expect(boxes[3]!.y).toBeCloseTo(boxes[2]!.y, 0);
-  expect(boxes[2]!.y).toBeGreaterThan(boxes[0]!.y);
+  expect(boxes[2]!.y).toBeCloseTo(boxes[0]!.y, 0);
 });
 
 test("desktop report keeps unverified population hidden", async ({ page }, testInfo) => {

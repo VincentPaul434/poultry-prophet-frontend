@@ -83,9 +83,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
     const syncLocalState = () => { setUser(getStoredUser()); setAuthRequired(isAuthRequired()); };
+    const retryRestoringSession = () => {
+      if (!navigator.onLine || document.visibilityState !== "visible" || !getStoredUser() || getToken() || isAuthRequired()) return;
+      void refreshAccessToken().then((token) => {
+        setUser(getStoredUser());
+        setAuthRequired(isAuthRequired());
+        if (token) void queryClient.invalidateQueries();
+      });
+    };
     window.addEventListener("storage", syncSession);
     window.addEventListener(AUTH_STATE_EVENT, syncLocalState);
-    return () => { window.removeEventListener("storage", syncSession); window.removeEventListener(AUTH_STATE_EVENT, syncLocalState); };
+    window.addEventListener("online", retryRestoringSession);
+    document.addEventListener("visibilitychange", retryRestoringSession);
+    return () => { window.removeEventListener("storage", syncSession); window.removeEventListener(AUTH_STATE_EVENT, syncLocalState); window.removeEventListener("online", retryRestoringSession); document.removeEventListener("visibilitychange", retryRestoringSession); };
   }, [queryClient]);
 
   const establish = useCallback(async (request: () => Promise<import("./auth-storage").ClientAuthResponse>, preserveScope = false) => {

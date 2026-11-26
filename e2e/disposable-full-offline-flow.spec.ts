@@ -151,5 +151,10 @@ test("handler records a selected dose offline, manager sees cost and corrects ex
 
     const afterReview = await get(request, "/inventory/products", managerToken);
     expect(Number(afterReview.find((item: { id: number }) => item.id === product.id).stockOnHand)).toBe(98);
-  } finally { await managerContext.close(); }
+  } finally {
+    // Wait for routed API responses before disposing either browser context.
+    await managerContext.unrouteAll({ behavior: "wait" });
+    await managerContext.close();
+    await context.unrouteAll({ behavior: "wait" });
+  }
 });

@@ -109,9 +109,9 @@ export function InventoryManagerPanel() {
   }
 
   return <section className="space-y-4" aria-labelledby="farm-products-heading">
-    <div className="flex items-center justify-between gap-3">
+    <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
       <h2 id="farm-products-heading" className="flex items-center gap-2 text-base font-semibold"><PackagePlus className="hidden size-4 text-primary sm:inline" /> {displayText("Farm products and stock")}</h2>
-      <Button type="button" variant="outline" size="sm" disabled={!productRecovery.ready || productRecovery.intents.length > 0} onClick={() => { setProductError(""); setShowCreate(true); }}><Plus className="size-4" /><span className="sm:hidden">{displayText("Add")}</span><span className="hidden sm:inline">{displayText("Add product")}</span></Button>
+      <Button type="button" variant="outline" size="sm" className="min-h-11 w-full rounded-md px-3 sm:w-auto sm:min-w-36" disabled={!productRecovery.ready || productRecovery.intents.length > 0} onClick={() => { setProductError(""); setShowCreate(true); }}><Plus className="size-4" />{displayText("Add product")}</Button>
     </div>
     <StockConfirmationNotice products={products ?? []} />
     <ManagerIntentRecovery intents={productRecovery.intents} ready={productRecovery.ready} isError={productRecovery.isError} busy={createProduct.isPending} describe={(intent) => `${intent.payload.brandName} · ${intent.payload.openingQuantity ?? 0} ${intent.payload.stockUnit} · ${displayText("Price per unit")} ${intent.payload.openingUnitCost ?? "—"}`} retry={(intent) => createProduct.mutateAsync(intent.payload)} />
@@ -126,7 +126,7 @@ export function InventoryManagerPanel() {
     </Dialog>
     <div className="space-y-4">
       <Dialog open={showCreate} onOpenChange={setShowCreate}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{displayText("Add farm product")}</DialogTitle>
             <DialogDescription>{displayText("Add the product once, then track purchases and usage from the inventory table.")}</DialogDescription>
@@ -134,14 +134,14 @@ export function InventoryManagerPanel() {
           <form id="add-product-form" onSubmit={(event) => void submitProduct(event)} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5"><Label htmlFor="product-brand">{displayText("Product / brand")}</Label><Input id="product-brand" required value={brand} onChange={(event) => setBrand(event.target.value)} placeholder={displayText("Baby Stag Booster")} /></div>
-              <div className="space-y-1.5"><Label htmlFor="product-type">{displayText("Type")}</Label><NativeSelect id="product-type" value={type} onChange={(event) => setType(event.target.value as InputProductType)}>{TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</NativeSelect></div>
+              <div className="space-y-1.5"><Label htmlFor="product-type">{displayText("Type")}</Label><NativeSelect className="w-full" selectClassName="text-base md:text-sm" id="product-type" value={type} onChange={(event) => setType(event.target.value as InputProductType)}>{TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</NativeSelect></div>
               <div className="space-y-1.5"><Label htmlFor="product-unit">{displayText("Inventory unit")}</Label><Input id="product-unit" required value={unit} onChange={(event) => setUnit(event.target.value)} placeholder={displayText("sachet, pack, bottle")} /></div>
-              <div className="space-y-1.5"><Label htmlFor="product-precision">{displayText("Quantity precision")}</Label><NativeSelect id="product-precision" value={allowFractional ? "fractional" : "whole"} onChange={(event) => setAllowFractional(event.target.value === "fractional")}><option value="fractional">{displayText("Allow fractional quantities")}</option><option value="whole">{displayText("Whole units only")}</option></NativeSelect></div>
+              <div className="space-y-1.5"><Label htmlFor="product-precision">{displayText("Quantity precision")}</Label><NativeSelect className="w-full" selectClassName="text-base md:text-sm" id="product-precision" value={allowFractional ? "fractional" : "whole"} onChange={(event) => setAllowFractional(event.target.value === "fractional")}><option value="fractional">{displayText("Allow fractional quantities")}</option><option value="whole">{displayText("Whole units only")}</option></NativeSelect></div>
               <div className="space-y-1.5"><Label htmlFor="product-reorder">{displayText("Low-stock reminder (optional)")}</Label><Input id="product-reorder" type="number" min="0" step="0.001" value={openingReorder} onChange={(event) => setOpeningReorder(event.target.value)} /></div>
               <div className="space-y-1.5"><Label htmlFor="product-opening-stock">{displayText("Starting stock")}{" "}<span className="font-normal text-muted-foreground">{displayText("(optional)")}</span></Label><Input id="product-opening-stock" type="number" min="0" step={allowFractional ? "0.001" : "1"} value={opening} onChange={(event) => setOpening(event.target.value)} placeholder="0" /></div>
               <div className="space-y-1.5"><Label htmlFor="product-name">{displayText("Generic name / variant")}{" "}<span className="font-normal text-muted-foreground">{displayText("(optional)")}</span></Label><Input id="product-name" value={name} onChange={(event) => setName(event.target.value)} placeholder={displayText("Vitamin booster")} /></div>
               <div className="space-y-1.5"><Label htmlFor="product-package">{displayText("Package description")}{" "}<span className="font-normal text-muted-foreground">{displayText("(optional)")}</span></Label><Input id="product-package" value={packageDescription} onChange={(event) => setPackageDescription(event.target.value)} placeholder={displayText("100 sachets per box")} /></div>
-              <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="product-opening-cost">{displayText("Opening price per")}{" "}{unit.trim() || "unit"} <span className="font-normal text-muted-foreground">{displayText("(required when starting stock is added)")}</span></Label><Input id="product-opening-cost" type="number" min="0" step="0.000001" value={openingCost} onChange={(event) => setOpeningCost(event.target.value)} placeholder="₱0.00" /></div>
+              <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="product-opening-cost" className="block leading-normal">{displayText("Opening price per")}{" "}{unit.trim() || "unit"} <span className="font-normal text-muted-foreground">{displayText("(required when starting stock is added)")}</span></Label><Input id="product-opening-cost" type="number" min="0" step="0.000001" value={openingCost} onChange={(event) => setOpeningCost(event.target.value)} placeholder="₱0.00" /></div>
             </div>
             {productError && <p role="alert" className="text-sm text-destructive">{productError}</p>}
           </form>
@@ -152,7 +152,7 @@ export function InventoryManagerPanel() {
         </DialogContent>
       </Dialog>
       <Dialog open={showStock} onOpenChange={setShowStock}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{displayText("Add stock")}</DialogTitle>
             <DialogDescription>{selectedProduct ? `${selectedProduct.brandName} · ${Number(selectedProduct.stockOnHand).toLocaleString()} ${selectedProduct.stockUnit} on hand` : "Record a purchase for this product."}</DialogDescription>

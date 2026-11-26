@@ -123,8 +123,8 @@ export async function refreshAccessToken() {
         return response.data.token;
       } catch (error) {
         if (getSessionScope() !== scope) return null;
-        // A missing response is ambiguous; only the proxy may assert it did
-        // not send the one-time credential, making a later retry safe.
+        // Only the same-origin proxy can confirm that no rotation was sent.
+        // An ambiguous network failure must remain blocked to prevent replay.
         if (axios.isAxiosError(error) && error.response?.headers?.["x-pp-refresh-not-started"] === "1") clearRefreshUncertain();
         else if (axios.isAxiosError(error) && (error.response?.status === 400 || error.response?.status === 401)) markAuthRequired();
         return null;
@@ -212,7 +212,7 @@ apiClient.interceptors.response.use(
           }
           if (isAuthRequired()) return Promise.reject(new ApiError("Sign in again to sync your records.", 401));
           if (getSessionScope()) {
-            return Promise.reject(new ApiError("Authentication service unavailable. Please sign in again if the problem persists.", 503));
+            return Promise.reject(new ApiError("Authentication service is temporarily unavailable. Please try again.", 503));
           }
         }
 

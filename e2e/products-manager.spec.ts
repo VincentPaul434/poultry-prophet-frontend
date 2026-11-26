@@ -74,7 +74,7 @@ async function mockManagerBackend(page: Page) {
   });
 }
 
-test("manager products separates inventory from handler-recorded usage history", async ({ page }) => {
+test("manager products separates inventory from handler-recorded usage history", async ({ page }, testInfo) => {
   await mockManagerBackend(page);
   await page.goto("/inputs");
 
@@ -89,9 +89,45 @@ test("manager products separates inventory from handler-recorded usage history",
   await expect(page.getByText("Record product used", { exact: true })).toHaveCount(0);
 
   await tabs.getByRole("tab", { name: "History (1)" }).click();
-  await expect(page.getByRole("table")).toBeVisible();
-  await expect(page.getByText("Recovery Plus", { exact: true })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "October Hatch" })).toBeVisible();
+  const history = page.getByRole("region", { name: "Product history" });
+  if (testInfo.project.name.startsWith("mobile-chromium-")) {
+    const record = history.getByRole("article").filter({ has: page.getByRole("heading", { name: "Recovery Plus" }) });
+    await expect(record).toBeVisible();
+    await expect(record.getByText("October Hatch", { exact: true })).toBeVisible();
+  } else {
+    const table = history.getByRole("table");
+    await expect(table).toBeVisible();
+    await expect(table.getByText("Recovery Plus", { exact: true })).toBeVisible();
+    await expect(table.getByRole("cell", { name: "October Hatch" })).toBeVisible();
+  }
+});
+
+test("refreshes an expired access token and retries adding a product after a 401", async ({ page }) => {
+  await mockManagerBackend(page);
+  let refreshes = 0;
+  const authorizations: string[] = [];
+  let created = 0;
+  await page.route("**/api/backend/auth/refresh", (route) => {
+    refreshes++;
+    return route.fulfill({ json: { ...manager, token: refreshes === 1 ? "expired-access" : "renewed-access" } });
+  });
+  await page.route("**/api/backend/inventory/products", (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const authorization = route.request().headers().authorization ?? "";
+    authorizations.push(authorization);
+    if (authorization !== "Bearer renewed-access") return route.fulfill({ status: 401, json: { message: "Authentication required" } });
+    created++;
+    return route.fulfill({ status: 201, json: { id: 10, brandName: "Test feed", productType: "MEDICINE", stockUnit: "sachet", stockOnHand: 0, active: true } });
+  });
+  await page.goto("/inputs");
+  await page.getByRole("button", { name: "Add product" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add farm product" });
+  await dialog.getByLabel("Product / brand").fill("Test feed");
+  await dialog.getByRole("button", { name: "Save product" }).click();
+  await expect(dialog).toBeHidden();
+  await expect.poll(() => created).toBe(1);
+  expect(authorizations).toEqual(["Bearer expired-access", "Bearer renewed-access"]);
+  expect(refreshes).toBe(2);
 });
 
 test("labels only products with demo stock history on mobile", async ({ page }, testInfo) => {

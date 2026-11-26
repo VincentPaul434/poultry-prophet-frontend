@@ -9,6 +9,7 @@ export interface PageHeaderProps extends Omit<ComponentProps<"header">, "title">
   action?: ReactNode;
   titleClassName?: string;
   descriptionClassName?: string;
+  variant?: "default" | "ledger";
 }
 
 export function PageHeader({
@@ -18,12 +19,13 @@ export function PageHeader({
   action,
   titleClassName,
   descriptionClassName,
+  variant = "default",
   className,
   ...props
 }: PageHeaderProps) {
   return (
     <header
-      className={cn("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", className)}
+      className={cn("flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between", variant === "ledger" && "gap-3 sm:items-end sm:gap-6", className)}
       {...props}
     >
       <div className={cn("flex min-w-0 gap-3", Icon ? "items-center" : "items-start")}>
@@ -33,7 +35,7 @@ export function PageHeader({
           </div>
         )}
         <div className="min-w-0">
-          <h1 className={cn("text-2xl font-bold tracking-tight sm:text-3xl", titleClassName)}>{title}</h1>
+          <h1 className={cn("text-2xl font-bold tracking-tight sm:text-3xl", variant === "ledger" && "ledger-heading text-[2rem] leading-none sm:text-5xl", titleClassName)}>{title}</h1>
           {description && (
             <p className={cn("text-sm text-muted-foreground", descriptionClassName)}>{description}</p>
           )}
@@ -42,4 +44,8 @@ export function PageHeader({
       {action && <div className="w-full shrink-0 sm:w-auto">{action}</div>}
     </header>
   );
+}
+
+export function PageContainer({ className, ...props }: ComponentProps<"div">) {
+  return <div className={cn("ledger-page mx-auto w-full max-w-6xl", className)} {...props} />;
 }
