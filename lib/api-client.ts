@@ -130,7 +130,33 @@ export async function refreshAccessToken() {
         return null;
       }
     };
-    refreshPromise = withAuthLock(rotate).catch(() => null).finally(() => { refreshPromise = null; });
+    const run = async () => {
+      try {
+        return await withAuthLock(rotate);
+      } catch (error) {
+        // A tab can die after leaving its IndexedDB lease behind. In browsers
+        // with Web Locks, acquiring the same browser-wide lock proves that no
+        // current Poultry Prophet tab is still performing the credential
+        // mutation, so the expired lease can be recovered without making the
+        // user sign in again. `rotate` still refuses to replay a refresh when
+        // the previous tab recorded an uncertain request.
+        if (!(error instanceof AuthCoordinationError) || error.reason !== "abandoned"
+          || typeof navigator === "undefined" || typeof navigator.locks?.request !== "function") {
+          throw error;
+        }
+        if (!await resetAbandonedAuthLock()) throw error;
+        return withAuthLock(rotate);
+      }
+    };
+    refreshPromise = run().catch((error) => {
+      // An abandoned lease that cannot be proven safe to recover must not be
+      // presented as a temporary backend outage. Marking it explicitly lets
+      // the login screen offer the existing guarded lock-reset flow.
+      if (error instanceof AuthCoordinationError && error.reason === "abandoned" && getSessionScope() === scope) {
+        markAuthRequired();
+      }
+      return null;
+    }).finally(() => { refreshPromise = null; });
   }
   return refreshPromise;
 }

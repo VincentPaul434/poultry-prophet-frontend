@@ -44,6 +44,25 @@ async function mockBackend(context: BrowserContext, onRefresh: (cookie: string) 
   });
 }
 
+async function seedAbandonedAuthLease(page: Page) {
+  await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("poultry-prophet-auth-lock", 1);
+      request.onupgradeneeded = () => request.result.createObjectStore("leases");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction("leases", "readwrite");
+      tx.objectStore("leases").put({ owner: "closed-tab", fence: 12, expiresAt: Date.now() - 60_000 }, "credentials");
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+    db.close();
+  });
+}
+
 test("restores a persistent session after closing and reopening the browser", async ({ baseURL, browserName }) => {
   test.skip(browserName !== "chromium", "Persistent browser restart coverage uses Chromium.");
   if (!baseURL) throw new Error("baseURL required");
@@ -73,6 +92,23 @@ test("restores a persistent session after closing and reopening the browser", as
     await persistent?.close();
     if (resolve(profileDir).startsWith(`${resolve(tmpdir())}${sep}`)) await rm(profileDir, { recursive: true, force: true });
   }
+});
+
+test("recovers an abandoned refresh lease without requiring another sign-in", async ({ page, context, baseURL }) => {
+  if (!baseURL) throw new Error("baseURL required");
+  const seen: string[] = [];
+  await mockBackend(context, async (cookie) => { seen.push(cookie); return "recovered-refresh"; });
+  await context.addCookies([{ name: "pp_refresh", value: "first-refresh", domain: new URL(baseURL).hostname, path: "/api/backend", httpOnly: true, sameSite: "Strict" }]);
+  await page.goto("/login");
+  await page.evaluate((cachedUser) => {
+    localStorage.setItem("pp_auth_session", JSON.stringify({ sessionId: "test-session", user: cachedUser }));
+  }, user);
+  await seedAbandonedAuthLease(page);
+  await page.goto("/settings");
+  await expect(page.getByRole("heading", { name: "Settings", exact: true, level: 1 })).toBeVisible();
+  await expect.poll(() => seen.length).toBe(1);
+  expect(seen).toEqual(["pp_refresh=first-refresh"]);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("pp_auth_session") ?? "null")?.authRequired)).not.toBe(true);
 });
 
 test("a second tab waits for the active credential refresh", async ({ page, context, baseURL }) => {

@@ -115,6 +115,56 @@ test('refresh fails closed when IndexedDB coordination is unavailable', async ()
   try { assert.equal(await refreshAccessToken(), null); assert.equal(calls, 0); }
   finally { navigator.locks = locks; useRealLock = false; axios.post = originalPost; }
 });
+
+test('refresh recovers an abandoned lease when Web Locks prove the tab is gone', async () => {
+  data.clear();
+  storage.saveSession(user(1, 1, 'original'));
+  const originalLock = authLock.withIndexedDbAuthLock;
+  const originalReset = authLock.resetAbandonedLease;
+  const originalLocks = navigator.locks;
+  const originalPost = axios.post;
+  let lockCalls = 0;
+  let resetCalls = 0;
+  authLock.withIndexedDbAuthLock = async operation => {
+    if (lockCalls++ === 0) throw new authLock.AuthLockError('abandoned');
+    return operation();
+  };
+  authLock.resetAbandonedLease = async () => { resetCalls++; return true; };
+  navigator.locks = {
+    request: async (_name, options, callback) => {
+      const fn = typeof options === 'function' ? options : callback;
+      return fn(typeof options === 'function' ? undefined : { name: 'poultry-prophet-auth-refresh' });
+    },
+  };
+  axios.post = async () => ({ data: user(1, 1, 'recovered') });
+  try {
+    assert.equal(await refreshAccessToken(), 'recovered');
+    assert.equal(resetCalls, 1);
+    assert.equal(storage.isAuthRequired(), false);
+  } finally {
+    authLock.withIndexedDbAuthLock = originalLock;
+    authLock.resetAbandonedLease = originalReset;
+    navigator.locks = originalLocks;
+    axios.post = originalPost;
+  }
+});
+
+test('an abandoned lease without Web Locks requires guarded recovery', async () => {
+  data.clear();
+  storage.saveSession(user(1, 1, 'original'));
+  const originalLock = authLock.withIndexedDbAuthLock;
+  const originalLocks = navigator.locks;
+  authLock.withIndexedDbAuthLock = async () => { throw new authLock.AuthLockError('abandoned'); };
+  navigator.locks = undefined;
+  try {
+    assert.equal(await refreshAccessToken(), null);
+    assert.equal(storage.isAuthRequired(), true);
+  } finally {
+    authLock.withIndexedDbAuthLock = originalLock;
+    navigator.locks = originalLocks;
+  }
+});
+
 function unauthorized(config) {
   return new axios.AxiosError('Unauthorized', 'ERR_BAD_REQUEST', config, undefined, { status: 401, data: {}, headers: {}, config });
 }
